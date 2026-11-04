@@ -7,6 +7,7 @@ from tests.model_serving.model_server.kserve.storage.constants import (
 from tests.model_serving.model_server.kserve.storage.pvc.utils import (
     chmod_model_directory,
     get_mount_mode,
+    get_predictor_pod_uids,
     get_running_predictor_pod,
     get_volume_mount_readonly,
     try_write_file,
@@ -121,6 +122,7 @@ class TestKservePVCWriteAccess:
         )
         assert try_write_file(pod=pod), "Expected write to /mnt/models to succeed with readonly=false"
 
+        pod_uids_before_toggle = get_predictor_pod_uids(client=unprivileged_client, isvc=patched_read_only_isvc)
         patched_read_only_isvc.update(
             resource_dict={
                 "metadata": {
@@ -129,7 +131,11 @@ class TestKservePVCWriteAccess:
                 }
             }
         )
-        wait_for_rollout_complete(client=unprivileged_client, isvc=patched_read_only_isvc)
+        wait_for_rollout_complete(
+            client=unprivileged_client,
+            isvc=patched_read_only_isvc,
+            previous_pod_uids=pod_uids_before_toggle,
+        )
         annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
         assert annotation == "true", f"Expected annotation readonly=true after toggle, got {annotation}"
         pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)
@@ -169,6 +175,7 @@ class TestKservePVCWriteAccess:
         assert get_mount_mode(pod=pod) == "ro", "Expected /mnt/models mounted ro with readonly=true"
         assert not try_write_file(pod=pod), "Expected write to /mnt/models to fail with readonly=true"
 
+        pod_uids_before_toggle = get_predictor_pod_uids(client=unprivileged_client, isvc=patched_read_only_isvc)
         patched_read_only_isvc.update(
             resource_dict={
                 "metadata": {
@@ -177,7 +184,11 @@ class TestKservePVCWriteAccess:
                 }
             }
         )
-        wait_for_rollout_complete(client=unprivileged_client, isvc=patched_read_only_isvc)
+        wait_for_rollout_complete(
+            client=unprivileged_client,
+            isvc=patched_read_only_isvc,
+            previous_pod_uids=pod_uids_before_toggle,
+        )
         annotation = patched_read_only_isvc.instance.metadata.annotations.get("storage.kserve.io/readonly")
         assert annotation == "false", f"Expected annotation readonly=false after toggle, got {annotation}"
         pod = get_running_predictor_pod(client=unprivileged_client, isvc=patched_read_only_isvc)

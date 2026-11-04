@@ -9,10 +9,14 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
-from tests.model_serving.model_server.kserve.storage.pvc.utils import wait_for_rollout_complete
+from tests.model_serving.model_server.kserve.storage.pvc.utils import (
+    get_predictor_pod_uids,
+    wait_for_rollout_complete,
+)
 from utilities.constants import KServeDeploymentType
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
@@ -27,17 +31,15 @@ def ci_bucket_downloaded_model_data(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     model_pvc: PersistentVolumeClaim,
-    aws_secret_access_key: str,
-    aws_access_key_id: str,
+    ci_endpoint_s3_secret: Secret,
     ci_s3_bucket_name: str,
     ci_s3_bucket_endpoint: str,
     ci_s3_bucket_region: str,
 ) -> str:
     return download_model_data(
         client=admin_client,
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
         model_namespace=unprivileged_model_namespace.name,
+        credentials_secret_name=ci_endpoint_s3_secret.name,
         model_pvc_name=model_pvc.name,
         bucket_name=ci_s3_bucket_name,
         aws_endpoint_url=ci_s3_bucket_endpoint,
@@ -85,7 +87,7 @@ def patched_read_only_isvc(
     """
     readonly_value = request.param["readonly"]
     LOGGER.info(f"patched_read_only_isvc: patching readonly={readonly_value}")
-    with ResourceEditor(
+    editor = ResourceEditor(
         patches={
             pvc_inference_service: {
                 "metadata": {
@@ -93,12 +95,29 @@ def patched_read_only_isvc(
                 }
             }
         }
-    ):
-        wait_for_rollout_complete(client=unprivileged_client, isvc=pvc_inference_service)
+    )
+    pod_uids_before = get_predictor_pod_uids(client=unprivileged_client, isvc=pvc_inference_service)
+    patched = False
+    try:
+        editor.update(backup_resources=True)
+        patched = True
+        wait_for_rollout_complete(
+            client=unprivileged_client, isvc=pvc_inference_service, previous_pod_uids=pod_uids_before
+        )
         yield pvc_inference_service
-    # ResourceEditor restores the annotation to None, triggering a rollout.
-    # Wait for it to settle so the next test sees a clean state.
-    wait_for_rollout_complete(client=unprivileged_client, isvc=pvc_inference_service)
+    finally:
+        # Restore the original annotation value, triggering a rollout.
+        # Wait for it to settle so the next test sees a clean state.
+        # If the update itself failed, no rollout is running: restore is a
+        # no-op without a backup and any original exception is left to
+        # propagate once this block finishes.
+        if patched:
+            pod_uids_before_restore = get_predictor_pod_uids(client=unprivileged_client, isvc=pvc_inference_service)
+        editor.restore()
+        if patched:
+            wait_for_rollout_complete(
+                client=unprivileged_client, isvc=pvc_inference_service, previous_pod_uids=pod_uids_before_restore
+            )
 
 
 @pytest.fixture(scope="class")

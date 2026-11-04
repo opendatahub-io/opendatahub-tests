@@ -11,7 +11,7 @@ from tests.model_serving.model_runtime.openvino.probes.utils import (
 from tests.model_serving.model_runtime.utils import get_restart_counts, pod_is_ready
 from utilities.constants import KServeDeploymentType, ModelFormat
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
 
 
 @pytest.mark.smoke

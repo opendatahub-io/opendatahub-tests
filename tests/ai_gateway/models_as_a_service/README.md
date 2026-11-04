@@ -44,7 +44,7 @@ models_as_a_service/
 - **`maas_api_key/`** - API key CRUD, authorization, expiration, bulk operations, gateway rejection, and negative tests
 - **`maas_cleanup/`** - Validates that disabling MaaS in DSC cleans up operator-managed resources
 - **`maas_subscription/`** - Subscription enforcement, access control, filtering, rate limit exemptions, cascade deletion, multi-subscription and multi-auth-policy scenarios
-- **`multitenancy/`** - AITenant bootstrap, per-tenant maas-api deployment/routing, auth isolation, and cross-gateway inference
+- **`multitenancy/`** - AITenant bootstrap, per-tenant maas-api deployment/routing, auth isolation, cross-gateway inference, and per-tenant gateway negative security (`multitenancy/security/`, RHOAIENG-100758)
 - **`oidc_tests/`** - OIDC token flow, model access, multi-user, and header injection tests
 - **`upgrade/`** - Pre/post-upgrade tests verifying that existing MaaS functionality, configuration, and customer workflows remain valid across platform/operator upgrades.
 - **`test_maas_endpoints.py`** - Core MaaS API endpoint validation

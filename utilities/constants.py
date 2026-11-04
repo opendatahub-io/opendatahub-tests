@@ -93,7 +93,8 @@ class RuntimeTemplates:
     VLLM_SPYRE_PPC64LE: str = "vllm-spyre-ppc64le-runtime-template"
     VLLM_CPU_x86: str = "vllm-cpu-x86-runtime-template"
     VLLM_CPU_POWER: str = "vllm-cpu-runtime-template"
-    VLLM_CPU_Z: str = "vllm-cpu-z-runtime-template"
+    # Power and Z share the same vLLM CPU template (ppc64le/s390x)
+    VLLM_CPU_Z: str = "vllm-cpu-runtime-template"
     VLLM_OMNI_CUDA: str = "vllm-omni-cuda-runtime-template"
     VLLM_OMNI_CUDA_FAST_1: str = "vllm-omni-cuda-runtime-template-fast-1"
     VLLM_OMNI_CUDA_FAST_2: str = "vllm-omni-cuda-runtime-template-fast-2"
@@ -309,6 +310,7 @@ class OpenshiftRouteTimeout:
 
 class Containers:
     KSERVE_CONTAINER_NAME: str = "kserve-container"
+    KSERVE_AGENT_CONTAINER_NAME: str = "agent"
 
 
 class RunTimeConfigs:
@@ -417,6 +419,33 @@ class MinIo:
             "args": ["server", "/data"],
             **MINIO_BASE_LABELS_ANNOTATIONS,
         }
+
+
+class SeaweedFs:
+    """SeaweedFS S3-compatible storage settings shared across test components."""
+
+    class Metadata:
+        NAME: str = "seaweedfs"
+        DEFAULT_PORT: int = 8333
+        FILER_PORT: int = 8888
+        FILER_GRPC_PORT: int = 18888
+
+    class Credentials:
+        ACCESS_KEY_VALUE: str = "THEACCESSKEY"
+        SECRET_KEY_VALUE: str = "THESECRETKEY"
+
+    class Buckets:
+        MODELMESH_EXAMPLE_MODELS: str = "modelmesh-example-models"
+
+    class PodConfig:
+        ARGS: tuple[str, ...] = (
+            "server",
+            "-dir=/tmp",
+            "-s3",
+            "-iam",
+            "-filer",
+            "-master.volumePreallocate=false",
+        )
 
 
 MODEL_REGISTRY: str = "model-registry"

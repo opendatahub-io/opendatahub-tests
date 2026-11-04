@@ -14,7 +14,7 @@ from utilities.kueue_utils import check_gated_pods_and_running_pods
 pytestmark = [
     pytest.mark.rawdeployment,
     pytest.mark.tier1,
-    pytest.mark.usefixtures("valid_aws_config"),
+    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
     pytest.mark.kueue,
 ]
 

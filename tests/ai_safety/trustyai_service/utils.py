@@ -1,9 +1,9 @@
 import datetime
-import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
+import pytest
 import structlog
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -15,17 +15,17 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.resource import Resource
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
-from timeout_sampler import TimeoutSampler, retry
+from timeout_sampler import TimeoutSampler
 
 from utilities.constants import MARIA_DB_IMAGE, TRUSTYAI_SERVICE_NAME
-from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
-from utilities.general import validate_container_images, wait_for_pods_by_labels
+from utilities.general import namespace_fs_group, validate_container_images, wait_for_pods_by_labels
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -54,16 +54,25 @@ def wait_for_mariadb_pods(client: DynamicClient, deployment_name: str, namespace
         )
 
 
-def _generate_mariadb_tls_certs(namespace_name: str) -> tuple[str, str, str]:
-    """Generate self-signed TLS certificates for MariaDB.
+def generate_db_tls_certs(namespace_name: str, service_name: str) -> tuple[str, str, str]:
+    """Generate a self-signed CA and server certificate for an in-cluster database.
+
+    The server certificate carries the Service DNS names as SANs, so clients that
+    verify the hostname (TrustyAI connects to PostgreSQL with `sslmode=verify-full`)
+    accept it.
+
+    Args:
+        namespace_name: Namespace the database Service lives in.
+        service_name: Name of the database Service, used as the certificate CN/SAN.
 
     Returns:
         tuple: (ca_cert_pem, server_cert_pem, server_key_pem)
     """
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
+    # Keep CN short (X.509 limit is 64 chars); hostname verification uses SANs below.
     ca_subject = ca_issuer = x509.Name(
-        attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=f"mariadb-ca-{namespace_name}")]
+        attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=f"{service_name}-ca")]
     )
     ca_cert = (
         x509
@@ -80,9 +89,7 @@ def _generate_mariadb_tls_certs(namespace_name: str) -> tuple[str, str, str]:
 
     server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
-    server_subject = x509.Name(
-        attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=f"mariadb.{namespace_name}.svc.cluster.local")]
-    )
+    server_subject = x509.Name(attributes=[x509.NameAttribute(oid=NameOID.COMMON_NAME, value=service_name)])
     server_cert = (
         x509
         .CertificateBuilder()
@@ -94,9 +101,9 @@ def _generate_mariadb_tls_certs(namespace_name: str) -> tuple[str, str, str]:
         .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=365))
         .add_extension(
             x509.SubjectAlternativeName([
-                x509.DNSName("mariadb"),
-                x509.DNSName(f"mariadb.{namespace_name}.svc"),
-                x509.DNSName(f"mariadb.{namespace_name}.svc.cluster.local"),
+                x509.DNSName(service_name),
+                x509.DNSName(f"{service_name}.{namespace_name}.svc"),
+                x509.DNSName(f"{service_name}.{namespace_name}.svc.cluster.local"),
             ]),
             critical=False,
         )
@@ -127,7 +134,10 @@ def create_standalone_mariadb(
     Creates TLS secrets, PVC, Service, and Deployment for MariaDB.
     Uses Red Hat registry image to avoid Docker Hub rate limits.
     """
-    ca_cert, server_cert, server_key = _generate_mariadb_tls_certs(namespace_name=namespace_name)
+    ca_cert, server_cert, server_key = generate_db_tls_certs(namespace_name=namespace_name, service_name=name)
+    pod_security_context: dict[str, Any] = {}
+    if (fs_group := namespace_fs_group(client=client, namespace=namespace_name)) is not None:
+        pod_security_context["fsGroup"] = fs_group
 
     with (
         Secret(
@@ -272,6 +282,7 @@ def create_standalone_mariadb(
                 ],
                 "dnsPolicy": "ClusterFirst",
                 "restartPolicy": "Always",
+                "securityContext": pod_security_context,
                 "volumes": [
                     {"name": "mariadb-data", "persistentVolumeClaim": {"claimName": name}},
                     {"name": "ca-cert", "secret": {"secretName": f"{name}-ca"}},
@@ -296,55 +307,15 @@ def create_standalone_mariadb(
             yield deployment
 
 
-@retry(
-    wait_timeout=120,
-    sleep=5,
-    exceptions_dict={TooManyPodsError: [], UnexpectedFailureError: []},
-)
-def validate_trustyai_service_db_conn_failure(
-    client: DynamicClient, namespace: Namespace, label_selector: str | None
-) -> bool:
-    """Validate if invalid DB Certificate leads to pod crash loop.
-
-    Waits for TrustyAIService pod to fail and checks if the pod is in a CrashLoopBackOff state and
-    the LastState is in terminated state and the cause was a MariaDB TLS certificate exception.
-    Also checks if there are more than one pod for the service.
-
-    Args:
-        client: The OpenShift client.
-        namespace: Namespace under which the pod is created.
-        label_selector: The label selector used to select the correct pod(s) to monitor.
-
-    Returns:
-        bool: True if pod failure is of expected state else False.
-
-    Raises:
-        TimeoutExpiredError: if the method takes longer than `wait_timeout` to return a value.
-        TooManyPodsError: if the number of pods exceeds 1.
-        UnexpectedFailureError: if the pod failure is different from the expected failure mode.
-
-    """
-    pods = list(Pod.get(client=client, namespace=namespace.name, label_selector=label_selector))
-    mariadb_conn_failure_regex = (
-        r"^.+ERROR.+Could not connect to mariadb:.+"
-        r"(PKIX path.*failed|SSL|socket|Connection refused)"
+def validate_trustyai_service_db_conn_failure(trustyai_service: TrustyAIService) -> None:
+    """Wait for TrustyAIService to report a database connection failure."""
+    trustyai_service.wait_for_condition(
+        condition="DBAvailable",
+        status="False",
+        reason="DBConnectionError",
+        timeout=120,
+        sleep_time=5,
     )
-    if pods:
-        if len(pods) > 1:
-            raise TooManyPodsError("More than one pod found in TrustyAIService.")
-        for container_status in pods[0].instance.status.containerStatuses:
-            if (terminate_state := container_status.lastState.terminated) and terminate_state.reason in (
-                pods[0].Status.ERROR,
-                pods[0].Status.CRASH_LOOPBACK_OFF,
-            ):
-                if not re.search(mariadb_conn_failure_regex, terminate_state.message):
-                    raise UnexpectedFailureError(
-                        f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected.\
-                                  \nExpected format: {mariadb_conn_failure_regex}\
-                                  \nGot: {terminate_state.message}"
-                    )
-                return True
-    return False
 
 
 @contextmanager
@@ -564,6 +535,14 @@ def validate_trustyai_service_images(
         for key, value in trustyai_operator_configmap.instance.data.items()
         if key in ["kube-rbac-proxy", "trustyaiServiceImage"]
     }
+    non_redhat_images = sorted(
+        image for image in tai_image_refs if not image.startswith(Resource.ApiGroup.IMAGE_REGISTRY)
+    )
+    if non_redhat_images:
+        pytest.skip(
+            "Operator is configured with non-Red Hat images; "
+            f"image validation requires {Resource.ApiGroup.IMAGE_REGISTRY}: {non_redhat_images}"
+        )
     trustyai_service_pod = wait_for_pods_by_labels(
         admin_client=client, namespace=model_namespace.name, label_selector=label_selector, expected_num_pods=1
     )[0]

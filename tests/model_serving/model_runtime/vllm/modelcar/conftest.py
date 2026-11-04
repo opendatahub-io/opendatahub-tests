@@ -1,3 +1,4 @@
+import copy
 from collections.abc import Generator
 from typing import Any
 
@@ -86,7 +87,9 @@ def vllm_model_car_inference_service(
     gpu_count = deployment_config.get("gpu_count", 0)
     timeout = deployment_config.get("timeout")
     identifier = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
-    resources: Any = PREDICT_RESOURCES["resources"]
+    resources: Any = copy.deepcopy(PREDICT_RESOURCES["resources"])
+    for scope, overrides in (deployment_config.get("resources") or {}).items():
+        resources[scope].update(overrides)
     resources["requests"][identifier] = gpu_count
     resources["limits"][identifier] = gpu_count
     isvc_kwargs["resources"] = resources
@@ -133,6 +136,7 @@ def deployment_config(request: FixtureRequest) -> dict[str, Any]:
     config["deployment_type"] = deployment_type
     config["gpu_count"] = request.param.get("gpu_count", 1)
     config["model_output_type"] = request.param.get("model_output_type", "text")
+    config["resources"] = request.param.get("resources", {})
     config["timeout"] = TIMEOUT_20MIN
     return config
 
@@ -146,6 +150,7 @@ def build_raw_params(
     model_output_type: str = "text",
     unsupported_accelerators: list[str] | None = None,
     accelerator_type: str | None = None,
+    resources: dict[str, dict[str, str]] | None = None,
 ) -> tuple[Any, str]:
     test_id = f"{name}-standard"
     deployment_type = KServeDeploymentType.STANDARD
@@ -164,6 +169,7 @@ def build_raw_params(
             "runtime_argument": args,
             "gpu_count": gpu_count,
             "model_output_type": model_output_type,
+            "resources": resources or {},
         },
         id=test_id,
         marks=marks,
@@ -235,6 +241,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         args = serving_config.get("args", [])
         gpu_count = serving_config.get("gpu_count", 1)
         unsupported_accelerators = [str(a).lower() for a in (model_car.get("unsupported_accelerators") or [])]
+        resources = model_car.get("resources") or default_serving_config.get("resources") or {}
 
         if metafunc.cls.__name__ == "TestVLLMModelCarRaw":
             param, test_id = build_raw_params(
@@ -246,6 +253,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
                 model_output_type=model_output_type,
                 unsupported_accelerators=unsupported_accelerators,
                 accelerator_type=accelerator_type,
+                resources=resources,
             )
         else:
             continue

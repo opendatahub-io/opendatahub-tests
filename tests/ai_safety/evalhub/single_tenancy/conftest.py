@@ -14,6 +14,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
+from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.service_account import ServiceAccount
@@ -99,15 +100,57 @@ def evalhub_st_ca_bundle_file(
 
 
 @pytest.fixture(scope="class")
+def network_policy_access_for_st_api_sa(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    evalhub_st_cr: SingleTenantEvalHub,
+) -> Generator[tuple[Role, RoleBinding], Any, Any]:
+    """Grant the single-tenant EvalHub API ServiceAccount NetworkPolicy access.
+
+    In single-tenancy mode jobs run in the EvalHub namespace (model_namespace).
+    """
+    api_sa_name = f"{evalhub_st_cr.name}-service"
+    with (
+        Role(
+            client=admin_client,
+            name="evalhub-st-api-network-policy",
+            namespace=model_namespace.name,
+            rules=[
+                {
+                    "apiGroups": ["networking.k8s.io"],
+                    "resources": ["networkpolicies"],
+                    "verbs": ["create", "get", "update"],
+                },
+            ],
+            wait_for_resource=True,
+        ) as role,
+        RoleBinding(
+            client=admin_client,
+            name="evalhub-st-api-network-policy",
+            namespace=model_namespace.name,
+            role_ref_kind=role.kind,
+            role_ref_name=role.name,
+            subjects_kind="ServiceAccount",
+            subjects_name=api_sa_name,
+            subjects_namespace=model_namespace.name,
+            wait_for_resource=True,
+        ) as binding,
+    ):
+        yield role, binding
+
+
+@pytest.fixture(scope="class")
 def evalhub_st_ready(
     evalhub_st_route: Route,
     evalhub_st_ca_bundle_file: str,
+    network_policy_access_for_st_api_sa: tuple[Role, RoleBinding],
 ) -> None:
     """Poll the health endpoint until the single-tenant EvalHub responds successfully.
 
     The deployment may report ready before the OpenShift router backend is configured,
     causing transient 503 errors. This fixture waits until the route is actually serving.
     """
+    _ = network_policy_access_for_st_api_sa
     url = f"https://{evalhub_st_route.host}{EVALHUB_HEALTH_PATH}"
     host = evalhub_st_route.host
     for sample in TimeoutSampler(

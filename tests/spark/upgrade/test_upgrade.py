@@ -13,9 +13,17 @@ from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
 
-from tests.spark.upgrade.utils import spark_running_execution
-from tests.spark.utils import verify_spark_app_completed
+from tests.spark.upgrade.utils import scheduled_running_execution, spark_running_execution
+from tests.spark.utils import (
+    run_spark_connect_query,
+    scheduled_last_run_application,
+    verify_spark_app_completed,
+    verify_spark_connect_query,
+    wait_for_spark_connect_ready,
+)
+from utilities.resources.scheduled_spark_application import ScheduledSparkApplication
 from utilities.resources.spark_application import SparkApplication
+from utilities.resources.spark_connect import SparkConnect
 
 
 class TestPostUpgradeReuseExistingSparkApplication:
@@ -71,3 +79,111 @@ def test_spark_job_in_progress_completes_post_upgrade(
     )
     assert driver.instance.metadata.uid == baseline["pods"][driver.name]["uid"], "Driver was replaced"
     assert "UPGRADE_TASK_COMPLETED: 49" in driver.log(), "The original task did not return the expected result"
+
+
+@pytest.mark.pre_upgrade
+def test_scheduled_spark_job_in_progress_pre_upgrade(
+    admin_client: DynamicClient,
+    scheduled_continuity_application: ScheduledSparkApplication,
+    scheduled_spark_continuity_control: ConfigMap,
+) -> None:
+    """Given a scheduled Spark job, when its run starts a task, then preserve that execution for upgrade."""
+    for baseline in TimeoutSampler(
+        wait_timeout=600,
+        sleep=10,
+        func=scheduled_running_execution,
+        client=admin_client,
+        scheduled_app=scheduled_continuity_application,
+        exceptions_dict={AssertionError: []},
+    ):
+        ResourceEditor(
+            patches={scheduled_spark_continuity_control: {"data": {"baseline": json.dumps(baseline)}}}
+        ).update()
+        break
+
+
+@pytest.mark.post_upgrade
+def test_scheduled_spark_job_in_progress_completes_post_upgrade(
+    admin_client: DynamicClient,
+    scheduled_continuity_application: ScheduledSparkApplication,
+    scheduled_spark_continuity_control: ConfigMap,
+) -> None:
+    """Given a scheduled run started before upgrade, when released afterward, then the same run completes."""
+    control_data = scheduled_spark_continuity_control.instance.data
+    assert control_data.get("release") == "false", "This execution was already released"
+    assert control_data.get("baseline"), "The pre-upgrade running-execution baseline is missing"
+    baseline = json.loads(control_data["baseline"])
+
+    child = scheduled_last_run_application(client=admin_client, scheduled_app=scheduled_continuity_application)
+    assert child.name == baseline["run_name"], (
+        f"Scheduled run changed across upgrade: before={baseline['run_name']}, after={child.name}"
+    )
+    current = {"run_name": child.name, **spark_running_execution(client=admin_client, spark_app=child)}
+    assert current == baseline, f"Execution changed across upgrade: before={baseline}, after={current}"
+
+    ResourceEditor(patches={scheduled_spark_continuity_control: {"data": {"release": "true"}}}).update()
+    verify_spark_app_completed(spark_app=child)
+    assert child.instance.metadata.uid == baseline["uid"], "Scheduled run was replaced"
+    driver = Pod(
+        client=admin_client,
+        name=child.instance.status.driverInfo.podName,
+        namespace=child.namespace,
+    )
+    assert driver.instance.metadata.uid == baseline["pods"][driver.name]["uid"], "Driver was replaced"
+    assert "UPGRADE_TASK_COMPLETED: 49" in driver.log(), "The original task did not return the expected result"
+
+
+@pytest.mark.pre_upgrade
+def test_spark_connect_serves_pre_upgrade(
+    admin_client: DynamicClient,
+    spark_connect_continuity_application: SparkConnect,
+    spark_connect_client_pod: Pod,
+    spark_connect_continuity_control: ConfigMap,
+) -> None:
+    """Given a running Spark Connect server, when a query succeeds, then record its server identity."""
+    service_name = wait_for_spark_connect_ready(client=admin_client, spark_connect=spark_connect_continuity_application)
+    output = run_spark_connect_query(
+        client_pod=spark_connect_client_pod,
+        service_name=service_name,
+        namespace=spark_connect_continuity_application.namespace,
+    )
+    verify_spark_connect_query(output=output)
+
+    server_pod = Pod(
+        client=admin_client,
+        name=spark_connect_continuity_application.instance.status.server.podName,
+        namespace=spark_connect_continuity_application.namespace,
+    )
+    baseline = {"pod_name": server_pod.name, "uid": server_pod.instance.metadata.uid}
+    ResourceEditor(patches={spark_connect_continuity_control: {"data": {"baseline": json.dumps(baseline)}}}).update()
+
+
+@pytest.mark.post_upgrade
+def test_spark_connect_survives_post_upgrade(
+    admin_client: DynamicClient,
+    spark_connect_continuity_application: SparkConnect,
+    spark_connect_client_pod: Pod,
+    spark_connect_continuity_control: ConfigMap,
+) -> None:
+    """Given a pre-upgrade Spark Connect server, when the operator is upgraded, then it still serves queries."""
+    assert spark_connect_continuity_control.instance.data.get("baseline"), "The pre-upgrade baseline is missing"
+    baseline = json.loads(spark_connect_continuity_control.instance.data["baseline"])
+    service_name = wait_for_spark_connect_ready(client=admin_client, spark_connect=spark_connect_continuity_application)
+
+    server_pod = Pod(
+        client=admin_client,
+        name=spark_connect_continuity_application.instance.status.server.podName,
+        namespace=spark_connect_continuity_application.namespace,
+    )
+    assert server_pod.name == baseline["pod_name"], "Spark Connect server pod was replaced across upgrade"
+    assert server_pod.instance.metadata.uid == baseline["uid"], (
+        "Spark Connect server pod was recreated across upgrade "
+        "(the operator should adopt the existing pod; a new uid indicates it was rolled or evicted)"
+    )
+
+    output = run_spark_connect_query(
+        client_pod=spark_connect_client_pod,
+        service_name=service_name,
+        namespace=spark_connect_continuity_application.namespace,
+    )
+    verify_spark_connect_query(output=output)

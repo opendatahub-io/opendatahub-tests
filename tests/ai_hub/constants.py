@@ -12,33 +12,6 @@ from utilities.constants import ModelFormat, RuntimeTemplates
 from utilities.image_constants import SharedImages
 
 
-class SeaweedFs:
-    """SeaweedFS S3-compatible storage settings for Model Registry tests."""
-
-    class Metadata:
-        NAME: str = "seaweedfs"
-        DEFAULT_PORT: int = 8333
-        FILER_PORT: int = 8888
-        FILER_GRPC_PORT: int = 18888
-
-    class Credentials:
-        ACCESS_KEY_VALUE: str = "THEACCESSKEY"
-        SECRET_KEY_VALUE: str = "THESECRETKEY"
-
-    class Buckets:
-        MODELMESH_EXAMPLE_MODELS: str = "modelmesh-example-models"
-
-    class PodConfig:
-        ARGS: tuple[str, ...] = (
-            "server",
-            "-dir=/tmp",
-            "-s3",
-            "-iam",
-            "-filer",
-            "-master.volumePreallocate=false",
-        )
-
-
 class ModelRegistryEndpoints:
     REGISTERED_MODELS: str = "/api/model_registry/v1alpha3/registered_models"
 
@@ -74,7 +47,7 @@ MR_DB_IMAGE_DIGEST: str = AiHubImages.MYSQL
 MR_DB_MYSQL_ARGS: list[str] = ["--datadir", "/var/lib/mysql/datadir"]
 # MySQL 8.4 from registry.redhat.io — supports amd64/arm64/s390x/ppc64le.
 # Uses run-mysqld entrypoint which sets MYSQL_DATADIR internally, no args needed.
-MR_DB_IMAGE_DIGEST_S390X: str = AiHubImages.MYSQL_S390X
+MR_DB_IMAGE_DIGEST_S390X_PPC: str = AiHubImages.MYSQL_S390X_PPC
 MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-name": "model_registry",
     "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret

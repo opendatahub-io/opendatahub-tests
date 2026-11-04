@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
+from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
@@ -53,9 +54,8 @@ def vllm_omni_pvc_downloaded_model_data(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     vllm_omni_model_pvc: PersistentVolumeClaim,
+    vllm_omni_kserve_endpoint_s3_secret: Secret,
     supported_accelerator_type: str,
-    aws_secret_access_key: str,
-    aws_access_key_id: str,
     models_s3_bucket_name: str,
     models_s3_bucket_endpoint: str,
     models_s3_bucket_region: str,
@@ -68,9 +68,8 @@ def vllm_omni_pvc_downloaded_model_data(
     node_selector = get_gpu_node_zone_selector(client=admin_client, gpu_resource=gpu_resource)
     return download_model_data(
         client=admin_client,
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
         model_namespace=model_namespace.name,
+        credentials_secret_name=vllm_omni_kserve_endpoint_s3_secret.name,
         model_pvc_name=vllm_omni_model_pvc.name,
         bucket_name=models_s3_bucket_name,
         aws_endpoint_url=models_s3_bucket_endpoint,
