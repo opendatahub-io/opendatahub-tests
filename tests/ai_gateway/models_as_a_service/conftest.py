@@ -1,4 +1,5 @@
 import base64
+import urllib.request
 from collections.abc import Generator
 from typing import Any
 
@@ -55,6 +56,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     restore_maas_dsc_components_patch,
     revoke_token,
     verify_chat_completions,
+    wait_for_authorino_auth_path,
     wait_for_maas_controller_ready,
 )
 from utilities.constants import (
@@ -100,6 +102,18 @@ def request_session_http() -> Generator[requests.Session]:
     session = requests.Session()
     session.headers.update({"User-Agent": "odh-maas-billing-tests/1"})
     session.verify = False
+    # REQUESTS_CA_BUNDLE (set by router_ca_bundle_env so module-level inference
+    # calls can verify gateway Route certificates) overrides a session-level
+    # verify=False in requests, which would make every session call that does
+    # not pass verify= per-request verify against the router CA instead. The
+    # default gateway may serve a certificate that does not match that bundle
+    # (or its own hostname), so keep this session's verify=False authoritative.
+    session.trust_env = False
+    # trust_env=False also disables requests' environment proxy support, so a
+    # runner that reaches the gateway Route only through a proxy would lose
+    # connectivity; restore the environment proxies explicitly. REQUESTS_CA_BUNDLE
+    # is still not picked up, keeping this session's verify=False authoritative.
+    session.proxies.update(urllib.request.getproxies())
     yield session
     session.close()
 
@@ -931,7 +945,7 @@ def maas_api_endpoints_ready(
 @pytest.fixture(scope="session")
 def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any, Any]:
     """Configure Authorino TLS for MaaS API communication."""
-    authorino_namespaces = ["rh-connectivity-link", "kuadrant-system"]
+    authorino_namespaces = ["rh-connectivity-link", "kuadrant-system", "openshift-operators"]
     authorino_namespace = next(
         (ns for ns in authorino_namespaces if Deployment(client=admin_client, name="authorino", namespace=ns).exists),
         None,
@@ -1012,6 +1026,7 @@ def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any
     ):
         authorino_deployment.wait_for_condition(condition="Available", status="True", timeout=120)
         LOGGER.info("authorino_tls_configured: TLS configuration applied, rollout complete")
+        wait_for_authorino_auth_path(admin_client=admin_client)
         yield
 
     authorino_deployment.wait_for_condition(condition="Available", status="True", timeout=120)

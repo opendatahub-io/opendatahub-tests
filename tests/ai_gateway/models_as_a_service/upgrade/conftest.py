@@ -72,6 +72,7 @@ from tests.ai_gateway.models_as_a_service.utils import (
     get_default_maas_tenant,
     host_from_ingress_domain,
 )
+from utilities.certificates_utils import router_ca_bundle_env
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.infra import create_ns
 from utilities.llmisvc_upgrade_utils import capture_llmisvc_baseline, save_baseline_to_configmap
@@ -82,6 +83,18 @@ from utilities.resources.legacy_external_model import LegacyExternalModel
 from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def upgrade_gateway_route_ca_bundle(admin_client: DynamicClient) -> Generator[str]:
+    """Trust the cluster's router CA for gateway Route TLS (see router_ca_bundle_env).
+
+    The upgrade suites post inference to the maas.<domain> Route like the
+    multitenancy external_model modules and need the same router CA trust.
+    """
+    with router_ca_bundle_env(client=admin_client) as bundle:
+        yield bundle
+
 
 MAAS_UPGRADE_NAMESPACE = "upgrade-maas"
 MAAS_UPGRADE_MODEL_NAME = "upgrade-maas-model-ref"
