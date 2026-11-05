@@ -31,6 +31,22 @@ def ready_aitenant_default_dataplane(
 
 
 @pytest.fixture
+def ready_aitenant_bootstrap_for_default_dataplane(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    teardown_resources: bool,
+) -> Generator[AITenant, Any, Any]:
+    """Deploy a Ready AITenant; Praxis dataplane checks run in the test body."""
+    with praxis_aitenant_with_bootstrap_gateway(
+        admin_client=admin_client,
+        cr_namespace=aitenant_infra_namespace,
+        teardown=teardown_resources,
+    ) as aitenant:
+        deploy_and_verify_aitenant_ready(aitenant=aitenant)
+        yield aitenant
+
+
+@pytest.fixture
 def ready_aitenant_legacy_ipp(
     admin_client: DynamicClient,
     aitenant_infra_namespace: str,

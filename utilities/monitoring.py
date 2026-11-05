@@ -87,7 +87,11 @@ def validate_metrics_field(
                     LOGGER.info(f"Metric field {sample} is greater than or equal to expected value {expected_value}!")
                     return
             else:
-                if sample == expected_value:
+                if sample == expected_value or (
+                    isinstance(sample, str)
+                    and isinstance(expected_value, str)
+                    and sample.lower() == expected_value.lower()
+                ):
                     LOGGER.info("Metric field matches the expected value!")
                     return
             LOGGER.info(f"Current value: {sample}, waiting for: {expected_value}")

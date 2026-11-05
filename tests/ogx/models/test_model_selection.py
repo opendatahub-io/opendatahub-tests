@@ -4,16 +4,18 @@ from tests.ogx.utils import select_ogx_model
 
 
 class DummyModel:
-    def __init__(self, model_id: str, model_type: str = "llm"):
-        self.id = model_id
-        self.custom_metadata = {"model_type": model_type}
+    def __init__(self, model_id: str, model_type: str = "llm") -> None:
+        self.id: str = model_id
+        self.custom_metadata: dict[str, str | int] = {"model_type": model_type}
 
 
 class DummyProvider:
-    def __init__(self, provider_id: str):
-        self.provider_id = provider_id
+    def __init__(self, provider_id: str) -> None:
+        self.provider_id: str = provider_id
 
 
+@pytest.mark.ogx
+@pytest.mark.tier1
 @pytest.mark.parametrize(
     ("configured_model", "available_models", "expected_model_id"),
     [
@@ -77,6 +79,11 @@ def test_ogx_models_selection(
     available_models: list[DummyModel],
     expected_model_id: str,
 ) -> None:
+    """
+    Given configured model name, list of available models, and expected result,
+    When select_ogx_model is called,
+    Then it returns the expected model ID based on model selection priority rules.
+    """
     mock_providers = [DummyProvider(provider_id="sentence-transformers")]
 
     embedding_model = DummyModel(model_id="sentence-transformers/all-MiniLM-L6-v2", model_type="embedding")
@@ -92,7 +99,14 @@ def test_ogx_models_selection(
     assert result.model_id == expected_model_id
 
 
+@pytest.mark.ogx
+@pytest.mark.tier1
 def test_ogx_models_selection_no_llm_raises_value_error() -> None:
+    """
+    Given a list of models with no LLM model,
+    When select_ogx_model is called,
+    Then it raises a ValueError indicating no LLM models were found.
+    """
     mock_providers = [DummyProvider(provider_id="sentence-transformers")]
     embedding_model = DummyModel(model_id="sentence-transformers/all-MiniLM-L6-v2", model_type="embedding")
     embedding_model.custom_metadata["embedding_dimension"] = 384
@@ -101,6 +115,25 @@ def test_ogx_models_selection_no_llm_raises_value_error() -> None:
     with pytest.raises(ValueError, match="No LLM models found in OGX client"):
         select_ogx_model(
             models=[embedding_model],
+            providers=mock_providers,
+            configured_model="",
+        )
+
+
+@pytest.mark.ogx
+@pytest.mark.tier1
+def test_ogx_models_selection_no_embedding_model_raises_value_error() -> None:
+    """
+    Given a list of models with an LLM model but no embedding model matching the provider,
+    When select_ogx_model is called,
+    Then it raises a ValueError indicating no embedding model was found for the provider.
+    """
+    mock_providers = [DummyProvider(provider_id="sentence-transformers")]
+    llm_model = DummyModel(model_id="vllm-inference/Qwen3.8-27B", model_type="llm")
+
+    with pytest.raises(ValueError, match="No embedding model found for provider: sentence-transformers"):
+        select_ogx_model(
+            models=[llm_model],
             providers=mock_providers,
             configured_model="",
         )

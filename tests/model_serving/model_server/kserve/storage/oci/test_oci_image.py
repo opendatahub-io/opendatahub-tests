@@ -8,6 +8,9 @@ from utilities.inference_utils import Inference
 from utilities.infra import get_pods_by_isvc_label
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
+# The tests deploy an OVMS runtime, whose image is not built for arm64
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
+
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, serving_runtime_from_template, model_car_inference_service",

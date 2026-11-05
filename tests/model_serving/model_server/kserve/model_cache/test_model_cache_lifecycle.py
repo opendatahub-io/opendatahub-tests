@@ -40,7 +40,8 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 pytestmark = [
     pytest.mark.tier1,
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected"),
+    # The serving tests deploy an OVMS runtime, whose image is not built for arm64
+    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config", "skip_if_disconnected"),
 ]
 
 

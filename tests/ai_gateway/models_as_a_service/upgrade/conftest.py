@@ -16,6 +16,9 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.secret import Secret
 from pytest import FixtureRequest
 
+from tests.ai_gateway.models_as_a_service.body_base_routing.pre_auth_model_header.utils import (
+    get_bbr_envoy_filter_config_patches,
+)
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
     MAAS_GATEWAY_AUTH_POLICY_NAME,
     wait_for_auth_policy_accepted,
@@ -32,18 +35,22 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     LEGACY_MIGRATION_SUBSCRIPTION_NAME,
     LEGACY_MIGRATION_TARGET_MODEL,
     MAAS_LEGACY_MIGRATION_BASELINE_CM_NAME,
+    MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME,
     MAAS_MULTITENANT_UPGRADE_NAMESPACE,
     MULTITENANT_UPGRADE_TENANT_A_TOKENS_PER_MINUTE,
     MULTITENANT_UPGRADE_TENANT_B_TOKENS_PER_MINUTE,
     LegacyMigrationBaseline,
     MaaSBaseline,
     MultitenantUpgradeTenantRecord,
+    assert_multitenant_upgrade_api_key_secrets_absent,
+    assert_multitenant_upgrade_api_key_secrets_present,
     capture_legacy_migration_baseline,
     capture_maas_baseline,
     capture_multitenant_upgrade_baseline,
     cluster_has_inference_external_model_crd,
     cluster_has_legacy_external_model_crd,
     create_and_persist_tenant_api_key,
+    delete_multitenant_upgrade_api_key_secrets,
     inference_external_model_for_baseline,
     load_legacy_migration_baseline_from_configmap,
     load_maas_api_key_from_secret,
@@ -54,6 +61,7 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     save_legacy_migration_baseline_to_configmap,
     save_maas_baseline_to_configmap,
     save_multitenant_upgrade_baseline_to_configmap,
+    skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable,
     tenant_base_url_for_record,
     wait_for_legacy_maas_networking_present,
 )
@@ -958,13 +966,53 @@ def maas_multitenant_upgrade_tenant_records(
             client=admin_client,
             namespace=persist_namespace,
         )
-        yield list(baseline["tenants"])
+        tenant_records = list(baseline["tenants"])
+        assert_multitenant_upgrade_api_key_secrets_present(
+            client=admin_client,
+            namespace=persist_namespace,
+            tenant_records=tenant_records,
+        )
+        yield tenant_records
+        if teardown_resources:
+            delete_multitenant_upgrade_api_key_secrets(
+                client=admin_client,
+                namespace=persist_namespace,
+                tenant_records=tenant_records,
+            )
     else:
-        tenant_a_name, tenant_b_name = multitenant_upgrade_tenant_aitenant_names()
+        baseline_config_map = ConfigMap(
+            client=admin_client,
+            name=MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME,
+            namespace=persist_namespace,
+        )
+        if baseline_config_map.exists:
+            baseline = load_multitenant_upgrade_baseline_from_configmap(
+                client=admin_client,
+                namespace=persist_namespace,
+            )
+            LOGGER.info(
+                f"Reusing multitenant upgrade baseline from ConfigMap "
+                f"{persist_namespace}/{MAAS_MULTITENANT_UPGRADE_BASELINE_CM_NAME} for pre-upgrade tests"
+            )
+            tenant_records = list(baseline["tenants"])
+            assert_multitenant_upgrade_api_key_secrets_present(
+                client=admin_client,
+                namespace=persist_namespace,
+                tenant_records=tenant_records,
+            )
+            yield tenant_records
+            return
+
         secret_names = (
             "upgrade-mt-upg-tenant-a-api-key",
             "upgrade-mt-upg-tenant-b-api-key",
         )  # pragma: allowlist secret
+        assert_multitenant_upgrade_api_key_secrets_absent(
+            client=admin_client,
+            namespace=persist_namespace,
+            secret_names=secret_names,
+        )
+        tenant_a_name, tenant_b_name = multitenant_upgrade_tenant_aitenant_names()
         with ExitStack() as stack:
             provisioned_records: list[MultitenantUpgradeTenantRecord] = []
             tokens_per_minute_by_index = (
@@ -996,6 +1044,7 @@ def maas_multitenant_upgrade_tenant_records(
                 )
                 key_record = create_and_persist_tenant_api_key(
                     admin_client=admin_client,
+                    resource_stack=stack,
                     persist_namespace=persist_namespace,
                     base_url=base_url,
                     ocp_user_token=current_client_token,
@@ -1036,4 +1085,22 @@ def capture_maas_multitenant_upgrade_baseline(
         client=admin_client,
         namespace=maas_multitenant_upgrade_namespace.name,
         baseline=baseline,
+    )
+
+
+@pytest.fixture(scope="session")
+def require_legacy_default_maas_ipp(admin_client: DynamicClient) -> None:
+    """Skip legacy IPP EnvoyFilter upgrade tests when Track A does not apply on this cluster."""
+    skip_legacy_default_maas_ipp_envoyfilter_upgrade_unless_applicable(admin_client=admin_client)
+
+
+@pytest.fixture(scope="session")
+def maas_legacy_ipp_envoyfilter_config_patches(
+    admin_client: DynamicClient,
+    require_legacy_default_maas_ipp: None,
+) -> list[Any]:
+    """Return legacy IPP payload-processing EnvoyFilter configPatches from the Gateway namespace."""
+    return get_bbr_envoy_filter_config_patches(
+        admin_client=admin_client,
+        gateway_namespace=MAAS_GATEWAY_NAMESPACE,
     )

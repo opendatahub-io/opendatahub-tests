@@ -32,7 +32,6 @@ from pyhelper_utils.shell import run_command
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.constants import SeaweedFs
 from tests.ai_hub.model_registry.async_job.constants import (
     ASYNC_UPLOAD_JOB_NAME,
     MODEL_SYNC_CONFIG,
@@ -69,6 +68,7 @@ from utilities.constants import (
     Labels,
     ModelCarImage,
     OCIRegistry,
+    SeaweedFs,
 )
 from utilities.general import b64_encoded_string, get_s3_secret_dict
 from utilities.infra import get_openshift_token, is_managed_cluster

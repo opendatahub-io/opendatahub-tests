@@ -22,6 +22,9 @@ warn_unused_ignores = true
 ignore_missing_imports = true
 
 [tool.uv]
+constraint-dependencies = [
+    "sigstore==4.5.0",
+]
 override-dependencies = [
     "marshmallow>=4.0",
 ]
