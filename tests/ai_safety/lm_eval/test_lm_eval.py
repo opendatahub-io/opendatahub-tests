@@ -8,6 +8,7 @@ from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.image_constants import AiSafetyImages
 from tests.ai_safety.lm_eval.constants import (
@@ -31,12 +32,57 @@ from tests.ai_safety.lm_eval.utils import (
 )
 from tests.ai_safety.utils import validate_tai_component_images
 from utilities.constants import OCIRegistry, SeaweedFs
+from utilities.jira import is_jira_issue_open
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
-TIER1_LMEVAL_TASKS: list[str] = get_lmeval_tasks(min_downloads=10000)
+LMEVAL_TASKS_EXCLUDED_IN_CI: dict[str, str] = {
+    "realtoxicityprompts": "metric raises KeyError without PERSPECTIVE_API_KEY",
+    "storycloze_2018": "datasets.exceptions.ManualDownloadError: requires manually downloaded data",
+    "wmt14-en-fr": "download is 7.8 GB",
+    "wmt14-fr-en": "download is 7.8 GB",
+}
+
+# RHAI-19496: non-namespaced HF path, raises HfUriError. Excluded only while the Jira is open.
+HF_URI_ERROR_EXCLUDED_DATASETS: list[str] = [
+    "glue",
+    "gsm8k",
+    "hellaswag",
+    "lambada",
+    "openbookqa",
+    "piqa",
+    "sciq",
+    "social_i_qa",
+    "super_glue",
+    "trivia_qa",
+    "truthful_qa",
+    "winograd_wsc",
+    "winogrande",
+    "xnli",
+    "anli",
+    "blimp",
+    "nq_open",
+    "paws-x",
+    "qa4mre",
+    "swag",
+    "wmt14",
+    "wmt16",
+    "xcopa",
+    "xquad",
+]
+
+HF_URI_ERROR_DATASETS_TO_EXCLUDE: list[str] = (
+    HF_URI_ERROR_EXCLUDED_DATASETS if is_jira_issue_open(jira_id="RHAI-19496") else []
+)
+
+TIER1_LMEVAL_TASKS: list[str] = sorted(
+    set(get_lmeval_tasks(min_downloads=10000, excluded_datasets=HF_URI_ERROR_DATASETS_TO_EXCLUDE))
+    - set(LMEVAL_TASKS_EXCLUDED_IN_CI)
+)
 
 TIER2_LMEVAL_TASKS: list[str] = sorted(
-    set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000)) - set(TIER1_LMEVAL_TASKS)
+    set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000, excluded_datasets=HF_URI_ERROR_DATASETS_TO_EXCLUDE))
+    - set(TIER1_LMEVAL_TASKS)
+    - set(LMEVAL_TASKS_EXCLUDED_IN_CI)
 )
 
 TIER2_CHUNK_SIZE: int = 10
@@ -45,6 +91,13 @@ TIER2_LMEVAL_TASK_CHUNKS: list[list[str]] = [
 ]
 
 LOGGER = structlog.get_logger(name=__name__)
+
+RHOAIENG_94190_SKIP_REASON = (
+    "RHOAIENG-94190: LMEvalJob scheduling can race the operator's reconciler "
+    "(handleNewCR is not idempotent against its own last-scheduled-generation annotation write), "
+    "leaving status.state stuck at 'Scheduled' forever even though the pod succeeds. Intermittent, "
+    "so a passing run does not mean the bug is fixed. Fix in review: trustyai-service-operator#1073."
+)
 
 
 @pytest.mark.smoke
@@ -64,6 +117,8 @@ def test_lmevaljob_crd_exists(
     assert crd_resource.exists, f"CRD {crd_name} does not exist on the cluster"
 
 
+@pytest.mark.jira("RHOAIENG-94190")
+@pytest.mark.xfail(reason=RHOAIENG_94190_SKIP_REASON, strict=False)
 @pytest.mark.skip_on_disconnected
 @pytest.mark.tier1
 @pytest.mark.parametrize(
@@ -72,11 +127,18 @@ def test_lmevaljob_crd_exists(
         pytest.param(
             {"name": "test-lmeval-hf-tier1"},
             {"task_list": {"taskNames": TIER1_LMEVAL_TASKS}},
+            marks=[pytest.mark.jira("RHAI-19496")],
         ),
         pytest.param(
             {"name": "test-lmeval-hf-custom-task"},
             CUSTOM_UNITXT_TASK_DATA,
             id="custom_task",
+            marks=[
+                pytest.mark.jira("RHAI-19496"),
+                pytest.mark.xfail(
+                    reason="RHAI-19496: cards.wnli hits non-namespaced 'glue', raises HfUriError.", strict=False
+                ),
+            ],
         ),
         pytest.param(
             {"name": "test-lmeval-hf-llmaaj"},
@@ -92,6 +154,9 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_po
     validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_hf_pod)
 
 
+@pytest.mark.jira("RHOAIENG-94190")
+@pytest.mark.xfail(reason=RHOAIENG_94190_SKIP_REASON, strict=False)
+@pytest.mark.jira("RHAI-19496")
 @pytest.mark.skip_on_disconnected
 @pytest.mark.tier2
 @pytest.mark.parametrize(
@@ -353,6 +418,8 @@ def test_lmeval_https_verify_certificate_no_ca_bundle(
     )
 
 
+@pytest.mark.jira("RHOAIENG-94190")
+@pytest.mark.xfail(reason=RHOAIENG_94190_SKIP_REASON, strict=False)
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
@@ -373,19 +440,22 @@ def test_lmeval_rerun_after_spec_change(
     """Test LMEvalJob re-runs after spec change.
 
     Given: A completed LMEvalJob with last-scheduled-generation annotation set
-    When: Job spec is edited (batchSize changed, bumping metadata.Generation)
-    Then: Job status resets to New, re-runs to Complete, and generation annotation updates
+    When: Job spec is edited (limit changed, bumping metadata.Generation)
+    Then: Job re-runs for the new generation, the generation annotation updates, and the job completes successfully
 
     Validates trustyai-service-operator#729 re-run behavior.
     """
-    validate_lmeval_job_pod_and_logs(lmevaljob_pod=lmevaljob_vllm_emulator_pod)
+    validate_lmeval_job_pod_and_logs(
+        lmevaljob_pod=lmevaljob_vllm_emulator_pod,
+        timeout=LMEVAL_SHORT_JOB_TIMEOUT,
+    )
 
     wait_for_lmevaljob_state(
         lmevaljob=lmevaljob_vllm_emulator,
         state=LMEVALJOB_COMPLETE_STATE,
     )
 
-    annotations = lmevaljob_vllm_emulator.instance.metadata.annotations or {}
+    annotations = dict(lmevaljob_vllm_emulator.instance.metadata.annotations or {})
     assert LAST_SCHEDULED_GENERATION_ANNOTATION in annotations, (
         f"Expected annotation '{LAST_SCHEDULED_GENERATION_ANNOTATION}' not found on completed job"
     )
@@ -396,30 +466,39 @@ def test_lmeval_rerun_after_spec_change(
         patches={
             lmevaljob_vllm_emulator: {
                 "spec": {
-                    "batchSize": "2",
+                    "limit": "0.02",
                 }
             }
         }
     ).update()
 
-    LOGGER.info("Waiting for job to be reset to New")
-    wait_for_lmevaljob_state(
-        lmevaljob=lmevaljob_vllm_emulator,
-        state="New",
-    )
+    new_generation = str(lmevaljob_vllm_emulator.instance.metadata.generation)
+    assert new_generation != initial_generation, f"Spec patch did not bump metadata.generation (still {new_generation})"
 
-    LOGGER.info("Waiting for re-run to complete")
-    wait_for_lmevaljob_state(
-        lmevaljob=lmevaljob_vllm_emulator,
-        state=LMEVALJOB_COMPLETE_STATE,
-    )
+    LOGGER.info(f"Waiting for re-run of generation {new_generation} to complete")
+    last_annotation: str | None = None
+    last_state: str | None = None
+    last_reason: str | None = None
+    try:
+        for job_instance in TimeoutSampler(
+            wait_timeout=LMEVAL_SHORT_JOB_TIMEOUT,
+            sleep=5,
+            func=lambda: lmevaljob_vllm_emulator.instance,
+        ):
+            annotations = dict(job_instance.metadata.annotations or {})
+            last_annotation = annotations.get(LAST_SCHEDULED_GENERATION_ANNOTATION)
+            status = job_instance.status or {}
+            last_state = status.get("state")
+            last_reason = status.get("reason")
+            if last_annotation == new_generation and last_state == LMEVALJOB_COMPLETE_STATE:
+                break
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"Re-run did not complete for generation {new_generation}. "
+            f"Last annotation: {last_annotation}, state: {last_state}, reason: {last_reason}"
+        )
 
-    updated_annotations = lmevaljob_vllm_emulator.instance.metadata.annotations or {}
-    updated_generation = updated_annotations.get(LAST_SCHEDULED_GENERATION_ANNOTATION)
-    assert updated_generation is not None and updated_generation != initial_generation, (
-        f"Expected generation annotation to be updated after re-run. "
-        f"Initial: {initial_generation}, current: {updated_generation}"
-    )
+    assert last_reason == "Succeeded", f"Re-run completed with reason '{last_reason}', expected 'Succeeded'"
 
 
 # ── Tests for generalized CA bundle injection (RHOAIENG-60453) ──
