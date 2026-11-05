@@ -330,6 +330,19 @@ class TestGrantRevocation:
                 model_namespace=model["namespace"],
                 gateway_name=gateway,
             )
+            # Positive control: prove serving works before the narrowing, so
+            # the post-narrowing denial is a verdict on the grant change and
+            # not on a serving path that never worked.
+            assert_served_by_provider(
+                response=infer_for_shared_model(
+                    request_session_http=request_session_http,
+                    case=env["tenant"],
+                    model=model,
+                    api_key=access["api_key"],
+                ),
+                path_tag=model["path_tag"],
+                credential=model["credential"],
+            )
 
             revoke_reference_grant(grant=grant)
             reference_grant_for(
