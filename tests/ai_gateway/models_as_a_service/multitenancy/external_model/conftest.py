@@ -28,9 +28,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     EXTERNAL_ENDPOINT,
     admitted_user_namespace,
     deploy_aitenant_best_effort,
-    external_model_stack,
     extmod_tenant_test_params,
-    gateway_ref,
     namespace_name,
     per_tenant_processing_uses_praxis,
     provision_and_serve_in_tenant,
@@ -39,8 +37,8 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     require_tenant_external_model_support,
     serve_shared_model_in_tenant,
     tenant_case,
+    two_gateway_model,
     usage_provider,
-    wait_shared_attachments_ready,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     admit_namespace_to_gateway,
@@ -265,23 +263,14 @@ def shared_model(
     name = f"e2e-shr-shared-{uuid.uuid4().hex[:6]}"
     with ExitStack() as stack:
         model = stack.enter_context(
-            cm=external_model_stack(
+            cm=two_gateway_model(
                 admin_client,
                 name=name,
                 namespace=namespace_name(shared_user_namespace),
-                gateway_refs=[
-                    gateway_ref(cases["tenant_a"]["gateway_name"]),
-                    gateway_ref(cases["tenant_b"]["gateway_name"]),
-                ],
-                model_name=f"{name}-client",
-                tenant_refs=[
-                    cases["tenant_a"]["tenant_label_name"],
-                    cases["tenant_b"]["tenant_label_name"],
-                ],
+                cases=cases,
                 teardown=teardown_resources,
             )
         )
-        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
         yield {"model": model}
 
 
@@ -334,23 +323,14 @@ def isolated_keys(
     name = f"e2e-shr-auth-{uuid.uuid4().hex[:6]}"
     with ExitStack() as stack:
         model = stack.enter_context(
-            cm=external_model_stack(
+            cm=two_gateway_model(
                 admin_client,
                 name=name,
                 namespace=namespace_name(shared_user_namespace),
-                gateway_refs=[
-                    gateway_ref(cases["tenant_a"]["gateway_name"]),
-                    gateway_ref(cases["tenant_b"]["gateway_name"]),
-                ],
-                model_name=f"{name}-client",
-                tenant_refs=[
-                    cases["tenant_a"]["tenant_label_name"],
-                    cases["tenant_b"]["tenant_label_name"],
-                ],
+                cases=cases,
                 teardown=teardown_resources,
             )
         )
-        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
         require_maas_route(admin_client=admin_client, model=model)
         access_a = serve_shared_model_in_tenant(
             admin_client=admin_client,
@@ -385,23 +365,14 @@ def ambiguous_model_ref(
     name = f"e2e-shr-amb-{uuid.uuid4().hex[:6]}"
     with ExitStack() as stack:
         model = stack.enter_context(
-            cm=external_model_stack(
+            cm=two_gateway_model(
                 admin_client,
                 name=name,
                 namespace=namespace_name(shared_user_namespace),
-                gateway_refs=[
-                    gateway_ref(cases["tenant_a"]["gateway_name"]),
-                    gateway_ref(cases["tenant_b"]["gateway_name"]),
-                ],
-                model_name=f"{name}-client",
-                tenant_refs=[
-                    cases["tenant_a"]["tenant_label_name"],
-                    cases["tenant_b"]["tenant_label_name"],
-                ],
+                cases=cases,
                 teardown=teardown_resources,
             )
         )
-        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
         require_maas_route(admin_client=admin_client, model=model)
         ambiguous_ref = f"{name}-ambiguous"
         stack.enter_context(
@@ -443,27 +414,18 @@ def quota_model(
             teardown=teardown_resources,
         )
         model = stack.enter_context(
-            cm=external_model_stack(
+            cm=two_gateway_model(
                 admin_client,
                 name=name,
                 namespace=namespace_name(shared_user_namespace),
-                gateway_refs=[
-                    gateway_ref(cases["tenant_a"]["gateway_name"]),
-                    gateway_ref(cases["tenant_b"]["gateway_name"]),
-                ],
-                model_name=client_name,
-                tenant_refs=[
-                    cases["tenant_a"]["tenant_label_name"],
-                    cases["tenant_b"]["tenant_label_name"],
-                ],
+                cases=cases,
+                teardown=teardown_resources,
                 endpoint=usage["endpoint"],
                 provider_path=usage["provider_path"],
                 credential=usage["credential"],
                 provider_config=usage["provider_config"],
-                teardown=teardown_resources,
             )
         )
-        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
         require_maas_route(admin_client=admin_client, model=model)
         yield {
             "model": model,
