@@ -32,18 +32,55 @@ from tests.ai_safety.lm_eval.utils import (
 )
 from tests.ai_safety.utils import validate_tai_component_images
 from utilities.constants import OCIRegistry, SeaweedFs
+from utilities.jira import is_jira_issue_open
 from utilities.registry_utils import pull_manifest_from_oci_registry
 
-# Tasks that cannot run unattended in CI, mapped to why.
 LMEVAL_TASKS_EXCLUDED_IN_CI: dict[str, str] = {
     "realtoxicityprompts": "metric raises KeyError without PERSPECTIVE_API_KEY",
     "storycloze_2018": "datasets.exceptions.ManualDownloadError: requires manually downloaded data",
+    "wmt14-en-fr": "download is 7.8 GB",
+    "wmt14-fr-en": "download is 7.8 GB",
 }
 
-TIER1_LMEVAL_TASKS: list[str] = sorted(set(get_lmeval_tasks(min_downloads=10000)) - set(LMEVAL_TASKS_EXCLUDED_IN_CI))
+# RHAI-19496: non-namespaced HF path, raises HfUriError. Excluded only while the Jira is open.
+HF_URI_ERROR_EXCLUDED_DATASETS: list[str] = [
+    "glue",
+    "gsm8k",
+    "hellaswag",
+    "lambada",
+    "openbookqa",
+    "piqa",
+    "sciq",
+    "social_i_qa",
+    "super_glue",
+    "trivia_qa",
+    "truthful_qa",
+    "winograd_wsc",
+    "winogrande",
+    "xnli",
+    "anli",
+    "blimp",
+    "nq_open",
+    "paws-x",
+    "qa4mre",
+    "swag",
+    "wmt14",
+    "wmt16",
+    "xcopa",
+    "xquad",
+]
+
+HF_URI_ERROR_DATASETS_TO_EXCLUDE: list[str] = (
+    HF_URI_ERROR_EXCLUDED_DATASETS if is_jira_issue_open(jira_id="RHAI-19496") else []
+)
+
+TIER1_LMEVAL_TASKS: list[str] = sorted(
+    set(get_lmeval_tasks(min_downloads=10000, excluded_datasets=HF_URI_ERROR_DATASETS_TO_EXCLUDE))
+    - set(LMEVAL_TASKS_EXCLUDED_IN_CI)
+)
 
 TIER2_LMEVAL_TASKS: list[str] = sorted(
-    set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000))
+    set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000, excluded_datasets=HF_URI_ERROR_DATASETS_TO_EXCLUDE))
     - set(TIER1_LMEVAL_TASKS)
     - set(LMEVAL_TASKS_EXCLUDED_IN_CI)
 )
@@ -90,11 +127,18 @@ def test_lmevaljob_crd_exists(
         pytest.param(
             {"name": "test-lmeval-hf-tier1"},
             {"task_list": {"taskNames": TIER1_LMEVAL_TASKS}},
+            marks=[pytest.mark.jira("RHAI-19496")],
         ),
         pytest.param(
             {"name": "test-lmeval-hf-custom-task"},
             CUSTOM_UNITXT_TASK_DATA,
             id="custom_task",
+            marks=[
+                pytest.mark.jira("RHAI-19496"),
+                pytest.mark.xfail(
+                    reason="RHAI-19496: cards.wnli hits non-namespaced 'glue', raises HfUriError.", strict=False
+                ),
+            ],
         ),
         pytest.param(
             {"name": "test-lmeval-hf-llmaaj"},
@@ -112,6 +156,7 @@ def test_lmeval_huggingface_model(admin_client, model_namespace, lmevaljob_hf_po
 
 @pytest.mark.jira("RHOAIENG-94190")
 @pytest.mark.xfail(reason=RHOAIENG_94190_SKIP_REASON, strict=False)
+@pytest.mark.jira("RHAI-19496")
 @pytest.mark.skip_on_disconnected
 @pytest.mark.tier2
 @pytest.mark.parametrize(

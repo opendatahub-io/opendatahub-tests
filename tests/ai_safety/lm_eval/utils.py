@@ -57,13 +57,17 @@ def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int 
     return lmeval_pod
 
 
-def get_lmeval_tasks(min_downloads: float, max_downloads: float | None = None) -> list[str]:
+def get_lmeval_tasks(
+    min_downloads: float, max_downloads: float | None = None, excluded_datasets: list[str] | None = None
+) -> list[str]:
     """
     Gets the list of supported LM-Eval tasks that have above a certain number of minimum downloads on HuggingFace.
 
     Args:
         min_downloads: The minimum number of downloads or the percentile of downloads to use as a minimum
         max_downloads: The maximum number of downloads or the percentile of downloads to use as a maximum
+        excluded_datasets: Dataset labels to drop before picking one task per dataset. Download
+            percentiles are still computed from the full, unfiltered CSV.
 
     Returns:
         List of LM-Eval task names
@@ -96,6 +100,9 @@ def get_lmeval_tasks(min_downloads: float, max_downloads: float | None = None) -
                 raise ValueError("Maximum downloads as a percentile must be between 0 and 1")
             max_downloads = lmeval_tasks["HF dataset downloads"].quantile(q=max_downloads)
         filtered_df = filtered_df[filtered_df["HF dataset downloads"] <= max_downloads]
+
+    if excluded_datasets:
+        filtered_df = filtered_df[~filtered_df["Dataset"].isin(excluded_datasets)]
 
     # group tasks by dataset and extract the task with shortest name in the group
     unique_tasks = filtered_df.loc[filtered_df.groupby("Dataset")["Name"].apply(lambda x: x.str.len().idxmin())]
