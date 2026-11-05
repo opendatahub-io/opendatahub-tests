@@ -1,7 +1,7 @@
 import base64
 import json
 import os
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from json import JSONDecodeError
 from typing import Any
@@ -31,6 +31,7 @@ from utilities.constants import (
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.aitenant import AITenant
+from utilities.resources.external_model import ExternalModel
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.maastenantconfig import MaasTenantConfig
@@ -1121,6 +1122,116 @@ def wait_for_httproute(
     ):
         if route is not None:
             return route
+
+
+def _object_ref_name_and_namespace(ref: Any) -> tuple[str, str]:
+    """Return ``(name, namespace)`` from a Kubernetes object reference; namespace may be empty."""
+    name = ""
+    route_namespace = ""
+    if hasattr(ref, "name") and ref.name:
+        name = str(ref.name)
+    elif isinstance(ref, Mapping) and ref.get("name"):
+        name = str(ref["name"])
+    if hasattr(ref, "namespace") and ref.namespace:
+        route_namespace = str(ref.namespace)
+    elif isinstance(ref, Mapping) and ref.get("namespace"):
+        route_namespace = str(ref["namespace"])
+    return name, route_namespace
+
+
+def _gateway_attachment_http_route_ref(external_model_status: Any) -> tuple[str, str]:
+    """Read programmed HTTPRoute name/namespace from ExternalModel gateway attachments."""
+    if hasattr(external_model_status, "gateways"):
+        gateways = external_model_status.gateways or []
+    elif isinstance(external_model_status, Mapping) and "gateways" in external_model_status:
+        gateways = external_model_status["gateways"] or []
+    else:
+        return "", ""
+
+    for gateway in gateways:
+        route_ref = gateway.httpRouteRef if hasattr(gateway, "httpRouteRef") else None
+        if route_ref is None and isinstance(gateway, Mapping) and "httpRouteRef" in gateway:
+            route_ref = gateway["httpRouteRef"]
+        if route_ref is None:
+            continue
+        route_name, route_namespace = _object_ref_name_and_namespace(ref=route_ref)
+        if route_name:
+            return route_name, route_namespace
+    return "", ""
+
+
+def get_external_model_http_route_ref(external_model: ExternalModel) -> tuple[str, str]:
+    """Return the HTTPRoute name and namespace published on ExternalModel status, if programmed.
+
+    Namespace is empty when status only exposes ``httpRouteName`` (callers should use the
+    ExternalModel namespace for lookup).
+    """
+    external_model_status = external_model.instance.status
+    if external_model_status is None:
+        return "", ""
+    if hasattr(external_model_status, "httpRouteName") and external_model_status.httpRouteName:
+        return str(external_model_status.httpRouteName), ""
+    if isinstance(external_model_status, Mapping) and "httpRouteName" in external_model_status:
+        route_name = external_model_status["httpRouteName"]
+        if route_name:
+            return str(route_name), ""
+    return _gateway_attachment_http_route_ref(external_model_status=external_model_status)
+
+
+def get_external_model_http_route_name(external_model: ExternalModel) -> str:
+    """Return the HTTPRoute name published on ExternalModel status, if programmed."""
+    route_name, _route_namespace = get_external_model_http_route_ref(external_model=external_model)
+    return route_name
+
+
+def wait_for_external_model_http_route_name(
+    external_model: ExternalModel,
+    timeout: int = 300,
+) -> str:
+    """Poll until ExternalModel status reports an HTTPRoute name."""
+    for http_route_name in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=get_external_model_http_route_name,
+        external_model=external_model,
+    ):
+        if http_route_name:
+            return http_route_name
+
+
+def wait_for_external_model_httproute(
+    client: DynamicClient,
+    external_model: ExternalModel,
+    namespace: str,
+    timeout: int = 300,
+) -> str:
+    """Poll until ExternalModel is programmed and its HTTPRoute exists in the namespace."""
+
+    def external_model_httproute_ready() -> str:
+        http_route_name, http_route_namespace = get_external_model_http_route_ref(
+            external_model=external_model,
+        )
+        if not http_route_name:
+            return ""
+        lookup_namespace = http_route_namespace or namespace
+        if (
+            get_httproute(
+                client=client,
+                name=http_route_name,
+                namespace=lookup_namespace,
+            )
+            is None
+        ):
+            return ""
+        return http_route_name
+
+    for http_route_name in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=external_model_httproute_ready,
+    ):
+        if http_route_name:
+            return http_route_name
 
 
 def fresh_aitenant(aitenant: AITenant) -> AITenant:
