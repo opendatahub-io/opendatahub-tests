@@ -47,6 +47,7 @@ import json
 import re
 import time
 import uuid
+from functools import partial
 from typing import Any
 
 import pytest
@@ -76,6 +77,35 @@ QUOTA_EXHAUSTION_TIMEOUT = 90
 # number of times before failing.
 CROSS_GATEWAY_REJECTION_ATTEMPTS: int = 6
 CROSS_GATEWAY_REJECTION_RETRY_INTERVAL: int = 5
+
+
+def infer_and_assert_rejected(
+    request_session_http: requests.Session,
+    gateway_url: str,
+    model: dict[str, Any],
+    api_key: str,
+    case_label: str,
+    other_label: str,
+) -> requests.Response:
+    """Infer via a foreign gateway and assert the key is rejected.
+
+    Retried by the caller while the other gateway's auth enforcement catches
+    up with the policy created moments ago by the class fixture.
+    """
+    response = infer_external_chat(
+        request_session_http=request_session_http,
+        gateway_url=gateway_url,
+        model_namespace=model["namespace"],
+        model_client_name=model["client_name"],
+        api_key=api_key,
+        path_tag=model["path_tag"],
+        retries=1,
+    )
+    assert response.status_code in (401, 403), (
+        f"{case_label}'s API key must be rejected by {other_label}'s gateway "
+        f"(got {response.status_code}: {redact_sensitive(response.text)})"
+    )
+    return response
 
 
 @pytest.mark.usefixtures(
@@ -213,29 +243,25 @@ class TestTenantAuthIsolation:
                 path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=served, path_tag=model["path_tag"], credential=model["credential"])
-            rejected: requests.Response | None = None
-            for attempt in range(1, CROSS_GATEWAY_REJECTION_ATTEMPTS + 1):
-                rejected = infer_external_chat(
+
+            rejected = wait_until(
+                check=partial(
+                    infer_and_assert_rejected,
                     request_session_http=request_session_http,
                     gateway_url=other["gateway_url"],
-                    model_namespace=model["namespace"],
-                    model_client_name=model["client_name"],
+                    model=model,
                     api_key=api_key,
-                    path_tag=model["path_tag"],
-                    retries=1,
-                )
-                if rejected.status_code in (401, 403):
-                    break
-                # Retry while the other gateway's auth enforcement catches up
-                # with the policy created moments ago by the class fixture.
-                time.sleep(CROSS_GATEWAY_REJECTION_RETRY_INTERVAL)
-            assert rejected is not None and rejected.status_code in (401, 403), (
-                f"{case['tenant_label_name']}'s API key must be rejected by "
-                f"{other['tenant_label_name']}'s gateway after "
-                f"{attempt} attempts (got "
-                f"{rejected.status_code if rejected is not None else 'no response'}: "
-                f"{redact_sensitive(rejected.text) if rejected is not None else ''})"
+                    case_label=case["tenant_label_name"],
+                    other_label=other["tenant_label_name"],
+                ),
+                timeout=CROSS_GATEWAY_REJECTION_ATTEMPTS * CROSS_GATEWAY_REJECTION_RETRY_INTERVAL,
+                interval=CROSS_GATEWAY_REJECTION_RETRY_INTERVAL,
+                what=(
+                    f"{case['tenant_label_name']}'s API key being rejected by "
+                    f"{other['tenant_label_name']}'s gateway"
+                ),
             )
+            assert rejected.status_code in (401, 403)
 
     @pytest.mark.tier2
     def test_unknown_key_rejected_on_both_gateways(
