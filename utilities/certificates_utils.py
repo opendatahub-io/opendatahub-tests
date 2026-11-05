@@ -1,5 +1,6 @@
 import base64
 import os
+import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
 from functools import cache
@@ -180,6 +181,11 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
     when none is needed or available (managed clusters). Restores the previous
     environment state on exit. Resolution is retried (3x5s): a transient API
     error must not leave a session-scoped consumer without the router CA.
+
+    Setting REQUESTS_CA_BUNDLE replaces requests' whole trust store, so the
+    exported file is the resolved/overridden bundle extended with the default
+    store (certifi): default-verify calls to public HTTPS endpoints in the
+    same session (e.g. catalog schema fetches) keep working.
     """
     previous = os.environ.get("REQUESTS_CA_BUNDLE")
     bundle = os.environ.get("TENANT_EXTERNAL_MODEL_CA_BUNDLE", "")
@@ -200,8 +206,10 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
                 error=str(ex.last_exp or ex),
             )
             bundle = ""
+    exported: str | None = None
     if bundle:
-        os.environ["REQUESTS_CA_BUNDLE"] = bundle
+        exported = combined_ca_bundle_path(bundle_path=bundle)
+        os.environ["REQUESTS_CA_BUNDLE"] = exported
     else:
         # An inherited REQUESTS_CA_BUNDLE would be picked up by per-request
         # verify paths (e.g. infer_external_chat) and could verify against an
@@ -211,7 +219,28 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
     try:
         yield bundle
     finally:
+        if exported is not None:
+            os.unlink(exported)
         if previous is None:
             os.environ.pop("REQUESTS_CA_BUNDLE", None)
         else:
             os.environ["REQUESTS_CA_BUNDLE"] = previous
+
+
+def combined_ca_bundle_path(*, bundle_path: str) -> str:
+    """Return a temp-file path to *bundle_path* extended with the default trust store.
+
+    requests replaces its entire trust store when REQUESTS_CA_BUNDLE points at
+    a file, so a cluster/router-only bundle would break default-verify calls to
+    public HTTPS endpoints; appending the default store's roots keeps both
+    usable. The caller owns the returned file's lifetime.
+    """
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix="-combined-ca.pem", delete=False, encoding="utf-8"
+    ) as combined:
+        with open(file=bundle_path, encoding="utf-8") as cluster_bundle:
+            combined.write(cluster_bundle.read())
+        with open(file=certifi.where(), encoding="utf-8") as default_bundle:
+            combined.write("\n")
+            combined.write(default_bundle.read())
+    return combined.name
