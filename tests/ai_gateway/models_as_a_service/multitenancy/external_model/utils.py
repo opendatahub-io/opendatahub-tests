@@ -54,7 +54,7 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import ExitStack, contextmanager
 from typing import Any
 
@@ -326,6 +326,81 @@ def wait_for_not_found(
         timeout=timeout,
         what=f"{kind}/{namespace}/{name} deletion",
     )
+
+
+def assert_during_settle_window(
+    check: Callable[[], None],
+    timeout: int,
+    what: str,
+    interval: int = TENANT_EXTERNAL_MODEL_POLL_INTERVAL,
+) -> None:
+    """Assert a check keeps passing for a whole settle window.
+
+    The inverse of wait_until: exhausting the window is the success path —
+    the check proves a state never changes during the window (nothing
+    appears, nothing is recreated) rather than waiting for a target state.
+    """
+    try:
+        for _ in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=interval,
+            func=check,
+            exceptions_dict={},
+        ):
+            pass
+    except TimeoutExpiredError as exc:
+        if exc.last_exp is not None:
+            raise TimeoutError(f"{what} did not stay absent during the {timeout}s settle window") from exc.last_exp
+        return
+
+
+def wait_for_model_attached_to_gateways(
+    admin_client: DynamicClient,
+    model: dict[str, Any],
+    cases: Iterable[dict[str, Any]],
+) -> None:
+    """Wait until a model is fully attached to every given tenant gateway.
+
+    Fully attached means: the gateway attachment is Ready, the attachment's
+    HTTPRoute exists in the model namespace, the tenant's credential copy
+    exists, and the provider DestinationRule for that gateway references
+    the model.
+    """
+    for case in cases:
+        wait_for_gateway_attachment_ready(
+            admin_client=admin_client,
+            model_name=model["name"],
+            model_namespace=model["namespace"],
+            gateway_name=case["gateway_name"],
+        )
+        wait_for_attachment_httproute(
+            admin_client=admin_client,
+            route_namespace=model["namespace"],
+            gateway_name=case["gateway_name"],
+            model_name=model["name"],
+        )
+        wait_for_credential_copy(
+            admin_client=admin_client,
+            tenant_namespace=case["tenant_ns"],
+            source_secret_name=model["secret_name"],
+            source_namespace=model["secret_namespace"],
+        )
+        assert destination_rules_referencing(  # noqa: FCN001 - *namespaces must follow positionally
+            admin_client, model["name"], MAAS_GATEWAY_NAMESPACE, also_matching=(case["gateway_name"],)
+        ), f"provider DestinationRule for {model['name']} on {case['gateway_name']} must exist while attached"
+
+
+def delete_external_model_and_ref(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+    timeout: int = TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+) -> None:
+    """Delete a model's MaaSModelRef and ExternalModel, waiting for each to be gone."""
+    MaaSModelRef(client=admin_client, name=name, namespace=namespace, ensure_exists=True).delete()
+    wait_for_not_found(client=admin_client, kind="maasmodelref", name=name, namespace=namespace, timeout=timeout)
+    ExternalModel(client=admin_client, name=name, namespace=namespace, ensure_exists=True).delete()
+    wait_for_not_found(client=admin_client, kind="externalmodel", name=name, namespace=namespace, timeout=timeout)
 
 
 def redact_sensitive(value: Any, *, max_length: int = 300) -> str:
