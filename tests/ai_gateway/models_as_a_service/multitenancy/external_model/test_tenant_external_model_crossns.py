@@ -52,6 +52,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     gateway_ref,
     get_json_or_none,
     infer_external_chat,
+    infer_for_shared_model,
     namespace_name,
     redact_sensitive,
     reference_grant_for,
@@ -119,13 +120,11 @@ class TestCrossNsProviderGrant:
                 source_secret_name=model["secret_name"],
                 source_namespace=model["secret_namespace"],
             )
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=env["tenant"]["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
+                case=env["tenant"],
+                model=model,
                 api_key=access["api_key"],
-                path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -181,13 +180,11 @@ class TestMissingGrant:
                 model_namespace=model["namespace"],
                 gateway_name=gateway,
             )
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=env["tenant"]["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
+                case=env["tenant"],
+                model=model,
                 api_key=access["api_key"],
-                path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -267,13 +264,11 @@ class TestGrantRevocation:
                 gateway_name=gateway,
             )
 
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=env["tenant"]["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
+                case=env["tenant"],
+                model=model,
                 api_key=access["api_key"],
-                path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -291,13 +286,11 @@ class TestGrantRevocation:
                 source_secret_name=model["secret_name"],
                 source_namespace=model["secret_namespace"],
             )
-            denied = infer_external_chat(
+            denied = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=env["tenant"]["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
+                case=env["tenant"],
+                model=model,
                 api_key=access["api_key"],
-                path_tag=model["path_tag"],
                 retries=1,
             )
             assert denied.status_code != 200, (
@@ -354,13 +347,11 @@ class TestGrantRevocation:
                 gateway_name=gateway,
                 message_pattern=GRANT_FAILURE_PATTERN,
             )
-            denied = infer_external_chat(
+            denied = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=env["tenant"]["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
+                case=env["tenant"],
+                model=model,
                 api_key=access["api_key"],
-                path_tag=model["path_tag"],
                 retries=1,
             )
             assert denied.status_code != 200, (
@@ -448,13 +439,11 @@ class TestCredentialSourceSelection:
                 stack=stack,
                 model=default_model,
             )
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=env["tenant"]["gateway_url"],
-                model_namespace=default_model["namespace"],
-                model_client_name=default_model["client_name"],
+                case=env["tenant"],
+                model=default_model,
                 api_key=access["api_key"],
-                path_tag=default_model["path_tag"],
             )
             assert_served_by_provider(
                 response=response, path_tag=default_model["path_tag"], credential=provider_credential
@@ -478,13 +467,11 @@ class TestCredentialSourceSelection:
                 stack=stack,
                 model=override_model,
             )
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=env["tenant"]["gateway_url"],
-                model_namespace=override_model["namespace"],
-                model_client_name=override_model["client_name"],
+                case=env["tenant"],
+                model=override_model,
                 api_key=access["api_key"],
-                path_tag=override_model["path_tag"],
             )
             assert_served_by_provider(
                 response=response, path_tag=override_model["path_tag"], credential=model_credential
