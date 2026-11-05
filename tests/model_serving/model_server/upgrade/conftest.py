@@ -67,6 +67,7 @@ from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import
     KSERVE_KUEUE_UPGRADE_S3_SECRET,
 )
 from tests.model_serving.model_server.upgrade.utils import (
+    UPGRADE_AUTH_TOKEN_EXPIRATION_SECONDS,
     UPGRADE_AUTH_TOKEN_SECRET_NAME,
     _create_kueue_upgrade_resources,
     _ensure_kueue_available_for_upgrade,
@@ -709,8 +710,11 @@ def auth_inference_token_fixture(
                 namespace=UPGRADE_NAMESPACE,
             )
         )
-
-    return RedactedString(value=create_inference_token(model_service_account=auth_service_account_fixture))
+    return RedactedString(
+        value=create_inference_token(
+            model_service_account=auth_service_account_fixture, expiration_seconds=UPGRADE_AUTH_TOKEN_EXPIRATION_SECONDS
+        )
+    )
 
 
 @pytest.fixture(scope="session")
@@ -1464,7 +1468,9 @@ def llmisvc_upgrade_token(
             subjects_name=sa.name,
         ).deploy()
 
-        token = create_inference_token(model_service_account=sa)
+        token = create_inference_token(
+            model_service_account=sa, expiration_seconds=UPGRADE_AUTH_TOKEN_EXPIRATION_SECONDS
+        )
         save_auth_token_to_secret(
             client=admin_client,
             namespace=namespace,
