@@ -1,6 +1,5 @@
 import base64
 import os
-import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from functools import cache
@@ -13,6 +12,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.ingress_controller import IngressController
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     OPENSHIFT_CA_BUNDLE_FILENAME,
@@ -184,24 +184,22 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
     previous = os.environ.get("REQUESTS_CA_BUNDLE")
     bundle = os.environ.get("TENANT_EXTERNAL_MODEL_CA_BUNDLE", "")
     if not bundle:
-        last_error: Exception | None = None
-        for attempt in range(1, 4):
-            try:
-                bundle = get_ca_bundle(client=client)
+        try:
+            for bundle in TimeoutSampler(
+                wait_timeout=15,
+                sleep=5,
+                func=get_ca_bundle,
+                client=client,
+                exceptions_dict={Exception: []},
+            ):
                 break
-            except Exception as ex:  # noqa: BLE001 - trust resolution is best-effort
-                last_error = ex
-                LOGGER.warning(
-                    f"Failed to resolve the OpenShift router CA bundle (attempt {attempt}/3)",
-                    error=str(ex),
-                )
-                time.sleep(5)
-        else:
+        except TimeoutExpiredError as ex:
             LOGGER.warning(
                 "Failed to resolve the OpenShift router CA bundle after 3 attempts; "
                 "gateway inference falls back to the system trust store",
-                error=str(last_error),
+                error=str(ex.last_exp or ex),
             )
+            bundle = ""
     if bundle:
         os.environ["REQUESTS_CA_BUNDLE"] = bundle
     else:
