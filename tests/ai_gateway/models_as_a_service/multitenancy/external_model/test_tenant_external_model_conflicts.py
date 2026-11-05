@@ -53,7 +53,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     conflict_cr_name,
     destination_rules_referencing,
     gateway_ref,
-    infer_external_chat,
+    infer_for_shared_model,
     maas_model_ref_alias,
     provision_model_in_stack,
     redact_sensitive,
@@ -133,24 +133,20 @@ class TestModelNameConflict:
                 gateway_name=tenant_a["gateway_name"],
                 model_name=older["name"],
             )
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=tenant_a["gateway_url"],
-                model_namespace=tenant_own["namespace"],
-                model_client_name=tenant_own["client_name"],
+                case=tenant_a,
+                model=tenant_own,
                 api_key=access["api_key"],
-                path_tag=tenant_own["path_tag"],
             )
             assert_served_by_provider(
                 response=response, path_tag=tenant_own["path_tag"], credential=tenant_own["credential"]
             )
-            denied = infer_external_chat(
+            denied = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=tenant_a["gateway_url"],
-                model_namespace=older["namespace"],
-                model_client_name=older["client_name"],
+                case=tenant_a,
+                model=older,
                 api_key=access["api_key"],
-                path_tag=older["path_tag"],
                 retries=1,
             )
             assert denied.status_code != 200, (
@@ -211,22 +207,18 @@ class TestModelNameConflict:
                 gateway_name=tenant_a["gateway_name"],
                 model_name=youngest["name"],
             )
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=tenant_a["gateway_url"],
-                model_namespace=oldest["namespace"],
-                model_client_name=oldest["client_name"],
+                case=tenant_a,
+                model=oldest,
                 api_key=access["api_key"],
-                path_tag=oldest["path_tag"],
             )
             assert_served_by_provider(response=response, path_tag=oldest["path_tag"], credential=oldest["credential"])
-            denied = infer_external_chat(
+            denied = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=tenant_a["gateway_url"],
-                model_namespace=youngest["namespace"],
-                model_client_name=youngest["client_name"],
+                case=tenant_a,
+                model=youngest,
                 api_key=access["api_key"],
-                path_tag=youngest["path_tag"],
                 retries=1,
             )
             assert denied.status_code != 200, f"the conflicted loser must not serve, got {denied.status_code}"
@@ -299,13 +291,11 @@ class TestSameNamedObjectsTwoNamespaces:
         (model_1, model_2) = same_named_pair["models"]
         (access_1, access_2) = same_named_pair["accesses"]
 
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_a["gateway_url"],
-            model_namespace=model_1["namespace"],
-            model_client_name=model_1["client_name"],
+            case=tenant_a,
+            model=model_1,
             api_key=access_1["api_key"],
-            path_tag=model_1["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=model_1["path_tag"], credential=model_1["credential"])
 
@@ -316,13 +306,11 @@ class TestSameNamedObjectsTwoNamespaces:
                 f"yet: MaaSModelRef {model_2['namespace']}/{model_2['name']} "
                 f"status.resolvedModelAlias={alias!r} != {model_2['client_name']!r}"
             )
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_a["gateway_url"],
-            model_namespace=model_2["namespace"],
-            model_client_name=model_2["client_name"],
+            case=tenant_a,
+            model=model_2,
             api_key=access_2["api_key"],
-            path_tag=model_2["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=model_2["path_tag"], credential=model_2["credential"])
 
@@ -362,13 +350,11 @@ class TestForeignBrokenModelIsolation:
             gateway_name=tenant_a["gateway_name"],
         )
         healthy = broken_pair["healthy"]
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_a["gateway_url"],
-            model_namespace=healthy["namespace"],
-            model_client_name=healthy["client_name"],
+            case=tenant_a,
+            model=healthy,
             api_key=broken_pair["access"]["api_key"],
-            path_tag=healthy["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=healthy["path_tag"], credential=healthy["credential"])
 
@@ -396,12 +382,10 @@ class TestForeignBrokenModelIsolation:
             model_name=broken_pair["broken_name"],
         )
         healthy = broken_pair["healthy"]
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_a["gateway_url"],
-            model_namespace=healthy["namespace"],
-            model_client_name=healthy["client_name"],
+            case=tenant_a,
+            model=healthy,
             api_key=broken_pair["access"]["api_key"],
-            path_tag=healthy["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=healthy["path_tag"], credential=healthy["credential"])
