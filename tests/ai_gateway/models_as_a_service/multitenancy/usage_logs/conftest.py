@@ -17,30 +17,30 @@ from utilities.constants import ModelStorage
 
 
 @pytest.fixture(scope="session")
-def aws_access_key_id() -> str:
+def aws_access_key_id() -> str:  # noqa: UFN001
     """Not used when tenant models deploy from OCI modelcar (see tenant_isolation_model_storage_uri)."""
     return "unused-oci-tenant-model"
 
 
 @pytest.fixture(scope="session")
-def aws_secret_access_key() -> str:
+def aws_secret_access_key() -> str:  # noqa: UFN001
     """Not used when tenant models deploy from OCI modelcar (see tenant_isolation_model_storage_uri)."""
     return "unused-oci-tenant-model"
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_name() -> str:
+def models_s3_bucket_name() -> str:  # noqa: UFN001
     """Placeholder; usage-log multitenancy E2E uses OCI TinyLlama, not S3."""
     return "unused"
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_region() -> str:
+def models_s3_bucket_region() -> str:  # noqa: UFN001
     return ModelStorage.S3.ODS_CI_WISDOM_REGION
 
 
 @pytest.fixture(scope="session")
-def models_s3_bucket_endpoint() -> str:
+def models_s3_bucket_endpoint() -> str:  # noqa: UFN001
     return ModelStorage.S3.ODS_CI_WISDOM_ENDPOINT
 
 
