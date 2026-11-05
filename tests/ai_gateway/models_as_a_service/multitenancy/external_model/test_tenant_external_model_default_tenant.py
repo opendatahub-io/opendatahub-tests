@@ -263,5 +263,7 @@ class TestImplicitAttachmentLifecycle:
         ) as model:
             route_name = wait_implicitly_attached(admin_client=admin_client, model=model)["route"]["metadata"]["name"]
 
-            delete_external_model_and_ref(admin_client, model["name"], model["namespace"], timeout=READY_TIMEOUT)
+            delete_external_model_and_ref(
+                admin_client=admin_client, name=model["name"], namespace=model["namespace"], timeout=READY_TIMEOUT
+            )
             wait_not_implicitly_attached(admin_client=admin_client, model=model, route_name=route_name)
