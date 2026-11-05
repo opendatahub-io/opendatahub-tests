@@ -42,13 +42,14 @@ from tests.ai_hub.utils import (
     get_rest_headers,
     wait_for_default_resource_cleanedup,
 )
-from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, DscComponents, Labels
+from utilities.constants import MODEL_REGISTRY_CUSTOM_NAMESPACE, DscComponents, Labels, OCIRegistry
 from utilities.general import (
     generate_random_name,
     wait_for_oauth_openshift_deployment,
     wait_for_pods_by_labels,
     wait_for_pods_running,
 )
+from utilities.image_constants import SharedImages
 from utilities.infra import (
     ResourceNotFoundError,
     get_data_science_cluster,
@@ -84,10 +85,16 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     nodes = list(Node.get(dyn_client=client))
     cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
     py_config["cluster_architecture"] = cluster_architecture
-    if cluster_architecture == "s390x":
-        LOGGER.info("s390x cluster detected, using Red Hat MySQL 8.4 image and vLLM runtime")
-        ai_hub_constants.MR_DB_IMAGE_DIGEST = ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X
+    if cluster_architecture in ("s390x", "ppc64le"):
+        LOGGER.info(f"{cluster_architecture} cluster detected, using Red Hat MySQL 8.4 image")
+        ai_hub_constants.MR_DB_IMAGE_DIGEST = ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X_PPC
         ai_hub_constants.MR_DB_MYSQL_ARGS = []
+    if cluster_architecture == "ppc64le":
+        LOGGER.info("ppc64le cluster detected, using ppc64le SeaweedFS and OCI registry images")
+        SharedImages.SEAWEEDFS = SharedImages.SEAWEEDFS_PPC64LE
+        OCIRegistry.PodConfig.REGISTRY_IMAGE = SharedImages.DISTRIBUTION_REGISTRY_PPC64LE
+    if cluster_architecture == "s390x":
+        LOGGER.info("s390x cluster detected, using vLLM runtime")
         ai_hub_constants.MR_RUNTIME_TEMPLATE = ai_hub_constants.MR_RUNTIME_TEMPLATE_Z
         ai_hub_constants.MODEL_ARTIFACT.update(ai_hub_constants.MODEL_ARTIFACT_VLLM)
         ai_hub_constants.MR_ISVC_RESOURCES.update(ai_hub_constants.MR_ISVC_RESOURCES_Z)
