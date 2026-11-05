@@ -135,9 +135,7 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
             )
             assert provider is not None, f"ExternalProvider {model['namespace']}/{model['provider']} not found"
             status = provider.get("status")
-            assert status is not None, (
-                f"provider {model['provider']} reports no status yet: {redact_sensitive(status)}"
-            )
+            assert status is not None, f"provider {model['provider']} reports no status yet: {redact_sensitive(status)}"
             conditions = status.get("conditions")
             assert conditions is not None, (
                 f"provider {model['provider']} reports no conditions yet: {redact_sensitive(status)}"
@@ -147,9 +145,7 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
                 f"provider {model['provider']} reports no Ready condition yet: {redact_sensitive(status)}"
             )
             phase = status.get("phase")
-            assert phase is not None, (
-                f"provider {model['provider']} reports no phase yet: {redact_sensitive(status)}"
-            )
+            assert phase is not None, f"provider {model['provider']} reports no phase yet: {redact_sensitive(status)}"
             assert phase == "Ready" and ready["status"] == "True", (
                 f"provider {model['provider']} is not Ready: {redact_sensitive(status)}"
             )
