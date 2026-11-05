@@ -1,5 +1,6 @@
 """Fixtures for Spark execution continuity and resubmission across upgrades."""
 
+import json
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,11 +10,19 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service_account import ServiceAccount
 
 from tests.spark.upgrade.utils import resubmit_spark_application
-from tests.spark.utils import create_gated_continuity_spark_spec, create_spark_connect_spec
+from tests.spark.utils import (
+    CONSUMER_NETWORK_POLICY_NAME,
+    consumer_network_policy_manifest,
+    create_gated_continuity_spark_spec,
+    create_spark_connect_spec,
+    ensure_consumer_network_policy,
+    operand_network_policies_present,
+)
 from utilities.resources.scheduled_spark_application import ScheduledSparkApplication
 from utilities.resources.spark_application import SparkApplication
 from utilities.resources.spark_connect import SparkConnect
@@ -248,3 +257,56 @@ def spark_connect_continuity_application(
         )
         with SparkConnect(client=admin_client, kind_dict=manifest, teardown=teardown_resources) as spark_connect:
             yield spark_connect
+
+
+@pytest.fixture()
+def spark_connect_consumer_network_policy(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    spark_connect_continuity_application: SparkConnect,
+    spark_connect_continuity_control: ConfigMap,
+    teardown_resources: bool,
+) -> Generator[NetworkPolicy | None, Any, Any]:
+    """Keep the continuity Spark Connect server reachable by its client across the upgrade.
+
+    The policy is needed only once the operator enforces operand NetworkPolicies. Pre-upgrade it is
+    created only if the feature is already active (and then persists across the upgrade, since it is
+    user-managed and not operator-GC'd); yields None otherwise. Post-upgrade, where the operator always
+    enforces the policies, it asserts the policy survived an already-active feature, or creates it when
+    the feature turns on during the upgrade.
+
+    Yields:
+        NetworkPolicy | None: The consumer policy, or None when operand policies are absent pre-upgrade.
+    """
+    namespace = spark_namespace_fixture.name
+    policy = NetworkPolicy(client=admin_client, name=CONSUMER_NETWORK_POLICY_NAME, namespace=namespace)
+
+    if not pytestconfig.option.post_upgrade:
+        with ensure_consumer_network_policy(
+            client=admin_client, namespace=namespace, teardown=teardown_resources
+        ) as policy:
+            yield policy
+    else:
+        baseline = json.loads(spark_connect_continuity_control.instance.data["baseline"])
+        if baseline.get("operand_policies_present"):
+            # The feature was already active before the upgrade: the user-managed policy must survive
+            # untouched, so assert it still exists with the same identity (not deleted and recreated).
+            assert policy.exists, "User-managed consumer NetworkPolicy did not survive the upgrade"
+            assert policy.instance.metadata.uid == baseline.get("consumer_policy_uid"), (
+                "User-managed consumer NetworkPolicy was recreated across the upgrade (uid changed)"
+            )
+            yield policy
+            if teardown_resources:
+                policy.clean_up(wait=True)
+        else:
+            # The feature turns on during the upgrade: create the policy now that operand policies exist.
+            assert operand_network_policies_present(client=admin_client, namespace=namespace, timeout=300), (
+                "The upgraded operator did not create its operand NetworkPolicies"
+            )
+            with NetworkPolicy(
+                client=admin_client,
+                kind_dict=consumer_network_policy_manifest(namespace=namespace),
+                teardown=teardown_resources,
+            ) as policy:
+                yield policy
