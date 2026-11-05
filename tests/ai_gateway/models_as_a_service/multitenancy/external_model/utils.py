@@ -1997,6 +1997,8 @@ def serve_in_tenant_and_cleanup(
     ocp_token: str,
     case: dict[str, str],
     model: dict[str, Any],
+    *,
+    teardown: bool = True,
 ) -> Generator[dict[str, str], Any, Any]:
     """Serve one model in a tenant and clean the MaaS stack up afterwards."""
     with serve_external_model_in_tenant(
@@ -2008,6 +2010,7 @@ def serve_in_tenant_and_cleanup(
         model["namespace"],
         policy_name=f"{model['name']}-access",
         subscription_name=f"{model['name']}-sub",
+        teardown=teardown,
     ) as access:
         yield access
 
