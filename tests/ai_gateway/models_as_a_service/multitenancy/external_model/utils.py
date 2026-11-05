@@ -167,10 +167,15 @@ def deploy_aitenant_best_effort(
                         f"{AITENANT_DELETE_TIMEOUT}s; clearing the aitenant-cleanup finalizer "
                         "(best-effort cleanup, see the source suite's cleanup_discovery_case)"
                     )
-                    ResourceEditor(
-                        patches={aitenant: {"metadata": {"finalizers": []}}},
-                    ).update()
-                    aitenant.wait_deleted(timeout=60)
+                    try:
+                        ResourceEditor(
+                            patches={aitenant: {"metadata": {"finalizers": []}}},
+                        ).update()
+                        aitenant.wait_deleted(timeout=60)
+                    except Exception as error:  # noqa: BLE001 - teardown stays best-effort
+                        LOGGER.warning(
+                            f"failed to clear the finalizer/delete AITenant {cr_namespace}/{aitenant_name}: {error}"
+                        )
                 tenant_namespace = Namespace(
                     client=admin_client,
                     name=expected_tenant_namespace_name(aitenant_name=aitenant_name),
