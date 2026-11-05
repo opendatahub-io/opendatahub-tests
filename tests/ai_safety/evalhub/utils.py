@@ -1947,6 +1947,34 @@ def metric_value_sum(
     return total
 
 
+def metric_values_by_label(
+    metrics: dict[str, list[dict[str, Any]]],
+    metric_name: str,
+    label_name: str,
+    label_filter: dict[str, str] | None = None,
+) -> dict[str, float]:
+    """Sum a metric's sample values per value of one label.
+
+    Samples that do not carry ``label_name`` are skipped.
+
+    Args:
+        metrics: Output from ``parse_prometheus_text``.
+        metric_name: Metric family name.
+        label_name: Label to group by (e.g. ``error_type``).
+        label_filter: Optional label filter applied before grouping.
+
+    Returns:
+        Mapping of label value to summed sample value.
+    """
+    values: dict[str, float] = {}
+    for sample in get_metric_samples(metrics=metrics, metric_name=metric_name, label_filter=label_filter):
+        if label_name not in sample["labels"]:
+            continue
+        label_value = sample["labels"][label_name]
+        values[label_value] = values.get(label_value, 0.0) + float(sample["value"])
+    return values
+
+
 def parse_trace_spans_from_logs(logs: str) -> list[dict[str, Any]]:
     """Best-effort extraction of spans from OTEL collector debug exporter logs.
 
