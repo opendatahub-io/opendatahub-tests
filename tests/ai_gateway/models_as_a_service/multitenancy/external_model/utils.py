@@ -1245,8 +1245,7 @@ def exhaust_tenant_token_budget(
             return response
         if response.status_code < 500:
             raise AssertionError(
-                "unexpected inference response on tenant: "
-                f"{response.status_code}: {redact_sensitive(response.text)}"
+                f"unexpected inference response on tenant: {response.status_code}: {redact_sensitive(response.text)}"
             )
         raise AssertionError(f"transient server error {response.status_code}; retrying")
 

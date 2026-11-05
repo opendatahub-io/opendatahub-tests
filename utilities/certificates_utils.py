@@ -243,9 +243,7 @@ def combined_ca_bundle_path(*, bundle_path: str) -> str:
     public HTTPS endpoints; appending the default store's roots keeps both
     usable. The caller owns the returned file's lifetime.
     """
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix="-combined-ca.pem", delete=False, encoding="utf-8"
-    ) as combined:
+    with tempfile.NamedTemporaryFile(mode="w", suffix="-combined-ca.pem", delete=False, encoding="utf-8") as combined:
         with open(file=bundle_path, encoding="utf-8") as cluster_bundle:
             combined.write(cluster_bundle.read())
         with open(file=certifi.where(), encoding="utf-8") as default_bundle:
