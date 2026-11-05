@@ -254,8 +254,7 @@ class TestTenantAuthIsolation:
                 timeout=CROSS_GATEWAY_REJECTION_ATTEMPTS * CROSS_GATEWAY_REJECTION_RETRY_INTERVAL,
                 interval=CROSS_GATEWAY_REJECTION_RETRY_INTERVAL,
                 what=(
-                    f"{case['tenant_label_name']}'s API key being rejected by "
-                    f"{other['tenant_label_name']}'s gateway"
+                    f"{case['tenant_label_name']}'s API key being rejected by {other['tenant_label_name']}'s gateway"
                 ),
             )
             assert rejected.status_code in (401, 403)
@@ -362,9 +361,7 @@ class TestSharedModelAmbiguousModelRef:
                     name=ref_name,
                     namespace=model["namespace"],
                 )
-                assert phase != "Failed", (
-                    f"pinned modelRef {ref_name} must not fail: {redact_sensitive(status)}"
-                )
+                assert phase != "Failed", f"pinned modelRef {ref_name} must not fail: {redact_sensitive(status)}"
                 conditions = status.get("conditions")
                 assert conditions is not None, (
                     f"pinned modelRef {ref_name} reports no conditions yet: {redact_sensitive(status)}"
