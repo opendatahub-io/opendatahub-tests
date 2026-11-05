@@ -45,8 +45,8 @@ def models_s3_bucket_endpoint() -> str:
 
 
 @pytest.fixture(scope="class")
-def tenant_isolation_model_storage_uri() -> str:
-    """OCI TinyLlama on each tenant gateway (no ods-ci-wisdom AWS credentials required locally)."""
+def tenant_isolation_model_storage_uri() -> str:  # noqa: UFN001
+    """Override parent fixture: OCI TinyLlama, no ods-ci-wisdom credentials."""
     return ModelStorage.OCI.TINYLLAMA
 
 

@@ -880,7 +880,7 @@ def s3_secret_config_for_storage_uri(
     ``us-east-1`` for unrelated buckets. Using the wrong region yields S3 HeadBucket 301 and
     a CrashLooping storage-initializer.
     """
-    bucket_in_uri = urlparse(storage_uri).netloc
+    bucket_in_uri = urlparse(url=storage_uri).netloc
     if bucket_in_uri == ModelStorage.S3.ODS_CI_WISDOM_BUCKET:
         return (
             ModelStorage.S3.ODS_CI_WISDOM_BUCKET,
@@ -918,7 +918,7 @@ def provision_tenant_model(
     with ExitStack() as stack:
         if storage_uri.startswith("s3://"):
             secret_bucket, secret_region, secret_endpoint = s3_secret_config_for_storage_uri(
-                storage_uri,
+                storage_uri=storage_uri,
                 aws_s3_bucket=aws_s3_bucket,
                 aws_s3_region=aws_s3_region,
                 aws_s3_endpoint=aws_s3_endpoint,
