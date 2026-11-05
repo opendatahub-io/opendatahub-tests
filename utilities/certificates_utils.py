@@ -192,9 +192,7 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
     if bundle and not os.path.isfile(bundle):
         # Fail fast on a misconfigured override: exporting a nonexistent path
         # would silently break every TLS verification in the session.
-        raise FileNotFoundError(
-            f"TENANT_EXTERNAL_MODEL_CA_BUNDLE={bundle!r} does not exist or is not a readable file"
-        )
+        raise FileNotFoundError(f"TENANT_EXTERNAL_MODEL_CA_BUNDLE={bundle!r} does not exist or is not a readable file")
     if not bundle:
         try:
             for bundle in TimeoutSampler(
