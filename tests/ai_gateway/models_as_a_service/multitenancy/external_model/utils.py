@@ -2641,15 +2641,29 @@ def infer_chat_completion(
         "messages": [{"role": "user", "content": "default tenant e2e"}],
         "max_tokens": 8,
     }
-    for attempt in range(retries + 1):
+    responses: list[requests.Response] = []
+
+    def _post_and_require_stable() -> requests.Response:
         response = request_session_http.post(url=url, headers=headers, json=payload, timeout=INFERENCE_REQUEST_TIMEOUT)
+        responses.append(response)
         transient = response.status_code >= 500 or (
             response.status_code == 429 and "retry" in (response.text or "").lower()
         )
-        if not transient or attempt == retries:
+        assert not transient, f"inference to {url} failed transiently: {response.status_code}"
+        return response
+
+    try:
+        for response in TimeoutSampler(
+            wait_timeout=(retries + 1) * INFERENCE_RETRY_DELAY,
+            sleep=INFERENCE_RETRY_DELAY,
+            func=_post_and_require_stable,
+            exceptions_dict={AssertionError: []},
+        ):
             return response
-        time.sleep(INFERENCE_RETRY_DELAY)
-    raise AssertionError(f"inference to {url} kept failing transiently")  # pragma: no cover
+    except TimeoutExpiredError:
+        # Retries exhausted: hand the last (transient) response to the caller
+        # to judge, like the plain retry loop this replaced.
+        return responses[-1]
 
 
 def provision_and_serve_in_tenant(
