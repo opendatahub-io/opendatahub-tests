@@ -40,12 +40,12 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.namespace import Namespace
 
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
     READY_TIMEOUT,
     default_tenant_model_stack,
+    delete_external_model_and_ref,
     gateway_ref,
     gateway_status_entry,
     get_json_or_none,
@@ -54,14 +54,12 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     patch_external_model_gateway_refs,
     redact_sensitive,
     wait_for_gateway_attachment_reason,
-    wait_for_not_found,
     wait_implicitly_attached,
     wait_not_implicitly_attached,
     wait_until,
 )
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
-from utilities.resources.external_model import ExternalModel
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -265,33 +263,5 @@ class TestImplicitAttachmentLifecycle:
         ) as model:
             route_name = wait_implicitly_attached(admin_client=admin_client, model=model)["route"]["metadata"]["name"]
 
-            for resource in (
-                MaaSModelRef(
-                    client=admin_client,
-                    name=model["name"],
-                    namespace=model["namespace"],
-                    ensure_exists=True,
-                ),
-                ExternalModel(
-                    client=admin_client,
-                    name=model["name"],
-                    namespace=model["namespace"],
-                    ensure_exists=True,
-                ),
-            ):
-                resource.delete()
-            wait_for_not_found(
-                client=admin_client,
-                kind="maasmodelref",
-                name=model["name"],
-                namespace=model["namespace"],
-                timeout=READY_TIMEOUT,
-            )
-            wait_for_not_found(
-                client=admin_client,
-                kind="externalmodel",
-                name=model["name"],
-                namespace=model["namespace"],
-                timeout=READY_TIMEOUT,
-            )
+            delete_external_model_and_ref(admin_client, model["name"], model["namespace"], timeout=READY_TIMEOUT)
             wait_not_implicitly_attached(admin_client=admin_client, model=model, route_name=route_name)
