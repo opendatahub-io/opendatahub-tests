@@ -1,5 +1,7 @@
 from collections.abc import Callable, Generator
+from typing import Any
 
+import httpx
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.deployment import Deployment
@@ -9,7 +11,9 @@ from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
+from ogx_client import OgxClient
 
+from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL
 from tests.ogx.praxis.constants import (
     OGX_CONNECTION_SECRET_KEY,
     OGX_CONNECTION_SECRET_NAME,
@@ -243,6 +247,21 @@ def praxis_gateway_route(
             }
         ).update()
         yield route
+
+
+@pytest.fixture(scope="class")
+def ogx_praxis_client(praxis_gateway_route: Route) -> Generator[OgxClient, Any, Any]:
+    """Ready-to-use OgxClient connected to the Praxis gateway."""
+    http_client = httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=300)
+    try:
+        yield OgxClient(
+            base_url=f"https://{praxis_gateway_route.host}",
+            max_retries=3,
+            http_client=http_client,
+            timeout=300,
+        )
+    finally:
+        http_client.close()
 
 
 @pytest.fixture(scope="class")
