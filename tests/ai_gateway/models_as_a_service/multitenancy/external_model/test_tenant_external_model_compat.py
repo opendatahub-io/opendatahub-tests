@@ -147,8 +147,7 @@ class TestOmittedGatewayRefsUnchanged:
             gateway_name=gateway,
         )
 
-        settle_checks = max(1, RECONCILE_WAIT // SETTLE_POLL_INTERVAL) + 1
-        for _ in range(settle_checks):
+        def _serving_config_unchanged() -> None:
             after = _snapshot()
             assert after["route_identities"] == before["route_identities"], (
                 "adding own-tenant gatewayRefs recreated or relabeled HTTPRoutes: "
@@ -158,7 +157,13 @@ class TestOmittedGatewayRefsUnchanged:
                 "adding own-tenant gatewayRefs recreated DestinationRules: "
                 f"{before['destination_rule_uids']} -> {after['destination_rule_uids']}"
             )
-            time.sleep(SETTLE_POLL_INTERVAL)
+
+        assert_stays_absent(
+            check=_serving_config_unchanged,
+            timeout=RECONCILE_WAIT,
+            what=f"serving config of {model['name']} staying unchanged after adding own-tenant gatewayRefs",
+            interval=SETTLE_POLL_INTERVAL,
+        )
         response = infer_for_shared_model(
             request_session_http=request_session_http,
             case=tenant_a,
