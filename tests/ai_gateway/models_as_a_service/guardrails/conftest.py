@@ -8,10 +8,12 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.maas_auth_policy import MaaSAuthPolicy
 from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 
 from tests.ai_gateway.models_as_a_service.guardrails.constants import (
     AI_GUARDRAIL_TIMEOUT,
     INPUT_CHECK_NAME,
+    NEMO_AUTH_ANNOTATION,
     NEMO_PHASE_CONFIG_ID,
     NEMO_PII_CONFIG_ID,
     OUTPUT_CHECK_NAME,
@@ -28,12 +30,14 @@ from tests.ai_gateway.models_as_a_service.guardrails.utils import (
     wait_for_guardrail_checks_compiled,
     wait_for_nemo_guardrails_ready,
 )
+from tests.ai_gateway.models_as_a_service.utils import DEFAULT_MAAS_TENANT_NAME
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.ai_guardrail import AIGuardrail
 from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.maa_s_subscription import MaaSSubscription
+from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.nemo_guardrails import NemoGuardrails
 
 
@@ -524,3 +528,132 @@ def guardrails_model_url(
 ) -> str:
     """Chat completions URL of the echo simulator on the MaaS gateway."""
     return f"{maas_scheme}://{maas_host}/llm/{guardrails_echo_llmisvc.name}{OpenAIEnpoints.CHAT_COMPLETIONS}"
+
+
+@pytest.fixture
+def api_translation_tenant_config(
+    admin_client: DynamicClient,
+    maas_subscription_namespace: Namespace,
+) -> Generator[MaasTenantConfig, Any, Any]:
+    """Default MaasTenantConfig with API translation enabled for one test, restored afterwards."""
+    tenant_config = MaasTenantConfig(
+        client=admin_client,
+        name=DEFAULT_MAAS_TENANT_NAME,
+        namespace=maas_subscription_namespace.name,
+        ensure_exists=True,
+    )
+    with ResourceEditor(patches={tenant_config: {"spec": {"apiTranslation": {"enabled": True}}}}):
+        yield tenant_config
+
+
+@pytest.fixture(scope="class")
+def auth_nemo_server(
+    admin_client: DynamicClient,
+    guardrails_resource_suffix: str,
+    maas_api_infra_namespace: str,
+    maas_subscription_namespace: Namespace,
+    guardrails_nemo_configmap: ConfigMap,
+) -> Generator[NemoGuardrails, Any, Any]:
+    """Ready NemoGuardrails provider fronted by kube-rbac-proxy, with its workload in the infra namespace."""
+    with NemoGuardrails(
+        client=admin_client,
+        name=f"maas-nemo-auth-{guardrails_resource_suffix}",
+        namespace=maas_subscription_namespace.name,
+        annotations={NEMO_AUTH_ANNOTATION: "true"},
+        nemo_configs=[
+            {
+                "name": NEMO_PII_CONFIG_ID,
+                "configMaps": [guardrails_nemo_configmap.name],
+                "default": True,
+            }
+        ],
+        replicas=1,
+        expose_route=False,
+        teardown=True,
+    ) as nemo_server:
+        wait_for_nemo_guardrails_ready(nemo_guardrails=nemo_server)
+        workload_namespace = nemo_server.instance.status.workloadNamespace
+        assert workload_namespace == maas_api_infra_namespace, (
+            f"NeMo workload deployed to '{workload_namespace}', expected infra namespace '{maas_api_infra_namespace}'"
+        )
+        yield nemo_server
+
+
+@pytest.fixture(scope="class")
+def auth_ai_guardrail(
+    admin_client: DynamicClient,
+    guardrails_resource_suffix: str,
+    maas_subscription_namespace: Namespace,
+    auth_nemo_server: NemoGuardrails,
+) -> Generator[AIGuardrail, Any, Any]:
+    """Bound AIGuardrail offering an input-phase PII check from the authenticated provider."""
+    with AIGuardrail(
+        client=admin_client,
+        name=f"maas-auth-guardrail-{guardrails_resource_suffix}",
+        namespace=maas_subscription_namespace.name,
+        provider={
+            "nemo": {"ref": {"name": auth_nemo_server.name}},
+            "timeout": AI_GUARDRAIL_TIMEOUT,
+        },
+        checks=[{"name": INPUT_CHECK_NAME, "configId": NEMO_PII_CONFIG_ID, "phases": ["Input"]}],
+        teardown=True,
+    ) as ai_guardrail:
+        wait_for_ai_guardrail_bound(ai_guardrail=ai_guardrail)
+        yield ai_guardrail
+
+
+@pytest.fixture(scope="class")
+def auth_input_check_header(auth_ai_guardrail: AIGuardrail) -> str:
+    """Selection header compiled for the authenticated provider's input-phase check."""
+    return guardrail_check_header(
+        namespace=auth_ai_guardrail.namespace,
+        guardrail_name=auth_ai_guardrail.name,
+        check_name=INPUT_CHECK_NAME,
+    )
+
+
+@pytest.fixture(scope="class")
+def auth_input_guarded_subscription(
+    admin_client: DynamicClient,
+    maas_subscription_namespace: Namespace,
+    guardrails_model_ref: MaaSModelRef,
+    auth_ai_guardrail: AIGuardrail,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """Subscription attaching the authenticated provider's input-phase check."""
+    with guarded_maas_subscription(
+        admin_client=admin_client,
+        namespace=maas_subscription_namespace.name,
+        name=generate_random_name(prefix="e2e-guardrails-auth-input"),
+        model_ref=guardrails_model_ref,
+        guardrails=[{"ref": {"name": auth_ai_guardrail.name}, "checks": [INPUT_CHECK_NAME]}],
+    ) as subscription:
+        yield subscription
+
+
+@pytest.fixture(scope="class")
+def auth_guardrail_checks_enforced(
+    admin_client: DynamicClient,
+    auth_input_guarded_subscription: MaaSSubscription,
+    auth_ai_guardrail: AIGuardrail,
+    auth_input_check_header: str,
+) -> None:
+    """Wait until the authenticated check is compiled into the rolled-out Praxis ExtProc."""
+    wait_for_guardrail_checks_compiled(admin_client=admin_client, check_headers=[auth_input_check_header])
+
+
+@pytest.fixture(scope="class")
+def auth_input_guarded_api_key(
+    request_session_http: requests.Session,
+    base_url: str,
+    current_client_token: str,
+    maas_api_gateway_reachable: None,
+    auth_input_guarded_subscription: MaaSSubscription,
+) -> Generator[str, Any, Any]:
+    """API key bound to the subscription guarded by the authenticated provider."""
+    with maas_api_key_for_subscription(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=current_client_token,
+        subscription=auth_input_guarded_subscription,
+    ) as api_key:
+        yield api_key

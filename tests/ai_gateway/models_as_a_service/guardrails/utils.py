@@ -11,15 +11,20 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
+from ocp_resources.event import Event
 from ocp_resources.maas_model_ref import MaaSModelRef
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.image_constants import AiGatewayImages
 from tests.ai_gateway.models_as_a_service.guardrails.constants import (
+    ACCEPTED_CONDITION,
     ECHO_SIM_PORT,
     GUARDRAIL_CHECK_HEADER_PREFIX,
     GUARDRAIL_ENFORCEMENT_TIMEOUT_SECONDS,
     MAAS_API_SELECTION_PATH,
+    NEMO_CALLER_SERVICE_CA_FILE,
+    NEMO_CALLER_TOKEN_FILE,
+    NEMO_CHECKS_PATH,
 )
 from tests.ai_gateway.models_as_a_service.praxis.constants import (
     LEGACY_IPP_PLUGINS_CONFIGMAP_NAME_BASE,
@@ -193,6 +198,59 @@ def wait_for_ai_guardrail_bound(ai_guardrail: AIGuardrail, timeout: int = 300) -
         )
 
 
+def wait_for_ai_guardrail_refused(ai_guardrail: AIGuardrail, reason: str, timeout: int = 300) -> dict[str, Any]:
+    """Wait until an AIGuardrail's Accepted condition is False with the given reason for its current generation.
+
+    Args:
+        ai_guardrail: AIGuardrail to watch.
+        reason: Expected Accepted condition reason.
+        timeout: Maximum seconds to wait.
+
+    Returns:
+        The Accepted condition.
+    """
+    accepted: dict[str, Any] = {}
+    try:
+        for accepted in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=ai_guardrail_condition,
+            ai_guardrail=ai_guardrail,
+            condition_type=ACCEPTED_CONDITION,
+        ):
+            if (
+                accepted.get("status") == "False"
+                and accepted.get("reason") == reason
+                and accepted.get("observedGeneration") == ai_guardrail.instance.metadata.generation
+            ):
+                return accepted
+    except TimeoutExpiredError:
+        pass
+    pytest.fail(
+        f"AIGuardrail {ai_guardrail.namespace}/{ai_guardrail.name} not refused with reason {reason!r}; "
+        f"Accepted={accepted}"
+    )
+
+
+def ai_guardrail_warning_events(admin_client: DynamicClient, ai_guardrail: AIGuardrail, reason: str) -> list[Any]:
+    """Return the recent Warning Events recorded on an AIGuardrail with the given reason.
+
+    Args:
+        admin_client: Cluster admin client.
+        ai_guardrail: AIGuardrail the Events are about.
+        reason: Event reason to match.
+
+    Returns:
+        Matching Event objects.
+    """
+    events = Event.list(
+        client=admin_client,
+        namespace=ai_guardrail.namespace,
+        field_selector=f"involvedObject.name={ai_guardrail.name},type=Warning",
+    )
+    return [event for event in events if event.reason == reason]
+
+
 def _guardrail_checks_compiled(admin_client: DynamicClient, check_headers: list[str]) -> bool:
     plugins_configmap = ConfigMap(
         client=admin_client,
@@ -224,15 +282,15 @@ def _guardrail_checks_compiled(admin_client: DynamicClient, check_headers: list[
     )
 
 
-def verify_guardrail_callouts_unauthenticated(admin_client: DynamicClient, check_headers: list[str]) -> None:
-    """Assert every compiled ai_guardrails callout for the checks targets NeMo over plain HTTP.
-
-    An https endpoint or a token file means ai-gateway-controller found kube-rbac-proxy
-    in front of the NeMo Service.
+def compiled_guardrail_providers(admin_client: DynamicClient, check_headers: list[str]) -> list[dict[str, Any]]:
+    """Return the NeMo provider blocks of the compiled ai_guardrails callouts gated on the given headers.
 
     Args:
         admin_client: Cluster admin client.
         check_headers: Selection headers of the checks to inspect.
+
+    Returns:
+        The ``provider`` mapping of every matching ``ai_guardrails`` filter in the default tenant's extproc.yaml.
     """
     plugins_configmap = ConfigMap(
         client=admin_client,
@@ -241,7 +299,7 @@ def verify_guardrail_callouts_unauthenticated(admin_client: DynamicClient, check
         ensure_exists=True,
     )
     extproc_config = yaml.safe_load(plugins_configmap.instance.data[PRAXIS_EXTPROC_CONFIG_DATA_KEY])
-    providers = [
+    return [
         guardrail_filter["provider"]
         for filter_chain in extproc_config.get("filter_chains", [])
         for guardrail_filter in filter_chain.get("filters", [])
@@ -252,10 +310,116 @@ def verify_guardrail_callouts_unauthenticated(admin_client: DynamicClient, check
             for header in check_headers
         )
     ]
+
+
+def verify_guardrail_callouts_unauthenticated(admin_client: DynamicClient, check_headers: list[str]) -> None:
+    """Assert every compiled ai_guardrails callout for the checks targets NeMo over plain HTTP.
+
+    An https endpoint or a token file means ai-gateway-controller found kube-rbac-proxy
+    in front of the NeMo Service.
+
+    Args:
+        admin_client: Cluster admin client.
+        check_headers: Selection headers of the checks to inspect.
+    """
+    providers = compiled_guardrail_providers(admin_client=admin_client, check_headers=check_headers)
     assert providers, f"No ai_guardrails callouts compiled for {check_headers}"
     for provider in providers:
         assert provider["endpoint"].startswith("http://"), f"NeMo callout is not plain HTTP: {provider}"
         assert "token_file" not in provider, f"NeMo callout carries a bearer token: {provider}"
+
+
+def nemo_service_url(nemo_guardrails: NemoGuardrails, workload_namespace: str, authenticated: bool) -> str:
+    """Return the in-cluster NeMo Service URL ai-gateway-controller derives for a NemoGuardrails provider.
+
+    TrustyAI names the Service after the CR when the CR lives in the workload namespace, and
+    ``<cr-namespace>-<cr-name>`` otherwise. kube-rbac-proxy serves https when auth is enabled.
+
+    Args:
+        nemo_guardrails: The NemoGuardrails provider.
+        workload_namespace: The provider's status.workloadNamespace.
+        authenticated: Whether the provider carries the enable-auth annotation.
+
+    Returns:
+        The expected AIGuardrail status.providerEndpoint.
+    """
+    service_name = (
+        nemo_guardrails.name
+        if nemo_guardrails.namespace == workload_namespace
+        else f"{nemo_guardrails.namespace}-{nemo_guardrails.name}"
+    )
+    scheme = "https" if authenticated else "http"
+    return f"{scheme}://{service_name}.{workload_namespace}.svc.cluster.local"
+
+
+def ai_guardrail_condition(ai_guardrail: AIGuardrail, condition_type: str) -> dict[str, Any]:
+    """Return an AIGuardrail status condition, or an empty dict when it is not published.
+
+    Args:
+        ai_guardrail: AIGuardrail to read.
+        condition_type: Condition type, e.g. ``ProviderReady``.
+
+    Returns:
+        The condition as a plain dict.
+    """
+    for condition in (ai_guardrail.instance.status or {}).get("conditions") or []:
+        if condition["type"] == condition_type:
+            return dict(condition)
+    return {}
+
+
+def wait_for_ai_guardrail_provider_endpoint(
+    ai_guardrail: AIGuardrail,
+    expected_endpoint: str,
+    timeout: int = 300,
+) -> None:
+    """Wait until an AIGuardrail publishes the expected status.providerEndpoint.
+
+    Args:
+        ai_guardrail: AIGuardrail to watch.
+        expected_endpoint: Expected in-cluster NeMo base URL.
+        timeout: Maximum seconds to wait.
+    """
+    endpoint: str | None = None
+    try:
+        for endpoint in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=lambda: (ai_guardrail.instance.status or {}).get("providerEndpoint"),
+        ):
+            if endpoint == expected_endpoint:
+                return
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"AIGuardrail {ai_guardrail.namespace}/{ai_guardrail.name} providerEndpoint={endpoint!r}, "
+            f"expected {expected_endpoint!r}"
+        )
+
+
+def verify_guardrail_callouts_authenticated(
+    admin_client: DynamicClient,
+    check_headers: list[str],
+    expected_endpoint: str,
+) -> None:
+    """Assert every compiled ai_guardrails callout for the checks calls kube-rbac-proxy with a token over TLS.
+
+    Args:
+        admin_client: Cluster admin client.
+        check_headers: Selection headers of the checks to inspect.
+        expected_endpoint: The AIGuardrail's https providerEndpoint.
+    """
+    providers = compiled_guardrail_providers(admin_client=admin_client, check_headers=check_headers)
+    assert providers, f"No ai_guardrails callouts compiled for {check_headers}"
+    for provider in providers:
+        assert provider["endpoint"] == f"{expected_endpoint}{NEMO_CHECKS_PATH}", (
+            f"NeMo callout does not target {expected_endpoint}{NEMO_CHECKS_PATH}: {provider}"
+        )
+        assert provider.get("token_file") == NEMO_CALLER_TOKEN_FILE, (
+            f"NeMo callout does not carry the caller token: {provider}"
+        )
+        assert (provider.get("tls") or {}).get("ca_file") == NEMO_CALLER_SERVICE_CA_FILE, (
+            f"NeMo callout does not trust the service CA: {provider}"
+        )
 
 
 def wait_for_guardrail_checks_compiled(
