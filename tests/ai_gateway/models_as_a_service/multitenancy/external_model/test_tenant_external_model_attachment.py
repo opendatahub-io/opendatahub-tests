@@ -353,7 +353,7 @@ class TestAttachmentLifecycleCleanup:
                 source_namespace=model["secret_namespace"],
             )
             with serve_in_tenant_and_cleanup(
-                admin_client, request_session_http, ocp_token_for_actor, tenant_b, model
+                admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
             ) as access_b:
                 # Detaching a gateway rewrites the rate-limit configuration for the
                 # remaining gateway; until that rewrite settles, limitador can deny
@@ -639,6 +639,7 @@ class TestListenerAdmissionRecovery:
         ocp_token_for_actor: str,
         attachment_env: dict[str, Any],
         recovery_env: dict[str, Any],
+        teardown_resources: bool,
     ) -> None:
         """Given a refused attachment, when the namespace is labeled (admitted
         into the gateway's allowedRoutes), then the attachment becomes Ready
@@ -677,7 +678,7 @@ class TestListenerAdmissionRecovery:
         )
 
         with serve_in_tenant_and_cleanup(
-            admin_client, request_session_http, ocp_token_for_actor, tenant_b, model
+            admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
         ) as access:
             response = infer_for_shared_model(
                 request_session_http=request_session_http,
@@ -694,6 +695,7 @@ class TestListenerAdmissionRecovery:
         request_session_http: requests.Session,
         ocp_token_for_actor: str,
         attachment_env: dict[str, Any],
+        teardown_resources: bool,
         recovery_env: dict[str, Any],
     ) -> None:
         """Given a serving attachment, when the gateway-access label is removed
@@ -724,7 +726,7 @@ class TestListenerAdmissionRecovery:
             gateway_name=tenant_b["gateway_name"],
         )
         with serve_in_tenant_and_cleanup(
-            admin_client, request_session_http, ocp_token_for_actor, tenant_b, model
+            admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
         ) as access:
             served = infer_for_shared_model(
                 request_session_http=request_session_http,
