@@ -56,7 +56,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     gateway_ref,
     get_json_or_none,
     httproute_parent_conditions,
-    infer_external_chat,
+    infer_for_shared_model,
     list_json,
     patch_external_model_gateway_refs,
     provider_external_name_service,
@@ -200,13 +200,11 @@ class TestUserNamespaceAttachmentServing:
             credential_copy_in(admin_client, tenant_a["tenant_ns"], model["secret_name"], model["secret_namespace"])
             is None
         ), "unselected tenant must not receive a credential copy"
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_a["gateway_url"],
-            model_namespace=model["namespace"],
-            model_client_name=model["client_name"],
+            case=tenant_a,
+            model=model,
             api_key=attached_model["access"]["api_key"],
-            path_tag=model["path_tag"],
             retries=1,
         )
         assert_not_served(response=response)
@@ -226,13 +224,11 @@ class TestUserNamespaceAttachmentServing:
         env = attachment_env
         model = attached_model["model"]
         tenant_b = env["tenant_b"]
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_b["gateway_url"],
-            model_namespace=model["namespace"],
-            model_client_name=model["client_name"],
+            case=tenant_b,
+            model=model,
             api_key=attached_model["access"]["api_key"],
-            path_tag=model["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -366,13 +362,11 @@ class TestAttachmentLifecycleCleanup:
                 # limits allow them. 429 is never a legitimate outcome here, so
                 # retry within a bounded window instead of failing on the race.
                 def infer_until_rate_limits_settle() -> requests.Response:
-                    response = infer_external_chat(
+                    response = infer_for_shared_model(
                         request_session_http=request_session_http,
-                        gateway_url=tenant_b["gateway_url"],
-                        model_namespace=model["namespace"],
-                        model_client_name=model["client_name"],
+                        case=tenant_b,
+                        model=model,
                         api_key=access_b["api_key"],
-                        path_tag=model["path_tag"],
                     )
                     assert response.status_code != 429, (
                         "post-detach inference rate-limited while the remaining "
@@ -475,13 +469,11 @@ class TestAttachmentLifecycleCleanup:
             assert get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"]) is None
 
         unrelated = unrelated_model["model"]
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_b["gateway_url"],
-            model_namespace=unrelated["namespace"],
-            model_client_name=unrelated["client_name"],
+            case=tenant_b,
+            model=unrelated,
             api_key=unrelated_model["access"]["api_key"],
-            path_tag=unrelated["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=unrelated["path_tag"], credential=unrelated["credential"])
 
@@ -570,13 +562,11 @@ class TestListenerNotAllowed:
                 assert accepted is not None and accepted.get("status") == "False", (
                     f"route {route['metadata']['name']} must not be admitted: {conditions}"
                 )
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_b["gateway_url"],
-            model_namespace=model["namespace"],
-            model_client_name=model["client_name"],
+            case=tenant_b,
+            model=model,
             api_key=f"sk-extmod-unused-{uuid.uuid4().hex[:8]}",  # pragma: allowlist secret
-            path_tag=model["path_tag"],
             retries=1,
         )
         assert_not_served(response=response)
@@ -627,13 +617,11 @@ class TestListenerAdmissionRecovery:
             reason="NotAllowedByListeners",
         )
         control = env["control_model"]
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_b["gateway_url"],
-            model_namespace=control["namespace"],
-            model_client_name=control["client_name"],
+            case=tenant_b,
+            model=control,
             api_key=env["control_access"]["api_key"],
-            path_tag=control["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=control["path_tag"], credential=control["credential"])
 
@@ -685,13 +673,11 @@ class TestListenerAdmissionRecovery:
         with serve_in_tenant_and_cleanup(
             admin_client, request_session_http, ocp_token_for_actor, tenant_b, model
         ) as access:
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=tenant_b["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
+                case=tenant_b,
+                model=model,
                 api_key=access["api_key"],
-                path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -734,13 +720,11 @@ class TestListenerAdmissionRecovery:
         with serve_in_tenant_and_cleanup(
             admin_client, request_session_http, ocp_token_for_actor, tenant_b, model
         ) as access:
-            served = infer_external_chat(
+            served = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=tenant_b["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
+                case=tenant_b,
+                model=model,
                 api_key=access["api_key"],
-                path_tag=model["path_tag"],
             )
             assert_served_by_provider(response=served, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -768,13 +752,11 @@ class TestListenerAdmissionRecovery:
                 )
 
             def _refused() -> bool:
-                response = infer_external_chat(
+                response = infer_for_shared_model(
                     request_session_http=request_session_http,
-                    gateway_url=tenant_b["gateway_url"],
-                    model_namespace=model["namespace"],
-                    model_client_name=model["client_name"],
+                    case=tenant_b,
+                    model=model,
                     api_key=access["api_key"],
-                    path_tag=model["path_tag"],
                     retries=1,
                 )
                 assert_not_served(response=response)
@@ -790,13 +772,11 @@ class TestListenerAdmissionRecovery:
             )
 
         control = env["control_model"]
-        control_served = infer_external_chat(
+        control_served = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_b["gateway_url"],
-            model_namespace=control["namespace"],
-            model_client_name=control["client_name"],
+            case=tenant_b,
+            model=control,
             api_key=env["control_access"]["api_key"],
-            path_tag=control["path_tag"],
         )
         assert_served_by_provider(
             response=control_served, path_tag=control["path_tag"], credential=control["credential"]
@@ -837,13 +817,11 @@ class TestCredentialRotationFollowsSource:
         tenant_b = env["tenant_b"]
         model = env["model"]
 
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_b["gateway_url"],
-            model_namespace=model["namespace"],
-            model_client_name=model["client_name"],
+            case=tenant_b,
+            model=model,
             api_key=env["access"]["api_key"],
-            path_tag=model["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -884,13 +862,11 @@ class TestCredentialRotationFollowsSource:
         response = None
         last_error_excerpt = ""
         while True:
-            response = infer_external_chat(
+            response = infer_for_shared_model(
                 request_session_http=request_session_http,
-                gateway_url=tenant_b["gateway_url"],
-                model_namespace=model["namespace"],
-                model_client_name=model["client_name"],
+                case=tenant_b,
+                model=model,
                 api_key=env["access"]["api_key"],
-                path_tag=model["path_tag"],
             )
             if response.status_code == 200:
                 if rotated_credential in response.text:
