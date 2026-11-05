@@ -22,7 +22,6 @@ MaaS IPP image pin containing the legacy-controller exclusion guard.
 from __future__ import annotations
 
 import os
-import time
 from typing import Any
 
 import pytest
@@ -31,6 +30,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
+    assert_during_settle_window,
     assert_served_by_provider,
     attachment_httproutes,
     attachment_status_snapshot,
@@ -158,7 +158,7 @@ class TestOmittedGatewayRefsUnchanged:
                 f"{before['destination_rule_uids']} -> {after['destination_rule_uids']}"
             )
 
-        assert_stays_absent(
+        assert_during_settle_window(
             check=_serving_config_unchanged,
             timeout=RECONCILE_WAIT,
             what=f"serving config of {model['name']} staying unchanged after adding own-tenant gatewayRefs",
