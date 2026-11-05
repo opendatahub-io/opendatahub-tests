@@ -99,7 +99,9 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
             for parent in (route.get("spec") or {}).get("parentRefs") or []
         ]
         assert parents == [(MAAS_GATEWAY_NAMESPACE, MAAS_GATEWAY_NAME)], f"unexpected route parentRefs: {parents}"
-        external_model = get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"])
+        external_model = get_json_or_none(
+            client=admin_client, kind="externalmodel", name=model["name"], namespace=model["namespace"]
+        )
         assert external_model is not None, f"ExternalModel {model['namespace']}/{model['name']} not found"
         spec = external_model.get("spec") or {}
         assert not spec.get("gatewayRefs"), f"the implicit attachment must not mutate spec: {spec}"
@@ -126,7 +128,9 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
         model = implicit_model["model"]
 
         def _check() -> bool:
-            provider = get_json_or_none(admin_client, "externalprovider", model["provider"], model["namespace"])
+            provider = get_json_or_none(
+                client=admin_client, kind="externalprovider", name=model["provider"], namespace=model["namespace"]
+            )
             assert provider is not None, f"ExternalProvider {model['namespace']}/{model['provider']} not found"
             status = provider.get("status")
             assert status is not None, f"provider {model['provider']} reports no status yet: {redact_sensitive(status)}"
