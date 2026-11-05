@@ -44,9 +44,9 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     CREDENTIAL_DATA_KEY,
     TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
     apply_credential_secret,
+    assert_during_settle_window,
     assert_not_served,
     assert_served_by_provider,
-    assert_during_settle_window,
     attachment_httproutes,
     credential_copy_in,
     delete_external_model_and_ref,
@@ -69,14 +69,12 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     wait_for_no_attachment_httproute,
     wait_for_no_credential_copy,
     wait_for_no_destination_rules_referencing,
-    wait_for_not_found,
     wait_until,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     label_namespace_gateway_access,
 )
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
-from utilities.resources.external_model import ExternalModel
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -142,11 +140,7 @@ class TestUserNamespaceAttachmentServing:
         )
         route = routes[0]
         assert route["metadata"]["namespace"] == model["namespace"]
-        backend_names = [
-            backend["name"]
-            for rule in route["spec"]["rules"]
-            for backend in rule["backendRefs"]
-        ]
+        backend_names = [backend["name"] for rule in route["spec"]["rules"] for backend in rule["backendRefs"]]
         provider_service = provider_external_name_service(provider_name=model["provider"])
         assert provider_service in backend_names, (
             f"HTTPRoute backendRefs {backend_names} do not reference the provider's "
