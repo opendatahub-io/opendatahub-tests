@@ -494,24 +494,23 @@ def tenant_case(
 
 
 def require_tenant_external_model_support(admin_client: DynamicClient) -> dict[str, bool]:
-    """Skip unless the installed cluster can serve multi-tenant external models.
+    """Fail unless the installed cluster can serve multi-tenant external models.
 
     Requires the additive schema (gatewayRefs + status.gateways) in the
-    *installed* ExternalModel CRD and a deployed ai-gateway-controller. Keeps
-    default CI green while AGC images catch up; the checks auto-activate the
-    suite once the schema and controller ship.
+    *installed* ExternalModel CRD and a deployed ai-gateway-controller;
+    missing prerequisites are a setup failure, not a skip.
     """
     crd = get_json_or_none(client=admin_client, kind="crd", name=EXTERNAL_MODEL_CRD_NAME)
     if crd is None:
-        pytest.skip(f"ExternalModel CRD {EXTERNAL_MODEL_CRD_NAME} is not installed")
+        pytest.fail(f"ExternalModel CRD {EXTERNAL_MODEL_CRD_NAME} is not installed")
     capabilities = installed_crd_capabilities(admin_client=admin_client, crd=crd)
     if not (capabilities["gatewayRefs"] and capabilities["statusGateways"]):
-        pytest.skip(
+        pytest.fail(
             "installed ExternalModel CRD lacks the gatewayRefs additive schema "
             f"(capabilities: {capabilities}); AGC gatewayRefs support not distributed"
         )
     if find_agc_deployment(admin_client) is None:
-        pytest.skip(
+        pytest.fail(
             f"ai-gateway-controller deployment not found "
             f"({AGC_DEPLOYMENT_NAME} in {AGC_DEPLOYMENT_NAMESPACE_CANDIDATES}); AGC companion not installed"
         )
