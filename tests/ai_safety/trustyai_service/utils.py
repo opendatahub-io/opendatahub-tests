@@ -1,5 +1,4 @@
 import datetime
-import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -21,10 +20,9 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.trustyai_service import TrustyAIService
-from timeout_sampler import TimeoutSampler, retry
+from timeout_sampler import TimeoutSampler
 
 from utilities.constants import MARIA_DB_IMAGE, TRUSTYAI_SERVICE_NAME
-from utilities.exceptions import TooManyPodsError, UnexpectedFailureError
 from utilities.general import validate_container_images, wait_for_pods_by_labels
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -296,55 +294,15 @@ def create_standalone_mariadb(
             yield deployment
 
 
-@retry(
-    wait_timeout=120,
-    sleep=5,
-    exceptions_dict={TooManyPodsError: [], UnexpectedFailureError: []},
-)
-def validate_trustyai_service_db_conn_failure(
-    client: DynamicClient, namespace: Namespace, label_selector: str | None
-) -> bool:
-    """Validate if invalid DB Certificate leads to pod crash loop.
-
-    Waits for TrustyAIService pod to fail and checks if the pod is in a CrashLoopBackOff state and
-    the LastState is in terminated state and the cause was a MariaDB TLS certificate exception.
-    Also checks if there are more than one pod for the service.
-
-    Args:
-        client: The OpenShift client.
-        namespace: Namespace under which the pod is created.
-        label_selector: The label selector used to select the correct pod(s) to monitor.
-
-    Returns:
-        bool: True if pod failure is of expected state else False.
-
-    Raises:
-        TimeoutExpiredError: if the method takes longer than `wait_timeout` to return a value.
-        TooManyPodsError: if the number of pods exceeds 1.
-        UnexpectedFailureError: if the pod failure is different from the expected failure mode.
-
-    """
-    pods = list(Pod.get(client=client, namespace=namespace.name, label_selector=label_selector))
-    mariadb_conn_failure_regex = (
-        r"^.+ERROR.+Could not connect to mariadb:.+"
-        r"(PKIX path.*failed|SSL|socket|Connection refused)"
+def validate_trustyai_service_db_conn_failure(trustyai_service: TrustyAIService) -> None:
+    """Wait for TrustyAIService to report a database connection failure."""
+    trustyai_service.wait_for_condition(
+        condition="DBAvailable",
+        status="False",
+        reason="DBConnectionError",
+        timeout=120,
+        sleep_time=5,
     )
-    if pods:
-        if len(pods) > 1:
-            raise TooManyPodsError("More than one pod found in TrustyAIService.")
-        for container_status in pods[0].instance.status.containerStatuses:
-            if (terminate_state := container_status.lastState.terminated) and terminate_state.reason in (
-                pods[0].Status.ERROR,
-                pods[0].Status.CRASH_LOOPBACK_OFF,
-            ):
-                if not re.search(mariadb_conn_failure_regex, terminate_state.message):
-                    raise UnexpectedFailureError(
-                        f"Service {TRUSTYAI_SERVICE_NAME} did not fail with a mariadb connection failure as expected.\
-                                  \nExpected format: {mariadb_conn_failure_regex}\
-                                  \nGot: {terminate_state.message}"
-                    )
-                return True
-    return False
 
 
 @contextmanager
