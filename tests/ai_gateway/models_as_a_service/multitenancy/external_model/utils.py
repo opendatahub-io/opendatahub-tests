@@ -947,8 +947,7 @@ def wait_for_gateway_attachment_ready(
             if condition.get("status") == "True":
                 return condition
             raise AssertionError(
-                f"attachment reports {condition_type}={condition.get('status')} on {where}; "
-                f"conditions: {conditions}"
+                f"attachment reports {condition_type}={condition.get('status')} on {where}; conditions: {conditions}"
             )
         raise AssertionError(f"attachment not ready on {where}; conditions: {conditions}")
 
