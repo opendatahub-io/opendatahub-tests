@@ -1981,6 +1981,44 @@ def wait_shared_attachments_ready(
         )
 
 
+@contextmanager
+def two_gateway_model(
+    admin_client: DynamicClient,
+    *,
+    name: str,
+    namespace: str,
+    cases: dict[str, dict[str, str]],
+    teardown: bool,
+    **stack_kwargs: Any,
+) -> Generator[dict[str, Any], Any, Any]:
+    """A model attached to both tenants' gateways, waited until ready.
+
+    Bundles the two-gateway ``external_model_stack`` shape shared by the
+    class fixtures (both gateway refs, per-tenant refs, ``<name>-client``
+    alias) with ``wait_shared_attachments_ready``; extra ``stack_kwargs``
+    (endpoint, provider_path, credential, provider_config) pass through to
+    ``external_model_stack``.
+    """
+    with external_model_stack(
+        admin_client,
+        name=name,
+        namespace=namespace,
+        gateway_refs=[
+            gateway_ref(cases["tenant_a"]["gateway_name"]),
+            gateway_ref(cases["tenant_b"]["gateway_name"]),
+        ],
+        model_name=f"{name}-client",
+        tenant_refs=[
+            cases["tenant_a"]["tenant_label_name"],
+            cases["tenant_b"]["tenant_label_name"],
+        ],
+        teardown=teardown,
+        **stack_kwargs,
+    ) as model:
+        wait_shared_attachments_ready(admin_client=admin_client, cases=tuple(cases.values()), model=model)
+        yield model
+
+
 def require_maas_route(admin_client: DynamicClient, model: dict[str, Any]) -> None:
     """Skip when the MaaS stack cannot resolve this multi-gateway model.
 
