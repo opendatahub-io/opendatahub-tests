@@ -162,7 +162,12 @@ def deploy_aitenant_best_effort(
             yield aitenant
         finally:
             if teardown:
-                if not aitenant.delete(wait=True, timeout=AITENANT_DELETE_TIMEOUT):
+                try:
+                    delete_timed_out = not aitenant.delete(wait=True, timeout=AITENANT_DELETE_TIMEOUT)
+                except Exception as error:  # noqa: BLE001 - teardown stays best-effort
+                    LOGGER.warning(f"failed to delete AITenant {cr_namespace}/{aitenant_name}: {error}")
+                    delete_timed_out = False
+                if delete_timed_out:
                     LOGGER.warning(
                         f"AITenant {cr_namespace}/{aitenant_name} was not deleted within "
                         f"{AITENANT_DELETE_TIMEOUT}s; clearing the aitenant-cleanup finalizer "
@@ -177,14 +182,18 @@ def deploy_aitenant_best_effort(
                         LOGGER.warning(
                             f"failed to clear the finalizer/delete AITenant {cr_namespace}/{aitenant_name}: {error}"
                         )
-                tenant_namespace = Namespace(
-                    client=admin_client,
-                    name=expected_tenant_namespace_name(aitenant_name=aitenant_name),
-                    ensure_exists=True,
-                )
-                if tenant_namespace.exists:
-                    tenant_namespace.delete(wait=False)
-                    LOGGER.info(f"Deleted tenant namespace '{tenant_namespace.name}'")
+                try:
+                    tenant_namespace = Namespace(
+                        client=admin_client,
+                        name=expected_tenant_namespace_name(aitenant_name=aitenant_name),
+                    )
+                    if tenant_namespace.exists:
+                        tenant_namespace.delete(wait=False)
+                        LOGGER.info(f"Deleted tenant namespace '{tenant_namespace.name}'")
+                except Exception as error:  # noqa: BLE001 - teardown stays best-effort
+                    LOGGER.warning(
+                        f"failed to delete tenant namespace of AITenant {cr_namespace}/{aitenant_name}: {error}"
+                    )
 
 
 AGC_DEPLOYMENT_NAME = os.environ.get("AGC_DEPLOYMENT_NAME", "ai-gateway-controller")
@@ -928,10 +937,19 @@ def wait_for_gateway_attachment_ready(
 
     def _matcher(conditions: list[dict[str, Any]], where: str) -> dict[str, Any]:
         by_type = {condition.get("type"): condition for condition in conditions}
+        # The first condition type that is present is authoritative: an
+        # explicit Ready=False must fail the wait instead of falling through
+        # to Accepted/Attached.
         for condition_type in READY_CONDITION_TYPES:
             condition = by_type.get(condition_type)
-            if condition and condition.get("status") == "True":
+            if condition is None:
+                continue
+            if condition.get("status") == "True":
                 return condition
+            raise AssertionError(
+                f"attachment reports {condition_type}={condition.get('status')} on {where}; "
+                f"conditions: {conditions}"
+            )
         raise AssertionError(f"attachment not ready on {where}; conditions: {conditions}")
 
     return _wait_for_gateway_attachment(
