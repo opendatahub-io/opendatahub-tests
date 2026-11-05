@@ -55,7 +55,6 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     external_model_stack,
     gateway_ref,
     get_json_or_none,
-    httproute_parent_conditions,
     infer_for_shared_model,
     list_json,
     patch_external_model_gateway_refs,
@@ -367,6 +366,10 @@ class TestAttachmentLifecycleCleanup:
                         case=tenant_b,
                         model=model,
                         api_key=access_b["api_key"],
+                        # Single shot per outer attempt: the surrounding
+                        # wait_until owns the bounded retry window, so the
+                        # inner sampler must not outlive it.
+                        retries=0,
                     )
                     assert response.status_code != 429, (
                         "post-detach inference rate-limited while the remaining "
@@ -552,16 +555,19 @@ class TestListenerNotAllowed:
         env = attachment_env
         model = refused_model
         tenant_b = env["tenant_b"]
-        routes = attachment_httproutes(
+        if attachment_httproutes(
             admin_client=admin_client, route_namespace=model["namespace"], gateway_name=tenant_b["gateway_name"]
-        )
-        if routes:
-            for route in routes:
-                conditions = httproute_parent_conditions(route=route, gateway_name=tenant_b["gateway_name"])
-                accepted = next((condition for condition in conditions if condition.get("type") == "Accepted"), None)
-                assert accepted is not None and accepted.get("status") == "False", (
-                    f"route {route['metadata']['name']} must not be admitted: {conditions}"
-                )
+        ):
+            # The attachment condition and the route's parent status can
+            # propagate separately, so wait for the refusal instead of
+            # asserting it immediately.
+            wait_for_attachment_httproute(
+                admin_client=admin_client,
+                route_namespace=model["namespace"],
+                gateway_name=tenant_b["gateway_name"],
+                model_name=model["name"],
+                accepted=False,
+            )
         response = infer_for_shared_model(
             request_session_http=request_session_http,
             case=tenant_b,
@@ -741,15 +747,16 @@ class TestListenerAdmissionRecovery:
                 gateway_name=tenant_b["gateway_name"],
                 reason="NotAllowedByListeners",
             )
-            routes = attachment_httproutes(
-                admin_client=admin_client, route_namespace=model["namespace"], gateway_name=tenant_b["gateway_name"]
+            # The attachment condition and the route's parent status can
+            # propagate separately, so wait for the refusal instead of
+            # asserting it immediately.
+            wait_for_attachment_httproute(
+                admin_client=admin_client,
+                route_namespace=model["namespace"],
+                gateway_name=tenant_b["gateway_name"],
+                model_name=model["name"],
+                accepted=False,
             )
-            for route in routes:
-                conditions = httproute_parent_conditions(route=route, gateway_name=tenant_b["gateway_name"])
-                accepted = next((condition for condition in conditions if condition.get("type") == "Accepted"), None)
-                assert accepted is not None and accepted.get("status") == "False", (
-                    f"route {route['metadata']['name']} must not stay admitted: {conditions}"
-                )
 
             def _refused() -> bool:
                 response = infer_for_shared_model(
