@@ -101,14 +101,20 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
             for parent in (route.get("spec") or {}).get("parentRefs") or []
         ]
         assert parents == [(MAAS_GATEWAY_NAMESPACE, MAAS_GATEWAY_NAME)], f"unexpected route parentRefs: {parents}"
-        external_model = get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"]) or {}
+        external_model = get_json_or_none(
+            client=admin_client, kind="externalmodel", name=model["name"], namespace=model["namespace"]
+        )
+        assert external_model is not None, f"ExternalModel {model['namespace']}/{model['name']} not found"
         spec = external_model.get("spec") or {}
         assert not spec.get("gatewayRefs"), f"the implicit attachment must not mutate spec: {spec}"
-        status = external_model.get("status") or {}
-        results = [(entry.get("namespace"), entry.get("name")) for entry in status.get("gateways") or []]
+        status = external_model.get("status")
+        assert status is not None, f"ExternalModel {model['name']} reports no status yet: {redact_sensitive(status)}"
+        assert status.get("gateways") is not None, f"ExternalModel {model['name']} lists no gateways: {status}"
+        results = [(entry["namespace"], entry["name"]) for entry in status["gateways"]]
         assert results == [(MAAS_GATEWAY_NAMESPACE, MAAS_GATEWAY_NAME)], f"unexpected status.gateways: {results}"
-        assert status.get("httpRouteName") == route_name, (
-            f"status.httpRouteName {status.get('httpRouteName')!r} must name the single attachment "
+        assert status.get("httpRouteName") is not None, f"ExternalModel {model['name']} names no route: {status}"
+        assert status["httpRouteName"] == route_name, (
+            f"status.httpRouteName {status['httpRouteName']!r} must name the single attachment "
             f"route {route_name} (maas-controller resolves the model's route from it)"
         )
 
@@ -124,13 +130,27 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
         model = implicit_model["model"]
 
         def _check() -> bool:
-            provider = get_json_or_none(admin_client, "externalprovider", model["provider"], model["namespace"]) or {}
-            status = provider.get("status") or {}
-            ready: dict[str, Any] = next(
-                (condition for condition in status.get("conditions") or [] if condition.get("type") == "Ready"),
-                {},
+            provider = get_json_or_none(
+                client=admin_client, kind="externalprovider", name=model["provider"], namespace=model["namespace"]
             )
-            assert status.get("phase") == "Ready" and ready.get("status") == "True", (
+            assert provider is not None, f"ExternalProvider {model['namespace']}/{model['provider']} not found"
+            status = provider.get("status")
+            assert status is not None, (
+                f"provider {model['provider']} reports no status yet: {redact_sensitive(status)}"
+            )
+            conditions = status.get("conditions")
+            assert conditions is not None, (
+                f"provider {model['provider']} reports no conditions yet: {redact_sensitive(status)}"
+            )
+            ready = next((condition for condition in conditions if condition["type"] == "Ready"), None)
+            assert ready is not None, (
+                f"provider {model['provider']} reports no Ready condition yet: {redact_sensitive(status)}"
+            )
+            phase = status.get("phase")
+            assert phase is not None, (
+                f"provider {model['provider']} reports no phase yet: {redact_sensitive(status)}"
+            )
+            assert phase == "Ready" and ready["status"] == "True", (
                 f"provider {model['provider']} is not Ready: {redact_sensitive(status)}"
             )
             return True
