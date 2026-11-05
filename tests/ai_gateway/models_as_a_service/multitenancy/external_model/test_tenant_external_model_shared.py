@@ -361,9 +361,7 @@ class TestSharedModelAmbiguousModelRef:
                     name=ref_name,
                     namespace=model["namespace"],
                 )
-                assert phase != "Failed", (
-                    f"pinned modelRef {ref_name} must not fail: {redact_sensitive(status)}"
-                )
+                assert phase != "Failed", f"pinned modelRef {ref_name} must not fail: {redact_sensitive(status)}"
                 conditions = status.get("conditions")
                 assert conditions is not None, (
                     f"pinned modelRef {ref_name} reports no conditions yet: {redact_sensitive(status)}"
