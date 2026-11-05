@@ -102,7 +102,7 @@ def invalid_s3_credentials_secret(
 
 
 @pytest.fixture(scope="package")
-def mlserver_serving_runtime(
+def negative_mlserver_serving_runtime(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
@@ -121,7 +121,7 @@ def mlserver_serving_runtime(
 def negative_test_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    mlserver_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
@@ -131,7 +131,7 @@ def negative_test_mlserver_isvc(
         client=admin_client,
         name="neg-mlserver-isvc",
         namespace=negative_test_namespace.name,
-        runtime=mlserver_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=ModelFormat.ONNX,
@@ -146,7 +146,7 @@ def negative_test_mlserver_isvc(
 def invalid_s3_credentials_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    mlserver_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     invalid_s3_credentials_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
@@ -156,7 +156,7 @@ def invalid_s3_credentials_mlserver_isvc(
         client=admin_client,
         name="neg-bad-s3-isvc",
         namespace=negative_test_namespace.name,
-        runtime=mlserver_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=invalid_s3_credentials_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=ModelFormat.ONNX,
@@ -173,7 +173,7 @@ def invalid_s3_credentials_mlserver_isvc(
 def wrong_model_format_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    mlserver_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
@@ -183,7 +183,7 @@ def wrong_model_format_mlserver_isvc(
         client=admin_client,
         name="neg-wrong-fmt-isvc",
         namespace=negative_test_namespace.name,
-        runtime=mlserver_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=WRONG_MODEL_FORMAT,
@@ -199,7 +199,7 @@ def wrong_model_format_mlserver_isvc(
 def corrupted_model_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    mlserver_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
@@ -209,7 +209,7 @@ def corrupted_model_mlserver_isvc(
         client=admin_client,
         name="neg-corrupted-isvc",
         namespace=negative_test_namespace.name,
-        runtime=mlserver_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=ModelFormat.ONNX,
@@ -243,7 +243,7 @@ def bad_storage_class_pvc(
 def bad_pvc_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    mlserver_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     bad_storage_class_pvc: PersistentVolumeClaim,
 ) -> Generator[InferenceService, Any, Any]:
     """InferenceService backed by a PVC that cannot be provisioned."""
@@ -251,7 +251,7 @@ def bad_pvc_mlserver_isvc(
         client=admin_client,
         name="neg-bad-pvc-isvc",
         namespace=negative_test_namespace.name,
-        runtime=mlserver_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_uri=f"pvc://{bad_storage_class_pvc.name}/models/",
         model_format=ModelFormat.ONNX,
         model_version=ModelVersion.V1,
@@ -303,7 +303,7 @@ def kserve_control_plane_restart_baseline(
 def neighbor_failing_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    mlserver_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     invalid_s3_credentials_secret: Secret,
     negative_test_mlserver_isvc: InferenceService,
@@ -322,7 +322,7 @@ def neighbor_failing_mlserver_isvc(
         client=admin_client,
         name="neg-fail-neighbor-isvc",
         namespace=negative_test_namespace.name,
-        runtime=mlserver_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=invalid_s3_credentials_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=ModelFormat.ONNX,
@@ -386,7 +386,7 @@ def auth_service_account(
 def negative_test_mlserver_isvc_with_auth(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    mlserver_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
     auth_service_account: ServiceAccount,
@@ -397,7 +397,7 @@ def negative_test_mlserver_isvc_with_auth(
         client=admin_client,
         name="neg-auth-mlserver-isvc",
         namespace=negative_test_namespace.name,
-        runtime=mlserver_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=ModelFormat.ONNX,

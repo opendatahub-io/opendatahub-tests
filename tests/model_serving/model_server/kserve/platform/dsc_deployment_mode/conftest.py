@@ -42,7 +42,7 @@ def inferenceservice_config_cm(admin_client: DynamicClient) -> ConfigMap:
 
 
 @pytest.fixture(scope="class")
-def mlserver_inference_service(
+def dsc_mlserver_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,

@@ -27,7 +27,7 @@ INFERENCE_SERVICE_PARAMS = {
 
 @pytest.mark.parametrize(
     "default_deployment_mode_in_dsc, unprivileged_model_namespace, "
-    "mlserver_kserve_serving_runtime, mlserver_inference_service",
+    "mlserver_kserve_serving_runtime, dsc_mlserver_inference_service",
     [
         pytest.param(
             {"default-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
@@ -51,17 +51,19 @@ class TestKServeDSCRawDefaultDeploymentMode:
         4. Send an inference request and verify a successful response over HTTPS.
     """
 
-    def test_isvc_contains_raw_deployment_mode(self, default_deployment_mode_in_dsc, mlserver_inference_service):
+    def test_isvc_contains_raw_deployment_mode(self, default_deployment_mode_in_dsc, dsc_mlserver_inference_service):
         """Verify that default deployment mode is set to raw in inference service."""
-        actual_mode = mlserver_inference_service.instance.metadata.annotations[Annotations.KserveIo.DEPLOYMENT_MODE]
+        actual_mode = dsc_mlserver_inference_service.instance.metadata.annotations[Annotations.KserveIo.DEPLOYMENT_MODE]
         assert actual_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES, (
             f"Expected one of {KServeDeploymentType.RAW_DEPLOYMENT_MODES}, got {actual_mode!r}"
         )
 
-    def test_kserve_dsc_raw_default_deployment_mode(self, default_deployment_mode_in_dsc, mlserver_inference_service):
+    def test_kserve_dsc_raw_default_deployment_mode(
+        self, default_deployment_mode_in_dsc, dsc_mlserver_inference_service
+    ):
         """Verify that Raw deployment model can be deployed without specifying in isvc"""
         verify_inference_response(
-            inference_service=mlserver_inference_service,
+            inference_service=dsc_mlserver_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,

@@ -42,7 +42,7 @@ from utilities.kueue_utils import (
     is_kueue_operator_installed,
     wait_for_kueue_crds_available,
 )
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG, ONNX_RESNET50_INFERENCE_CONFIG
 from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.inference_pool import InferencePool
@@ -61,17 +61,21 @@ def _isvc_model_format(inference_service: InferenceService) -> str:
 
 
 def get_upgrade_isvc_inference_config(inference_service: InferenceService) -> dict[str, Any]:
-    """Return the inference config matching the ISVC's deployed model format.
+    """Return the inference config matching the ISVC's deployed model.
 
     Upgrade lanes re-run inference against ISVCs created by the pre-upgrade run. During the
     OVMS-to-MLServer migration window, pre-upgrade release branches still deploy ``openvino_ir``
     models served by OVMS, while this branch deploys ONNX models served by MLServer. Selecting
-    the payload by the ISVC's actual model format keeps post-upgrade verification working for
-    both. Remove the ``openvino_ir`` branch once the oldest supported pre-upgrade branch deploys
-    MLServer (see RHOAIENG-95304).
+    the payload by the ISVC's actual model (format plus storage URI) keeps post-upgrade
+    verification working for both: the S3 MNIST ONNX model takes the MNIST payload, while the
+    ``MLSERVER_ONNX`` ModelCar is a ResNet-50 image whose payload differs. Remove the
+    ``openvino_ir`` branch once the oldest supported pre-upgrade branch deploys MLServer
+    (see RHOAIENG-95304).
     """
     if _isvc_model_format(inference_service) == ModelAndFormat.OPENVINO_IR:
         return OPENVINO_KSERVE_INFERENCE_CONFIG
+    if inference_service.instance.spec.predictor.model.storageUri == ModelCarImage.MLSERVER_ONNX:
+        return ONNX_RESNET50_INFERENCE_CONFIG
     return ONNX_INFERENCE_CONFIG
 
 

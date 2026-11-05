@@ -3,6 +3,7 @@ import pytest
 from tests.model_serving.model_server.upgrade.utils import (
     get_isvc_baseline,
     get_metrics_value,
+    get_upgrade_isvc_inference_config,
     get_upgrade_isvc_metrics_query,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
@@ -16,7 +17,6 @@ from tests.model_serving.model_server.utils import (
 )
 from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_RESNET50_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.rawdeployment,
@@ -51,7 +51,7 @@ class TestPreUpgradeMetricsServer:
         """Verify inference works and metrics are captured before upgrade"""
         verify_inference_response(
             inference_service=metrics_inference_service_fixture,
-            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=metrics_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
@@ -64,7 +64,7 @@ class TestPreUpgradeMetricsServer:
 
         run_inference_multiple_times(
             isvc=metrics_inference_service_fixture,
-            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=metrics_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             iterations=total_runs,
@@ -132,7 +132,7 @@ class TestPostUpgradeMetricsServer:
 
         verify_inference_response(
             inference_service=metrics_inference_service_fixture,
-            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=metrics_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
