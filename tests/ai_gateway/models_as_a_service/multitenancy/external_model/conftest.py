@@ -548,7 +548,9 @@ def attached_model(
             )
         )
         access = stack.enter_context(
-            cm=serve_in_tenant_and_cleanup(admin_client, request_session_http, ocp_token_for_actor, tenant_b, model)
+            cm=serve_in_tenant_and_cleanup(
+                admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
+            )
         )
         yield {"model": model, "access": access}
 
@@ -575,7 +577,9 @@ def unrelated_model(
             )
         )
         access = stack.enter_context(
-            cm=serve_in_tenant_and_cleanup(admin_client, request_session_http, ocp_token_for_actor, tenant_b, model)
+            cm=serve_in_tenant_and_cleanup(
+                admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
+            )
         )
         yield {"model": model, "access": access}
 
@@ -652,7 +656,12 @@ def recovery_env(
         )
         control_access = stack.enter_context(
             cm=serve_in_tenant_and_cleanup(
-                admin_client, request_session_http, ocp_token_for_actor, tenant_b, control_model
+                admin_client,
+                request_session_http,
+                ocp_token_for_actor,
+                tenant_b,
+                control_model,
+                teardown=teardown_resources,
             )
         )
         yield {
@@ -702,7 +711,9 @@ def rotation_model(
             )
         )
         access = stack.enter_context(
-            cm=serve_in_tenant_and_cleanup(admin_client, request_session_http, ocp_token_for_actor, tenant_b, model)
+            cm=serve_in_tenant_and_cleanup(
+                admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
+            )
         )
         yield {
             "tenant_b": tenant_b,
