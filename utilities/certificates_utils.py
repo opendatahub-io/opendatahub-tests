@@ -189,6 +189,12 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
     """
     previous = os.environ.get("REQUESTS_CA_BUNDLE")
     bundle = os.environ.get("TENANT_EXTERNAL_MODEL_CA_BUNDLE", "")
+    if bundle and not os.path.isfile(bundle):
+        # Fail fast on a misconfigured override: exporting a nonexistent path
+        # would silently break every TLS verification in the session.
+        raise FileNotFoundError(
+            f"TENANT_EXTERNAL_MODEL_CA_BUNDLE={bundle!r} does not exist or is not a readable file"
+        )
     if not bundle:
         try:
             for bundle in TimeoutSampler(
@@ -220,7 +226,9 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
         yield bundle
     finally:
         if exported is not None:
-            os.unlink(exported)
+            # The temp file may already be gone (e.g. a /tmp cleanup); its
+            # deletion must not skip the environment restoration below.
+            os.unlink(exported, missing_ok=True)
         if previous is None:
             os.environ.pop("REQUESTS_CA_BUNDLE", None)
         else:
