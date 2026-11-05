@@ -32,7 +32,6 @@ namespaces with unique names.
 from __future__ import annotations
 
 import base64
-import time
 import uuid
 from typing import Any
 
@@ -40,17 +39,17 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.maas_model_ref import MaaSModelRef
 
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
     CREDENTIAL_DATA_KEY,
-    TENANT_EXTERNAL_MODEL_POLL_INTERVAL,
     TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
     apply_credential_secret,
     assert_not_served,
     assert_served_by_provider,
+    assert_during_settle_window,
     attachment_httproutes,
     credential_copy_in,
+    delete_external_model_and_ref,
     destination_rules_referencing,
     external_model_stack,
     gateway_ref,
@@ -144,9 +143,9 @@ class TestUserNamespaceAttachmentServing:
         route = routes[0]
         assert route["metadata"]["namespace"] == model["namespace"]
         backend_names = [
-            backend.get("name")
-            for rule in route.get("spec", {}).get("rules", [])
-            for backend in rule.get("backendRefs", [])
+            backend["name"]
+            for rule in route["spec"]["rules"]
+            for backend in rule["backendRefs"]
         ]
         provider_service = provider_external_name_service(provider_name=model["provider"])
         assert provider_service in backend_names, (
@@ -275,28 +274,7 @@ class TestAttachmentLifecycleCleanup:
             gateway_refs=[gateway_ref(tenant_a["gateway_name"]), gateway_ref(tenant_b["gateway_name"])],
             teardown=teardown_resources,
         ) as model:
-            for case in (tenant_a, tenant_b):
-                wait_for_gateway_attachment_ready(
-                    admin_client=admin_client,
-                    model_name=model["name"],
-                    model_namespace=model["namespace"],
-                    gateway_name=case["gateway_name"],
-                )
-                wait_for_attachment_httproute(
-                    admin_client=admin_client,
-                    route_namespace=model["namespace"],
-                    gateway_name=case["gateway_name"],
-                    model_name=model["name"],
-                )
-                wait_for_credential_copy(
-                    admin_client=admin_client,
-                    tenant_namespace=case["tenant_ns"],
-                    source_secret_name=model["secret_name"],
-                    source_namespace=model["secret_namespace"],
-                )
-                assert destination_rules_referencing(
-                    admin_client, model["name"], MAAS_GATEWAY_NAMESPACE, also_matching=(case["gateway_name"],)
-                ), f"provider DestinationRule for {model['name']} on {case['gateway_name']} must exist while attached"
+            wait_for_model_attached_to_gateways(admin_client, model, (tenant_a, tenant_b))
 
             tenant_b_rule_uids = {
                 rule["metadata"]["uid"]
@@ -417,41 +395,9 @@ class TestAttachmentLifecycleCleanup:
             gateway_refs=[gateway_ref(tenant_a["gateway_name"]), gateway_ref(tenant_b["gateway_name"])],
             teardown=teardown_resources,
         ) as model:
-            for case in (tenant_a, tenant_b):
-                wait_for_gateway_attachment_ready(
-                    admin_client=admin_client,
-                    model_name=model["name"],
-                    model_namespace=model["namespace"],
-                    gateway_name=case["gateway_name"],
-                )
-                wait_for_credential_copy(
-                    admin_client=admin_client,
-                    tenant_namespace=case["tenant_ns"],
-                    source_secret_name=model["secret_name"],
-                    source_namespace=model["secret_namespace"],
-                )
-                assert destination_rules_referencing(
-                    admin_client, model["name"], MAAS_GATEWAY_NAMESPACE, also_matching=(case["gateway_name"],)
-                ), f"provider DestinationRule for {model['name']} on {case['gateway_name']} must exist while attached"
+            wait_for_model_attached_to_gateways(admin_client, model, (tenant_a, tenant_b))
 
-            model_ref = MaaSModelRef(
-                client=admin_client,
-                name=model["name"],
-                namespace=model["namespace"],
-                ensure_exists=True,
-            )
-            model_ref.delete()
-            wait_for_not_found(
-                client=admin_client, kind="maasmodelref", name=model["name"], namespace=model["namespace"]
-            )
-
-            external_model = ExternalModel(
-                client=admin_client,
-                name=model["name"],
-                namespace=model["namespace"],
-                ensure_exists=True,
-            )
-            external_model.delete()
+            delete_external_model_and_ref(admin_client, model["name"], model["namespace"])
 
             for case in (tenant_a, tenant_b):
                 wait_for_no_attachment_httproute(
@@ -469,7 +415,6 @@ class TestAttachmentLifecycleCleanup:
             wait_for_no_destination_rules_referencing(  # noqa: FCN001 - namespace feeds *args
                 admin_client, model["name"], MAAS_GATEWAY_NAMESPACE
             )
-            assert get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"]) is None
 
         unrelated = unrelated_model["model"]
         response = infer_for_shared_model(
@@ -527,8 +472,8 @@ class TestListenerNotAllowed:
             gateway_name=tenant_b["gateway_name"],
             reason="NotAllowedByListeners",
         )
-        deadline = time.time() + RECONCILE_WAIT
-        while True:
+
+        def _nothing_published_into_tenant() -> None:
             assert (
                 credential_copy_in(admin_client, tenant_b["tenant_ns"], model["secret_name"], model["secret_namespace"])
                 is None
@@ -536,9 +481,13 @@ class TestListenerNotAllowed:
             assert not destination_rules_referencing(admin_client, model["name"], MAAS_GATEWAY_NAMESPACE), (
                 "DestinationRule must not be created while the listener refuses the namespace"
             )
-            if time.time() >= deadline:
-                break
-            time.sleep(TENANT_EXTERNAL_MODEL_POLL_INTERVAL)
+
+        assert_during_settle_window(
+            check=_nothing_published_into_tenant,
+            timeout=RECONCILE_WAIT,
+            what=f"nothing published into {tenant_b['tenant_ns']} for {model['name']} "
+            "while the listener refuses the namespace",
+        )
 
     @pytest.mark.tier2
     def test_route_not_admitted_and_not_served(
@@ -648,9 +597,9 @@ class TestListenerAdmissionRecovery:
         env = recovery_env
         tenant_b = env["tenant_b"]
         model = env["recovering_model"]
-        spec_before = (get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"]) or {}).get(
-            "spec"
-        )
+        model_json = get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"])
+        assert model_json is not None, f"externalmodel {model['namespace']}/{model['name']} must exist before recovery"
+        spec_before = model_json["spec"]
 
         label_namespace_gateway_access(
             admin_client=admin_client,
@@ -670,9 +619,9 @@ class TestListenerAdmissionRecovery:
             source_secret_name=model["secret_name"],
             source_namespace=model["secret_namespace"],
         )
-        spec_after = (get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"]) or {}).get(
-            "spec"
-        )
+        model_json = get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"])
+        assert model_json is not None, f"externalmodel {model['namespace']}/{model['name']} must exist after recovery"
+        spec_after = model_json["spec"]
         assert spec_after == spec_before, (
             f"recovery must not edit the model: spec changed from {spec_before} to {spec_after}"
         )
@@ -866,11 +815,14 @@ class TestCredentialRotationFollowsSource:
             f"in {tenant_b['tenant_ns']}",
         )
 
-        deadline = time.time() + TENANT_EXTERNAL_MODEL_READY_TIMEOUT
-        stale_serving_observed = False
-        response = None
-        last_error_excerpt = ""
-        while True:
+        # Serving must pick up the rotated key. 200-with-old-key responses are
+        # the known stale data-plane propagation gap and keep polling (tracked
+        # for the deadline verdict); a 200 carrying neither key is a hard
+        # failure; non-200 responses break serving and only the deadline
+        # verdict tells the stale-key gap apart from it.
+        serving_state = {"stale_observed": False, "last_error_excerpt": ""}
+
+        def _serving_carries_rotated_credential() -> requests.Response:
             response = infer_for_shared_model(
                 request_session_http=request_session_http,
                 case=tenant_b,
@@ -879,9 +831,13 @@ class TestCredentialRotationFollowsSource:
             )
             if response.status_code == 200:
                 if rotated_credential in response.text:
-                    break
+                    return response
                 if model["credential"] in response.text:
-                    stale_serving_observed = True
+                    serving_state["stale_observed"] = True
+                    assert rotated_credential in response.text, (
+                        "serving still carries the pre-rotation credential while the "
+                        "rotation propagates (stale data-plane injection)"
+                    )
                 else:
                     pytest.fail(
                         "serving returned 200 with neither the rotated nor the "
@@ -889,25 +845,38 @@ class TestCredentialRotationFollowsSource:
                         f"{redact_sensitive(response.text)[:300]}"
                     )
             else:
-                stale_serving_observed = False
-                last_error_excerpt = redact_sensitive(value=response.text)[:300]
-            if time.time() >= deadline:
-                if stale_serving_observed:
-                    pytest.skip(
-                        "credential rotation did not reach serving traffic within "
-                        f"{TENANT_EXTERNAL_MODEL_READY_TIMEOUT}s: requests kept "
-                        "succeeding with the OLD key (stale data-plane injection — "
-                        "the known data-plane credential propagation gap this "
-                        "scenario tracks; the controller-owned copy in the tenant "
-                        "namespace did update); rerun when the Secret-watch "
-                        "propagation ships"
-                    )
-                pytest.fail(
-                    "serving broke entirely after credential rotation (no "
-                    "successful request carried the rotated key within "
-                    f"{TENANT_EXTERNAL_MODEL_READY_TIMEOUT}s; last response "
-                    f"{response.status_code}: {last_error_excerpt}) — distinct "
-                    "from the known stale-key gap"
+                serving_state["stale_observed"] = False
+                serving_state["last_error_excerpt"] = (
+                    f"{response.status_code}: {redact_sensitive(value=response.text)[:300]}"
                 )
-            time.sleep(TENANT_EXTERNAL_MODEL_POLL_INTERVAL)
+                assert response.status_code == 200, (
+                    f"serving returned {response.status_code} while the rotation "
+                    f"propagates: {serving_state['last_error_excerpt']}"
+                )
+            return response  # unreachable; every branch returns or raises
+
+        try:
+            response = wait_until(
+                check=_serving_carries_rotated_credential,
+                timeout=TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+                what=f"serving traffic on {tenant_b['gateway_name']} to carry the rotated credential",
+            )
+        except TimeoutError:
+            if serving_state["stale_observed"]:
+                pytest.skip(
+                    "credential rotation did not reach serving traffic within "
+                    f"{TENANT_EXTERNAL_MODEL_READY_TIMEOUT}s: requests kept "
+                    "succeeding with the OLD key (stale data-plane injection — "
+                    "the known data-plane credential propagation gap this "
+                    "scenario tracks; the controller-owned copy in the tenant "
+                    "namespace did update); rerun when the Secret-watch "
+                    "propagation ships"
+                )
+            pytest.fail(
+                "serving broke entirely after credential rotation (no "
+                "successful request carried the rotated key within "
+                f"{TENANT_EXTERNAL_MODEL_READY_TIMEOUT}s; last response: "
+                f"{serving_state['last_error_excerpt']}) — distinct "
+                "from the known stale-key gap"
+            )
         assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=rotated_credential)
