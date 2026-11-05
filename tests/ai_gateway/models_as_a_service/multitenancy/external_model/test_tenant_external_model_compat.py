@@ -39,6 +39,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     gateway_ref,
     get_json_or_none,
     infer_external_chat,
+    infer_for_shared_model,
     patch_external_model_gateway_refs,
     provider_external_name_service,
     wait_for_gateway_attachment_ready,
@@ -84,13 +85,11 @@ class TestOmittedGatewayRefsUnchanged:
             f"(tenant-local resolution keeps the AGC naming, not the legacy "
             f"'{model['name']}'), got {route_names}"
         )
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_a["gateway_url"],
-            model_namespace=model["namespace"],
-            model_client_name=model["client_name"],
+            case=tenant_a,
+            model=model,
             api_key=legacy_shaped_model["access"]["api_key"],
-            path_tag=model["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -160,13 +159,11 @@ class TestOmittedGatewayRefsUnchanged:
                 f"{before['destination_rule_uids']} -> {after['destination_rule_uids']}"
             )
             time.sleep(SETTLE_POLL_INTERVAL)
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=tenant_a["gateway_url"],
-            model_namespace=model["namespace"],
-            model_client_name=model["client_name"],
+            case=tenant_a,
+            model=model,
             api_key=legacy_shaped_model["access"]["api_key"],
-            path_tag=model["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
@@ -272,12 +269,10 @@ class TestLegacyIppCoexistence:
         """
         model = coexistence["model"]
         case_b = coexistence["case_b"]
-        response = infer_external_chat(
+        response = infer_for_shared_model(
             request_session_http=request_session_http,
-            gateway_url=case_b["gateway_url"],
-            model_namespace=model["namespace"],
-            model_client_name=model["client_name"],
+            case=case_b,
+            model=model,
             api_key=coexistence["access"]["api_key"],
-            path_tag=model["path_tag"],
         )
         assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
