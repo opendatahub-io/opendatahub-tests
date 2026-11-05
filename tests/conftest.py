@@ -54,6 +54,7 @@ from utilities.constants import (
     Labels,
     MinIo,
     Protocols,
+    SeaweedFs,
     Timeout,
     OPENSHIFT_OPERATORS,
 )
@@ -118,6 +119,11 @@ def model_namespace(
     ns = Namespace(client=admin_client, name=request.param["name"])
 
     if pytestconfig.option.post_upgrade:
+        if not ns.exists:
+            pytest.fail(
+                f"[POST-UPGRADE] Prerequisite namespace '{ns.name}' is absent. "
+                "Ensure the corresponding pre-upgrade setup completed successfully."
+            )
         yield ns
         ns.clean_up()
     else:
@@ -212,40 +218,12 @@ def ci_s3_bucket_endpoint(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="session")
-def serving_argument(pytestconfig: pytest.Config, modelcar_yaml_config: dict[str, Any] | None) -> tuple[list[str], int]:
-    if modelcar_yaml_config:
-        val = modelcar_yaml_config.get("serving_arguments", {})
-        if isinstance(val, dict):
-            args = val.get("args", [])
-            gpu_count = val.get("gpu_count", 1)
-        return args, gpu_count
-
+def serving_argument(pytestconfig: pytest.Config) -> tuple[list[str], int]:
     raw_arg = pytestconfig.option.serving_argument
     try:
         return json.loads(raw_arg)
     except json.JSONDecodeError:
-        raise ValueError(
-            "Serving arguments should be a valid JSON list. "
-            "Either pass with `--serving-argument` or set it correctly in modelcar.yaml"
-        )
-
-
-@pytest.fixture(scope="session")
-def modelcar_yaml_config(pytestconfig: pytest.Config) -> dict[str, Any] | None:
-    """
-    Fixture to get the path to the modelcar.yaml file.
-    """
-    config_path = pytestconfig.option.model_car_yaml_path
-    if not config_path:
-        return None
-    with open(config_path, "r") as file:
-        try:
-            modelcar_yaml = yaml.safe_load(file)
-            if not isinstance(modelcar_yaml, dict):
-                raise ValueError("modelcar.yaml should contain a dictionary.")
-            return modelcar_yaml
-        except yaml.YAMLError as e:
-            raise ValueError(f"Error parsing modelcar.yaml: {e}") from e
+        raise ValueError("Serving arguments should be a valid JSON list. Pass with `--serving-argument`")
 
 
 @pytest.fixture(scope="session")
@@ -289,7 +267,7 @@ def supported_accelerator_type(pytestconfig: pytest.Config) -> str | None:
     if accelerator_type.lower() not in AcceleratorType.SUPPORTED_LISTS:
         raise ValueError(
             "accelerator type is not defined."
-            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCLERATOR_TYPE` environment variable"
+            "Either pass with `--supported-accelerator-type` or set `SUPPORTED_ACCELERATOR_TYPE` environment variable"
         )
     return accelerator_type
 
@@ -311,10 +289,12 @@ def mlserver_runtime_image(pytestconfig: pytest.Config) -> str | None:
 
 
 @pytest.fixture(scope="session")
-def triton_runtime_image(pytestconfig: pytest.Config) -> str | None:
+def triton_runtime_image(pytestconfig: pytest.Config) -> str:
+    from tests.model_serving.model_runtime.triton.constant import TRITON_IMAGE
+
     runtime_image = pytestconfig.option.triton_runtime_image
     if not runtime_image:
-        return None
+        return TRITON_IMAGE
     return runtime_image
 
 
@@ -337,7 +317,9 @@ def use_unprivileged_client(pytestconfig: pytest.Config) -> bool:
 
 
 @pytest.fixture(scope="session")
-def non_admin_user_password(admin_client: DynamicClient, use_unprivileged_client: bool) -> tuple[str, str] | None:
+def non_admin_user_password(
+    admin_client: DynamicClient, use_unprivileged_client: bool
+) -> tuple[str, RedactedString] | None:
     def _decode_split_data(_data: str) -> list[str]:
         return base64.b64decode(_data).decode().split(",")
 
@@ -354,9 +336,10 @@ def non_admin_user_password(admin_client: DynamicClient, use_unprivileged_client
         data = ldap_Secret[0].instance.data
         users = _decode_split_data(_data=data.users)
         passwords = _decode_split_data(_data=data.passwords)
-        first_user_index = next(index for index, user in enumerate(users) if "user" in user)
+        first_user_index = next((index for index, user in enumerate(users) if "user" in user), None)
 
-        return users[first_user_index], passwords[first_user_index]
+        if first_user_index is not None:
+            return users[first_user_index], RedactedString(value=passwords[first_user_index])
 
     LOGGER.error("ldap secret not found")
     return None
@@ -378,7 +361,7 @@ def unprivileged_client(
     admin_client: DynamicClient,
     use_unprivileged_client: bool,
     kubconfig_filepath: str,
-    non_admin_user_password: tuple[str, str],
+    non_admin_user_password: tuple[str, RedactedString] | None,
 ) -> Generator[DynamicClient, Any, Any]:
     """
     Provides none privileged API client. If non_admin_user_password is None, then it will raise.
@@ -486,11 +469,31 @@ def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, An
 
 
 @pytest.fixture(scope="class")
+def minio_credentials_secret(
+    admin_client: DynamicClient,
+    minio_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """MinIO server credentials in the MinIO namespace."""
+    with Secret(
+        client=admin_client,
+        name="minio-credentials",
+        namespace=minio_namespace.name,
+        string_data={
+            MinIo.Credentials.ACCESS_KEY_NAME: MinIo.Credentials.ACCESS_KEY_VALUE,
+            MinIo.Credentials.SECRET_KEY_NAME: MinIo.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def minio_pod(
     request: FixtureRequest,
     admin_client: DynamicClient,
     minio_namespace: Namespace,
+    minio_credentials_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
+    """MinIO Pod with credentials supplied by a Secret."""
     pod_labels = {Labels.Openshift.APP: MinIo.Metadata.NAME}
 
     if labels := request.param.get("labels"):
@@ -506,11 +509,21 @@ def minio_pod(
                 "env": [
                     {
                         "name": MinIo.Credentials.ACCESS_KEY_NAME,
-                        "value": MinIo.Credentials.ACCESS_KEY_VALUE,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": minio_credentials_secret.name,
+                                "key": MinIo.Credentials.ACCESS_KEY_NAME,
+                            },
+                        },
                     },
                     {
                         "name": MinIo.Credentials.SECRET_KEY_NAME,
-                        "value": MinIo.Credentials.SECRET_KEY_VALUE,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": minio_credentials_secret.name,
+                                "key": MinIo.Credentials.SECRET_KEY_NAME,
+                            },
+                        },
                     },
                 ],
                 "image": request.param.get("image"),
@@ -568,6 +581,165 @@ def minio_data_connection(
         yield secret
 
 
+# SeaweedFS
+# Used as a drop-in S3-compatible replacement for vanilla MinIO (quay.io/minio images) in tests
+# that don't require real MinIO. The shared minio_* fixtures above remain for components that do.
+@pytest.fixture(scope="class")
+def seaweedfs_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    with create_ns(
+        name=f"{SeaweedFs.Metadata.NAME}-{shortuuid.uuid().lower()}",
+        admin_client=admin_client,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_filer_config(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace
+) -> Generator[ConfigMap, Any, Any]:
+    """Configure SeaweedFS filer metadata storage on the writable temporary filesystem."""
+    with ConfigMap(
+        client=admin_client,
+        name="seaweedfs-filer-config",
+        namespace=seaweedfs_namespace.name,
+        data={"filer.toml": '[leveldb2]\nenabled = true\ndir = "/tmp/filerldb2"\n'},
+    ) as config_map:
+        yield config_map
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_credentials_secret(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """SeaweedFS server credentials in the SeaweedFS namespace."""
+    with Secret(
+        client=admin_client,
+        name="seaweedfs-credentials",
+        namespace=seaweedfs_namespace.name,
+        string_data={
+            "accesskey": SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            "secretkey": SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_pod(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+    seaweedfs_filer_config: ConfigMap,
+    seaweedfs_credentials_secret: Secret,
+) -> Generator[Pod, Any, Any]:
+    """Run an authenticated SeaweedFS instance exposing its S3 API with Secret credentials."""
+    pod_labels = {Labels.Openshift.APP: SeaweedFs.Metadata.NAME}
+    fixture_config = getattr(request, "param", {})
+
+    if labels := fixture_config.get("labels"):
+        pod_labels.update(labels)
+
+    bucket_creation_commands = "".join(
+        f' && echo "s3.bucket.create -name {bucket}" | /usr/bin/weed shell'
+        for bucket in fixture_config.get("buckets", [])
+    )
+    initialization_command = (
+        "for attempt in $(seq 1 60); do "
+        "wget -q --spider http://127.0.0.1:8333/status && break; "
+        '[ "$attempt" -eq 60 ] && exit 1; sleep 2; '
+        "done; "
+        'echo "s3.configure -user admin -access_key $accesskey -secret_key $secretkey -actions Admin -apply" '
+        "| /usr/bin/weed shell" + bucket_creation_commands
+    )
+    with Pod(
+        client=admin_client,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
+        containers=[
+            {
+                "name": SeaweedFs.Metadata.NAME,
+                "image": SeaweedFs.PodConfig.IMAGE,
+                "args": list(SeaweedFs.PodConfig.ARGS),
+                "env": [
+                    {
+                        "name": "accesskey",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": seaweedfs_credentials_secret.name, "key": "accesskey"},
+                        },
+                    },
+                    {
+                        "name": "secretkey",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": seaweedfs_credentials_secret.name, "key": "secretkey"},
+                        },
+                    },
+                ],
+                "ports": [
+                    {"containerPort": SeaweedFs.Metadata.DEFAULT_PORT, "name": "s3"},
+                    {"containerPort": SeaweedFs.Metadata.FILER_PORT, "name": "filer"},
+                    {"containerPort": SeaweedFs.Metadata.FILER_GRPC_PORT, "name": "filer-grpc"},
+                ],
+                "volumeMounts": [
+                    {
+                        "name": "filer-config",
+                        "mountPath": "/etc/seaweedfs/filer.toml",
+                        "subPath": "filer.toml",
+                        "readOnly": True,
+                    }
+                ],
+                "lifecycle": {"postStart": {"exec": {"command": ["/bin/sh", "-c", initialization_command]}}},
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+            }
+        ],
+        volumes=[{"name": "filer-config", "configMap": {"name": seaweedfs_filer_config.name}}],
+        label=pod_labels,
+        annotations=fixture_config.get("annotations"),
+    ) as pod:
+        pod.wait_for_condition(condition="Ready", status="True", timeout=180)
+        yield pod
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_service(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace, seaweedfs_pod: Pod
+) -> Generator[Service, Any, Any]:
+    """Expose SeaweedFS S3 and filer APIs inside the cluster."""
+    with Service(
+        client=admin_client,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
+        ports=[
+            {
+                "name": "s3",
+                "port": SeaweedFs.Metadata.DEFAULT_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.DEFAULT_PORT,
+            },
+            {
+                "name": "filer",
+                "port": SeaweedFs.Metadata.FILER_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.FILER_PORT,
+            },
+            {
+                "name": "filer-grpc",
+                "port": SeaweedFs.Metadata.FILER_GRPC_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.FILER_GRPC_PORT,
+            },
+        ],
+        selector={Labels.Openshift.APP: SeaweedFs.Metadata.NAME},
+        session_affinity="ClientIP",
+    ) as service:
+        yield service
+
+
 @pytest.fixture(scope="session")
 def nodes(admin_client: DynamicClient) -> Generator[list[Node], Any, Any]:
     yield list(Node.get(dyn_client=admin_client))
@@ -584,10 +756,16 @@ def junitxml_plugin(
 def cluster_sanity_scope_session(
     request: FixtureRequest,
     nodes: list[Node],
-    dsci_resource: DSCInitialization,
-    dsc_resource: DataScienceCluster,
     junitxml_plugin: Callable[[str, object], None],
 ) -> None:
+    # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
+    selected_markers = {mark.name for item in request.session.items for mark in item.iter_markers()}
+    if {"cluster_health", "operator_health", "component_health"} & selected_markers:
+        LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component health")
+        return
+
+    dsci_resource: DSCInitialization = request.getfixturevalue(argname="dsci_resource")
+    dsc_resource: DataScienceCluster = request.getfixturevalue(argname="dsc_resource")
     verify_cluster_sanity(
         request=request,
         nodes=nodes,
@@ -729,7 +907,7 @@ def mariadb_operator_cr(
         mariadb_operator_cr.wait_for_condition(
             condition="Deployed", status=mariadb_operator_cr.Condition.Status.TRUE, timeout=Timeout.TIMEOUT_10MIN
         )
-        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr, client=admin_client)
+        wait_for_mariadb_operator_deployments(mariadb_operator=mariadb_operator_cr)
 
         yield mariadb_operator_cr
 

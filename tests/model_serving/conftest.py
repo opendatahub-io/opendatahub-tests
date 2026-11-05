@@ -3,9 +3,20 @@ from typing import Generator, Any
 import pytest
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from contextlib import contextmanager
+from simple_logger.logger import get_logger
+from timeout_sampler import retry
+
+from utilities.constants import Timeout
+
+LOGGER = get_logger(name=__name__)
+
+AUTHORINO_NAMESPACE: str = "redhat-ods-applications-auth-provider"
+AUTHORINO_EXPECTED_CONTAINERS: int = 2
 
 
 @pytest.fixture(scope="session")
@@ -120,3 +131,50 @@ def kserve_s3_endpoint_secret(
         wait_for_resource=True,
     ) as secret:
         yield secret
+
+
+@retry(wait_timeout=Timeout.TIMEOUT_5MIN, sleep=10)
+def wait_for_authorino_pod_with_sidecar(client: DynamicClient) -> Pod:
+    """
+    Wait for a Running authorino pod with the expected number of containers.
+
+    Args:
+        client (DynamicClient): OCP client to use.
+
+    Returns:
+        Pod: A Running authorino pod with the istio-proxy sidecar.
+
+    Raises:
+        ResourceNotFoundError: If no healthy authorino pod is found within the timeout.
+    """
+    for pod in Pod.get(dyn_client=client, namespace=AUTHORINO_NAMESPACE):
+        if (
+            len(pod.instance.spec.containers) == AUTHORINO_EXPECTED_CONTAINERS
+            and pod.instance.status.phase == Pod.Status.RUNNING
+        ):
+            return pod
+
+    raise ResourceNotFoundError(
+        f"No Running pod with {AUTHORINO_EXPECTED_CONTAINERS} containers found in {AUTHORINO_NAMESPACE} namespace"
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def authorino_pod_health(admin_client: DynamicClient) -> None:
+    """
+    Restart the authorino pod if it is missing the istio-proxy sidecar.
+    """
+    pods = list(Pod.get(dyn_client=admin_client, namespace=AUTHORINO_NAMESPACE))
+    if not pods:
+        LOGGER.warning(f"No pods found in {AUTHORINO_NAMESPACE} namespace, skipping authorino pod health check")
+        return
+
+    for pod in pods:
+        if (container_count := len(pod.instance.spec.containers)) != AUTHORINO_EXPECTED_CONTAINERS:
+            LOGGER.info(
+                f"Authorino pod {pod.name} has {container_count} containers, "
+                f"expected {AUTHORINO_EXPECTED_CONTAINERS} (authorino, istio-proxy). Restarting pod."
+            )
+            pod.delete(wait=True)
+            new_pod = wait_for_authorino_pod_with_sidecar(client=admin_client)
+            LOGGER.info(f"Authorino pod {new_pod.name} is Running with {AUTHORINO_EXPECTED_CONTAINERS} containers.")

@@ -4,8 +4,12 @@
     "index": 0,
     "logprobs": null,
     "message": {
+      "annotations": null,
+      "audio": null,
       "content": null,
+      "function_call": null,
       "reasoning_content": null,
+      "refusal": null,
       "role": "assistant",
       "tool_calls": [
         {
@@ -13,20 +17,25 @@
             "arguments": "{\"location\": \"Boston\", \"unit\": \"celsius\"}",
             "name": "get_current_weather"
           },
-          "id": "chatcmpl-tool-cda160ab31ff48988d619dc27be136ac",
+          "id": "chatcmpl-tool-d22bd08578d748a39145a72ae81997b5",
           "type": "function"
         }
       ]
     },
-    "stop_reason": null
+    "stop_reason": null,
+    "token_ids": null
   },
   {
     "finish_reason": "tool_calls",
     "index": 0,
     "logprobs": null,
     "message": {
+      "annotations": null,
+      "audio": null,
       "content": null,
+      "function_call": null,
       "reasoning_content": null,
+      "refusal": null,
       "role": "assistant",
       "tool_calls": [
         {
@@ -34,11 +43,12 @@
             "arguments": "{\"location\": \"Japan\", \"unit\": \"celsius\"}",
             "name": "get_current_weather"
           },
-          "id": "chatcmpl-tool-95ea9d868a1b4cb3b4ddfbb33fe9fa63",
+          "id": "chatcmpl-tool-b394f3b24237484fa8f73f5394202e80",
           "type": "function"
         }
       ]
     },
-    "stop_reason": null
+    "stop_reason": null,
+    "token_ids": null
   }
 ]

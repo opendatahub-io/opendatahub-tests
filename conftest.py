@@ -52,7 +52,6 @@ def pytest_addoption(parser: Parser) -> None:
     cluster_sanity_group = parser.getgroup(name="ClusterSanity")
     ociregistry_group = parser.getgroup(name="OCI Registry")
     serving_arguments_group = parser.getgroup(name="Serving arguments")
-    model_validation_automation_group = parser.getgroup(name="Model Validation Automation")
     hf_group = parser.getgroup(name="Hugging Face")
     model_registry_group = parser.getgroup(name="Model Registry options")
     # AWS config and credentials options
@@ -104,8 +103,8 @@ def pytest_addoption(parser: Parser) -> None:
     # Runtime options
     runtime_group.addoption(
         "--supported-accelerator-type",
-        default=os.environ.get("SUPPORTED_ACCLERATOR_TYPE"),
-        help="Supported accelerator type : Nvidia,AMD,Gaudi",
+        default=os.environ.get("SUPPORTED_ACCELERATOR_TYPE"),
+        help="Supported accelerator type : Nvidia,AMD,Spyre,CPU_x86",
     )
     runtime_group.addoption(
         "--vllm-runtime-image",
@@ -140,13 +139,6 @@ def pytest_addoption(parser: Parser) -> None:
         "--serving-argument",
         default=os.environ.get("SERVING_ARGUMENTS"),
         help="Serving arguments to use for the tests",
-    )
-
-    # Model Validation Automation options
-    model_validation_automation_group.addoption(
-        "--model_car_yaml_path",
-        default=os.environ.get("MODEL_YAML_PATH"),
-        help="Path to the modelcar yaml file",
     )
 
     # Upgrade options
@@ -297,10 +289,21 @@ def pytest_sessionstart(session: Session) -> None:
         path=must_gather_dict["must_gather_base_directory"],
         ignore_errors=True,
     )
+
+
+def pytest_collection_finish(session: Session) -> None:
     config = session.config
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         LOGGER.info("Skipping global config update for collect-only or setup-plan")
         return
+    if session.items:
+        for item in session.items:
+            item_markers = {mark.name for mark in item.iter_markers()}
+            if "cluster_health" not in item_markers or item_markers & {"operator_health", "component_health"}:
+                break
+        else:
+            LOGGER.info("Skipping global config update for cluster_health-only run (DSC not required)")
+            return
     updated_global_config(admin_client=get_client(), config=config)
 
 

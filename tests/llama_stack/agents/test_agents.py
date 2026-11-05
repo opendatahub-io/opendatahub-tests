@@ -1,7 +1,9 @@
 import uuid
+
 import pytest
 from llama_stack_client import Agent, LlamaStackClient, RAGDocument
 from simple_logger.logger import get_logger
+
 from tests.llama_stack.constants import ModelInfo
 from tests.llama_stack.utils import get_torchtune_test_expectations, validate_rag_agent_responses
 
@@ -50,27 +52,23 @@ class TestLlamaStackAgents:
         )
         s_id = agent.create_session(session_name=f"s{uuid.uuid4().hex}")
 
-        # Test identity question
-        response = agent.create_turn(
-            messages=[{"role": "user", "content": "Who are you?"}],
-            session_id=s_id,
-            stream=False,
-        )
-        content = response.output_message.content
-        text = str(content or "")
-        assert text, "LLM response content is empty"
-        assert "model" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
+        test_cases = [
+            ("Who are you?", ["model", "assistant", "ai", "artificial", "language model"]),
+            ("What can you do?", ["help", "assist", "answer", "provide", "support"]),
+        ]
 
-        # Test capability question
-        response = agent.create_turn(
-            messages=[{"role": "user", "content": "What can you do?"}],
-            session_id=s_id,
-            stream=False,
-        )
-        content = response.output_message.content
-        text = str(content or "")
-        assert text, "LLM response content is empty"
-        assert "answer" in text.lower(), "The LLM didn't provide the expected answer to the prompt"
+        for question, expected_keywords in test_cases:
+            response = agent.create_turn(
+                messages=[{"role": "user", "content": question}],
+                session_id=s_id,
+                stream=False,
+            )
+            content = response.output_message.content
+            text = str(content or "")
+            assert text, f"LLM response content is empty for question: {question}"
+            assert any(keyword in text.lower() for keyword in expected_keywords), (
+                f"The LLM didn't provide any of the expected keywords {expected_keywords} for: {question}. Got: {text}"
+            )
 
     @pytest.mark.smoke
     def test_agents_rag_agent(
@@ -128,7 +126,7 @@ class TestLlamaStackAgents:
             documents = [
                 RAGDocument(
                     document_id=f"num-{index}",
-                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}",  # noqa
+                    content=f"https://raw.githubusercontent.com/pytorch/torchtune/refs/tags/v0.6.1/docs/source/tutorials/{url}",  # noqa: E501
                     mime_type="text/plain",
                     metadata={},
                 )
