@@ -882,14 +882,29 @@ def _attachment_conditions(
 ) -> tuple[list[dict[str, Any]], str]:
     """Conditions describing one gateway attachment (per-gateway entry preferred)."""
     entries = (external_model.get("status") or {}).get("gateways") or []
+    if not entries:
+        # Aggregate-status AGC builds report no per-gateway results at all;
+        # there the model-level conditions are the only available signal.
+        status = external_model.get("status") or {}
+        return (status.get("conditions") or []), "aggregate model status"
     entry = next(
         (item for item in entries if item.get("name") == gateway_name and item.get("namespace") == gateway_namespace),
         None,
     )
-    if entry is not None and entry.get("conditions"):
-        return entry["conditions"], f"attachment to {gateway_namespace}/{gateway_name}"
-    status = external_model.get("status") or {}
-    return (status.get("conditions") or []), "aggregate model status"
+    # Once per-gateway results exist, they are authoritative for the requested
+    # gateway: falling back to the aggregate conditions could report a false
+    # "ready" for a gateway that has no entry (or no conditions) yet. Callers
+    # poll through wait_until, so these assertions retry until the entry
+    # appears.
+    assert entry is not None, (
+        f"no status.gateways entry for {gateway_namespace}/{gateway_name} yet; "
+        f"entries: {redact_sensitive(entries)}"
+    )
+    conditions = entry.get("conditions") or []
+    assert conditions, (
+        f"no conditions yet in the {gateway_namespace}/{gateway_name} entry: {redact_sensitive(entry)}"
+    )
+    return conditions, f"attachment to {gateway_namespace}/{gateway_name}"
 
 
 def _wait_for_gateway_attachment(

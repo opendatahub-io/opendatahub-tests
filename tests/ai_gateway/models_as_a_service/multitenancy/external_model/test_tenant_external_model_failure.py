@@ -90,9 +90,11 @@ class TestTenantProviderFailureIsolation:
         )
 
         LOGGER.info("Isolation: asserting tenant B still serves despite tenant A's 503")
+        # Single shot: a retrying probe could turn a transient 503 on tenant B
+        # (leaked from tenant A's disruption) into a pass and hide it.
         assert_served_by_provider(
             response=infer_for_served_model(
-                request_session_http=request_session_http, case=tenant_b, served_model=served_b, retries=1
+                request_session_http=request_session_http, case=tenant_b, served_model=served_b, retries=0
             ),
             path_tag=served_b["model"]["path_tag"],
             credential=served_b["model"]["credential"],
