@@ -228,7 +228,10 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
         if exported is not None:
             # The temp file may already be gone (e.g. a /tmp cleanup); its
             # deletion must not skip the environment restoration below.
-            os.unlink(exported, missing_ok=True)
+            try:
+                os.unlink(exported)
+            except FileNotFoundError:
+                pass
         if previous is None:
             os.environ.pop("REQUESTS_CA_BUNDLE", None)
         else:
