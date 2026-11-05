@@ -365,7 +365,7 @@ class TestAttachmentLifecycleCleanup:
                 # the first requests with 429 even though the fresh subscription's
                 # limits allow them. 429 is never a legitimate outcome here, so
                 # retry within a bounded window instead of failing on the race.
-                for attempt in range(1, DETACH_RATE_LIMIT_SETTLE_ATTEMPTS + 1):
+                def infer_until_rate_limits_settle() -> requests.Response:
                     response = infer_external_chat(
                         request_session_http=request_session_http,
                         gateway_url=tenant_b["gateway_url"],
@@ -374,13 +374,18 @@ class TestAttachmentLifecycleCleanup:
                         api_key=access_b["api_key"],
                         path_tag=model["path_tag"],
                     )
-                    if response.status_code != 429 or attempt == DETACH_RATE_LIMIT_SETTLE_ATTEMPTS:
-                        break
-                    LOGGER.info(
-                        f"post-detach inference on {tenant_b['gateway_name']} rate-limited while limits settle"
-                        f" (attempt {attempt}/{DETACH_RATE_LIMIT_SETTLE_ATTEMPTS}), retrying"
+                    assert response.status_code != 429, (
+                        "post-detach inference rate-limited while the remaining "
+                        f"gateway's limits settle: {redact_sensitive(response.text)}"
                     )
-                    time.sleep(DETACH_RATE_LIMIT_SETTLE_RETRY_INTERVAL)
+                    return response
+
+                response = wait_until(
+                    check=infer_until_rate_limits_settle,
+                    timeout=DETACH_RATE_LIMIT_SETTLE_ATTEMPTS * DETACH_RATE_LIMIT_SETTLE_RETRY_INTERVAL,
+                    interval=DETACH_RATE_LIMIT_SETTLE_RETRY_INTERVAL,
+                    what=f"post-detach inference on {tenant_b['gateway_name']} to clear the transient rate limit",
+                )
                 assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
     @pytest.mark.tier2
