@@ -440,8 +440,7 @@ class TestTenantQuotaIsolation:
             timeout=QUOTA_EXHAUSTION_TIMEOUT,
         )
         assert limited.status_code == 429, (
-            f"tenant A did not hit its token budget after {successes} successes: "
-            f"{redact_sensitive(limited.text)}"
+            f"tenant A did not hit its token budget after {successes} successes: {redact_sensitive(limited.text)}"
         )
         assert successes > 0, "tenant A hit 429 before any successful inference (limits not live?)"
 
