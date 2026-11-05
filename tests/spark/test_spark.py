@@ -2,6 +2,7 @@
 
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 
 from tests.spark.utils import run_spark_connect_query, verify_spark_app_completed, verify_spark_connect_query
@@ -37,8 +38,13 @@ def test_spark_connect_query(
     admin_client: DynamicClient,
     spark_connect_application: SparkConnect,
     spark_connect_client_pod: Pod,
+    spark_consumer_network_policy: NetworkPolicy | None,
 ) -> None:
-    """Given a Spark Connect server, when a client runs a remote query, then it returns correct results."""
+    """Given a Spark Connect server, when a client runs a remote query, then it returns correct results.
+
+    When the operator enforces operand NetworkPolicies, ``spark_consumer_network_policy`` opens the
+    server's gRPC port to the in-namespace client pod; otherwise the client reaches it directly.
+    """
     service_name = spark_connect_application.instance.status.server.serviceName
     output = run_spark_connect_query(
         client_pod=spark_connect_client_pod,

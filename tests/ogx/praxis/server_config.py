@@ -17,9 +17,11 @@ from tests.ogx.praxis.utils import praxis_connection_string
 # Names internal to the Praxis configuration rendered by `praxis_gateway_config`.
 _PRAXIS_FILTER_CHAIN_NAME: str = "store-pipeline"
 _PRAXIS_VLLM_UPSTREAM_NAME: str = "vllm-upstream"
+_PRAXIS_OGX_UPSTREAM_NAME: str = "ogx-upstream"
+_OGX_API_PORT: int = 8321
 
 
-def build_praxis_gateway_config(namespace: str) -> str:
+def build_praxis_gateway_config(namespace: str, ogx_service_name: str) -> str:
     """Render the Praxis configuration that puts it in front of the target database.
 
     The pipeline is the one the OGX repository's `migration-e2e-praxis` workflow
@@ -32,6 +34,7 @@ def build_praxis_gateway_config(namespace: str) -> str:
 
     Args:
         namespace: Namespace holding the target PostgreSQL service.
+        ogx_service_name: Name of the Service exposing the OGX API.
 
     Returns:
         The Praxis configuration as a YAML document.
@@ -55,6 +58,13 @@ def build_praxis_gateway_config(namespace: str) -> str:
     if vllm_url.scheme == "https":
         vllm_cluster["tls"] = {"sni": vllm_host}
 
+    ogx_host = f"{ogx_service_name}.{namespace}.svc.cluster.local"
+    ogx_cluster: dict[str, Any] = {
+        "name": _PRAXIS_OGX_UPSTREAM_NAME,
+        "endpoints": [f"{ogx_host}:{_OGX_API_PORT}"],
+        "http": {"authority": ogx_host},
+    }
+
     postgres_backend: dict[str, Any] = {
         "backend": "postgres",
         "database_url": praxis_connection_string(namespace=namespace),
@@ -64,7 +74,10 @@ def build_praxis_gateway_config(namespace: str) -> str:
         "ssl_mode": "disable",
     }
     config: dict[str, Any] = {
-        "insecure_options": {"allow_private_endpoints": True},
+        "insecure_options": {
+            "allow_private_endpoints": True,
+            "allow_private_upstreams": True,
+        },
         "listeners": [
             {
                 "name": PRAXIS_GATEWAY_APP_LABEL,
@@ -118,7 +131,14 @@ def build_praxis_gateway_config(namespace: str) -> str:
                                     },
                                     {
                                         "filter": "router",
-                                        "routes": [{"path_prefix": "/", "cluster": _PRAXIS_VLLM_UPSTREAM_NAME}],
+                                        "routes": [
+                                            {"path_prefix": "/v1/files", "cluster": _PRAXIS_OGX_UPSTREAM_NAME},
+                                            {
+                                                "path_prefix": "/v1/vector_stores",
+                                                "cluster": _PRAXIS_OGX_UPSTREAM_NAME,
+                                            },
+                                            {"path_prefix": "/", "cluster": _PRAXIS_VLLM_UPSTREAM_NAME},
+                                        ],
                                     },
                                     {
                                         "filter": "credential_injection",
@@ -136,7 +156,7 @@ def build_praxis_gateway_config(namespace: str) -> str:
                                         "filter": "headers",
                                         "request_set": [{"name": "Host", "value": vllm_host_header}],
                                     },
-                                    {"filter": "load_balancer", "clusters": [vllm_cluster]},
+                                    {"filter": "load_balancer", "clusters": [vllm_cluster, ogx_cluster]},
                                 ],
                                 "on_result": [{"default": True, "done": True}],
                             }
