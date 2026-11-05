@@ -1491,6 +1491,47 @@ def infer_for_served_model(
     )
 
 
+def infer_for_shared_model(
+    request_session_http: requests.Session,
+    case: dict[str, str],
+    model: dict[str, Any],
+    api_key: str,
+    *,
+    retries: int = 6,
+    provider_path: str | None = None,
+) -> requests.Response:
+    """One chat completion for a shared model through the given tenant's gateway."""
+    return infer_external_chat(
+        request_session_http=request_session_http,
+        gateway_url=case["gateway_url"],
+        model_namespace=model["namespace"],
+        model_client_name=model["client_name"],
+        api_key=api_key,
+        path_tag=model["path_tag"],
+        retries=retries,
+        provider_path=provider_path,
+    )
+
+
+def maas_model_ref_phase(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+) -> tuple[str, dict[str, Any]]:
+    """Return the (phase, status) of a MaaSModelRef, requiring both keys.
+
+    A missing status or phase is reported as an assertion — a polled,
+    not-yet-reconciled state — instead of silently surfacing as ``None``,
+    so callers can treat the keys as required once this returns.
+    """
+    ref = get_json_or_none(client=admin_client, kind="maasmodelref", name=name, namespace=namespace)
+    assert ref is not None, f"MaaSModelRef {namespace}/{name} not found"
+    status = ref.get("status") or {}
+    phase = status.get("phase")
+    assert phase is not None, f"MaaSModelRef {namespace}/{name} reports no phase yet: {redact_sensitive(status)}"
+    return phase, status
+
+
 def echo_headers(response: requests.Response) -> dict[str, str]:
     """Headers echoed back by the header-echo provider in a response body."""
     try:
