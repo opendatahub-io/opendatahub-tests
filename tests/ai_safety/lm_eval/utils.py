@@ -129,15 +129,8 @@ def validate_lmeval_job_pod_and_logs(
     poll_interval: int = 30,
     driver_success_grace: int = tts("3m"),
 ) -> None:
-    """Validate LMEval job pod success and presence of corresponding logs.
-
-    Polls the pod phase and the LMEvalJob status every `poll_interval` seconds and fails as
-    soon as the pod fails, the LMEvalJob completes with a reason other than Succeeded, the pod
-    stays Pending longer than `pending_timeout`, or the driver's own log reports a terminal
-    status that the pod phase and LMEvalJob status fail to reflect within `driver_success_grace`
-    seconds. That last case covers an operator reconciler race (RHOAIENG-94190) where the job's
-    pod runs to completion but the operator loses track of the job and never updates its status
-    or shuts the pod down, so polling the CR/pod phase alone would otherwise hang until `timeout`.
+    """Polls pod phase and LMEvalJob status; fails fast on pod/job failure, a stuck Pending pod,
+    or the driver reporting completion that the CR never reflects (RHOAIENG-94190).
 
     Args:
         lmevaljob_pod: The LMEvalJob pod.
@@ -170,6 +163,7 @@ def validate_lmeval_job_pod_and_logs(
 
     start = time.monotonic()
     last_state: dict[str, str] = {}
+    last_logged: dict[str, str] = {}
     driver_success_seen_at: float | None = None
     try:
         for state in TimeoutSampler(
@@ -180,7 +174,10 @@ def validate_lmeval_job_pod_and_logs(
         ):
             last_state = state
             elapsed = int(time.monotonic() - start)
-            LOGGER.info(f"LMEval progress after {elapsed}s: {state}")
+            summary = {k: state[k] for k in ("pod_phase", "job_state", "job_reason")}
+            if summary != last_logged:
+                LOGGER.info(f"LMEval {lmevaljob.name} after {elapsed}s: {summary}")
+                last_logged = summary
 
             if state["pod_phase"] == Pod.Status.SUCCEEDED:
                 break
@@ -208,19 +205,20 @@ def validate_lmeval_job_pod_and_logs(
                     f"driver_reported_failure={driver_reported_failure}, "
                     f"stuck_after_driver_success={stuck_after_driver_success}). "
                     f"State: {state}\n"
-                    f"--- last 50 pod log lines ---\n{get_lmeval_pod_log_tail(pod=lmevaljob_pod, lines=50)}"
+                    f"--- last 10 pod log lines ---\n{get_lmeval_pod_log_tail(pod=lmevaljob_pod, lines=10)}"
                 )
     except TimeoutExpiredError as e:
         collect_pod_information(pod=lmevaljob_pod)
         raise UnexpectedFailureError(
             f"LMEval job {lmevaljob.name} did not finish within {timeout}s. Last state: {last_state}\n"
-            f"--- last 50 pod log lines ---\n{get_lmeval_pod_log_tail(pod=lmevaljob_pod, lines=50)}"
+            f"--- last 10 pod log lines ---\n{get_lmeval_pod_log_tail(pod=lmevaljob_pod, lines=10)}"
         ) from e
 
     if not bool(re.search(pod_success_log_regex, lmevaljob_pod.log())):
+        collect_pod_information(pod=lmevaljob_pod)
         raise PodLogMissMatchError(
             f"LMEval job pod succeeded but the completion log line was not found.\n"
-            f"--- last 50 pod log lines ---\n{get_lmeval_pod_log_tail(pod=lmevaljob_pod, lines=50)}"
+            f"--- last 10 pod log lines ---\n{get_lmeval_pod_log_tail(pod=lmevaljob_pod, lines=10)}"
         )
 
 
