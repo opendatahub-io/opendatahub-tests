@@ -303,7 +303,7 @@ def shared_serving(
     require_maas_route(admin_client=admin_client, model=model)
     with ExitStack() as stack:
         yield {
-            "access_a": serve_shared_model_in_tenant(
+            "tenant_a": serve_shared_model_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
@@ -312,7 +312,7 @@ def shared_serving(
                 model=model,
                 teardown=teardown_resources,
             ),
-            "access_b": serve_shared_model_in_tenant(
+            "tenant_b": serve_shared_model_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
@@ -365,7 +365,7 @@ def isolated_keys(
             model=model,
             teardown=teardown_resources,
         )
-        yield {"model": model, "key_a": access_a["api_key"], "key_b": access_b["api_key"]}
+        yield {"model": model, "tenant_a": access_a["api_key"], "tenant_b": access_b["api_key"]}
 
 
 @pytest.fixture(scope="class")
@@ -444,7 +444,7 @@ def quota_model(
         require_maas_route(admin_client=admin_client, model=model)
         yield {
             "model": model,
-            "access_a": serve_shared_model_in_tenant(
+            "tenant_a": serve_shared_model_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,
@@ -455,7 +455,7 @@ def quota_model(
                 token_limit=LIMITED_TOKEN_LIMIT,
                 window="1m",
             ),
-            "access_b": serve_shared_model_in_tenant(
+            "tenant_b": serve_shared_model_in_tenant(
                 admin_client=admin_client,
                 request_session_http=request_session_http,
                 ocp_token=ocp_token_for_actor,

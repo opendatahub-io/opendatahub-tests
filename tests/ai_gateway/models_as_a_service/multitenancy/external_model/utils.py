@@ -1576,6 +1576,58 @@ def infer_for_shared_model(
     )
 
 
+def exhaust_tenant_token_budget(
+    request_session_http: requests.Session,
+    case: dict[str, str],
+    model: dict[str, Any],
+    api_key: str,
+    *,
+    provider_path: str,
+    timeout: int,
+    interval: int = 1,
+) -> tuple[requests.Response, int]:
+    """Drive a tenant's inference until its token budget returns 429.
+
+    Returns the limiting response and the count of successful (200)
+    inferences before it. Transient transport errors and 5xx responses are
+    retried within *timeout*; a 429 before any success keeps polling (the
+    limits may not be live yet); any other status fails the wait with the
+    response body redacted.
+    """
+    successes = 0
+
+    def _attempt() -> requests.Response:
+        nonlocal successes
+        response = infer_for_shared_model(
+            request_session_http=request_session_http,
+            case=case,
+            model=model,
+            api_key=api_key,
+            provider_path=provider_path,
+            retries=0,
+        )
+        if response.status_code == 200:
+            successes += 1
+            raise AssertionError("token budget not exhausted yet")
+        if response.status_code == 429:
+            assert successes > 0, "tenant hit 429 before any successful inference (limits not live?)"
+            return response
+        if response.status_code < 500:
+            raise AssertionError(
+                "unexpected inference response on tenant: "
+                f"{response.status_code}: {redact_sensitive(response.text)}"
+            )
+        raise AssertionError(f"transient server error {response.status_code}; retrying")
+
+    limited = wait_until(
+        check=_attempt,
+        timeout=timeout,
+        interval=interval,
+        what=f"tenant {case.get('gateway_name', '')} to hit its token budget",
+    )
+    return limited, successes
+
+
 def maas_model_ref_phase(
     admin_client: DynamicClient,
     name: str,
