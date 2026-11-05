@@ -8,7 +8,6 @@ gatewayRefs additive schema is not distributed yet.
 
 from __future__ import annotations
 
-import time
 import uuid
 from collections.abc import Generator
 from contextlib import ExitStack
@@ -32,6 +31,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     PAYLOAD_PROCESSING_TYPE_IPP,
     PRAXIS_IMAGE_MARKER,
     admitted_user_namespace,
+    assert_during_settle_window,
     attachment_status_snapshot,
     default_payload_processing_is_praxis,
     default_tenant_model_stack,
@@ -1102,7 +1102,23 @@ def coexistence(
                 payload_type=PAYLOAD_PROCESSING_TYPE_IPP,
             )
             wait_default_backend(admin_client=admin_client, praxis=False)
-            time.sleep(RECONCILE_WAIT)
+
+            # Give the legacy controller a full settle window to (wrongly)
+            # react to the new-shaped model, asserting the whole time that
+            # the AGC-owned status is untouched — the window replaces a blind
+            # sleep with the same no-legacy-writes guarantee the tests assert.
+            def _agc_status_untouched() -> None:
+                assert attachment_status_snapshot(admin_client=admin_client, model=model) == status_before, (
+                    "legacy IPP overwrote the AGC status.gateways results during the settle window: "
+                    f"{status_before} -> {attachment_status_snapshot(admin_client=admin_client, model=model)}"
+                )
+
+            assert_during_settle_window(
+                check=_agc_status_untouched,
+                timeout=RECONCILE_WAIT,
+                what=f"AGC attachment status of {model['name']} staying untouched "
+                "while the default tenant runs legacy IPP",
+            )
 
             yield {
                 "case_b": case_b,
