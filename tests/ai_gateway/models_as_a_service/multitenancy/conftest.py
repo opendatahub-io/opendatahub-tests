@@ -325,12 +325,19 @@ def tenant_isolation_model_storage_uri() -> str:
 
 
 @pytest.fixture(scope="class")
+def tenant_isolation_governance_ready_timeout() -> int:
+    """Max wait for tenant MaaSAuthPolicy and MaaSSubscription Ready in isolation setup."""
+    return 300
+
+
+@pytest.fixture(scope="class")
 def isolation_tenant_governance(
     admin_client: DynamicClient,
     two_aitenant_test_contexts: tuple[AITenantTestContext, AITenantTestContext],
     maas_free_group: str,
     teardown_resources: bool,
     tenant_isolation_model_storage_uri: str,
+    tenant_isolation_governance_ready_timeout: int,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -374,6 +381,7 @@ def isolation_tenant_governance(
                     owner_group_name="system:authenticated",
                     free_group_name=maas_free_group,
                     teardown=teardown_resources,
+                    ready_timeout=tenant_isolation_governance_ready_timeout,
                 )
             )
             governance_contexts.append(

@@ -45,7 +45,6 @@ from tests.ai_gateway.models_as_a_service.utils import endpoints_have_ready_addr
 from utilities.infra import get_dsci_monitoring_namespace
 from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.monitoring import Monitoring
-from utilities.resources.token_review import TokenReview
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -346,20 +345,28 @@ def verify_usage_logs_multi_tenant_e2e_prerequisites(
 
 def resolve_openshift_username(admin_client: DynamicClient, bearer_token: str) -> str:
     """Return the Kubernetes username for a bearer token via TokenReview."""
-    review = TokenReview(
-        client=admin_client,
-        kind_dict={
-            "apiVersion": TokenReview.api_version,
-            "kind": TokenReview.kind,
-            "spec": {"token": bearer_token},
-        },
+    token_review_api = admin_client.resources.get(
+        api_version="authentication.k8s.io/v1",
+        kind="TokenReview",
     )
-    review.create()
-    status = review.instance.status
-    if status is None or status.authenticated is not True:
+    review = token_review_api.create(
+        body={
+            "apiVersion": "authentication.k8s.io/v1",
+            "kind": "TokenReview",
+            "spec": {"token": bearer_token},
+        }
+    )
+    status = review.get("status") if isinstance(review, dict) else getattr(review, "status", None)
+    if status is None:
+        raise ValueError("TokenReview returned no status")
+    authenticated = status.get("authenticated") if isinstance(status, dict) else getattr(status, "authenticated", None)
+    if authenticated is not True:
         raise ValueError("bearer token was not authenticated by TokenReview")
-    user = status.user
-    username = getattr(user, "username", None) if user is not None else None
+    user = status.get("user") if isinstance(status, dict) else getattr(status, "user", None)
+    if isinstance(user, dict):
+        username = user.get("username")
+    else:
+        username = getattr(user, "username", None) if user is not None else None
     if not username:
         raise ValueError("TokenReview returned no authenticated username")
     return str(username)
