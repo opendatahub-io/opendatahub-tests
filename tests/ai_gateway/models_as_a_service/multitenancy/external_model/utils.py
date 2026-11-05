@@ -957,13 +957,10 @@ def _attachment_conditions(
     # poll through wait_until, so these assertions retry until the entry
     # appears.
     assert entry is not None, (
-        f"no status.gateways entry for {gateway_namespace}/{gateway_name} yet; "
-        f"entries: {redact_sensitive(entries)}"
+        f"no status.gateways entry for {gateway_namespace}/{gateway_name} yet; entries: {redact_sensitive(entries)}"
     )
     conditions = entry.get("conditions") or []
-    assert conditions, (
-        f"no conditions yet in the {gateway_namespace}/{gateway_name} entry: {redact_sensitive(entry)}"
-    )
+    assert conditions, f"no conditions yet in the {gateway_namespace}/{gateway_name} entry: {redact_sensitive(entry)}"
     return conditions, f"attachment to {gateway_namespace}/{gateway_name}"
 
 
