@@ -5,6 +5,7 @@ import yaml
 
 from tests.ogx.constants import OGX_CORE_VLLM_API_TOKEN, OGX_CORE_VLLM_URL
 from tests.ogx.praxis.constants import (
+    MIGRATION_FALLBACK_TENANT,
     PRAXIS_GATEWAY_APP_LABEL,
     PRAXIS_GATEWAY_PORT,
     TARGET_CONVERSATION_ITEMS_TABLE,
@@ -97,7 +98,7 @@ def build_praxis_gateway_config(namespace: str, ogx_service_name: str) -> str:
                         "on_invalid": "reject",
                     },
                     {"filter": "openai_responses_request", "on_invalid": "reject"},
-                    # {"filter": "state_owner", "mode": "single_tenant", "tenant_id": MIGRATION_FALLBACK_TENANT},
+                    {"filter": "state_owner", "mode": "single_tenant", "tenant_id": MIGRATION_FALLBACK_TENANT},
                     {
                         "filter": "openai_conversations",
                         "conversations_table": TARGET_CONVERSATIONS_TABLE,
