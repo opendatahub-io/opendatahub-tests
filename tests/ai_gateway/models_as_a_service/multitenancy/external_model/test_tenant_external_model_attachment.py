@@ -44,9 +44,9 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     CREDENTIAL_DATA_KEY,
     TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
     apply_credential_secret,
+    assert_during_settle_window,
     assert_not_served,
     assert_served_by_provider,
-    assert_during_settle_window,
     attachment_httproutes,
     credential_copy_in,
     delete_external_model_and_ref,
@@ -66,17 +66,16 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     wait_for_gateway_attachment_absent,
     wait_for_gateway_attachment_ready,
     wait_for_gateway_attachment_reason,
+    wait_for_model_attached_to_gateways,
     wait_for_no_attachment_httproute,
     wait_for_no_credential_copy,
     wait_for_no_destination_rules_referencing,
-    wait_for_not_found,
     wait_until,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     label_namespace_gateway_access,
 )
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
-from utilities.resources.external_model import ExternalModel
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -142,11 +141,7 @@ class TestUserNamespaceAttachmentServing:
         )
         route = routes[0]
         assert route["metadata"]["namespace"] == model["namespace"]
-        backend_names = [
-            backend["name"]
-            for rule in route["spec"]["rules"]
-            for backend in rule["backendRefs"]
-        ]
+        backend_names = [backend["name"] for rule in route["spec"]["rules"] for backend in rule["backendRefs"]]
         provider_service = provider_external_name_service(provider_name=model["provider"])
         assert provider_service in backend_names, (
             f"HTTPRoute backendRefs {backend_names} do not reference the provider's "
@@ -274,7 +269,7 @@ class TestAttachmentLifecycleCleanup:
             gateway_refs=[gateway_ref(tenant_a["gateway_name"]), gateway_ref(tenant_b["gateway_name"])],
             teardown=teardown_resources,
         ) as model:
-            wait_for_model_attached_to_gateways(admin_client, model, (tenant_a, tenant_b))
+            wait_for_model_attached_to_gateways(admin_client=admin_client, model=model, cases=(tenant_a, tenant_b))
 
             tenant_b_rule_uids = {
                 rule["metadata"]["uid"]
@@ -395,9 +390,9 @@ class TestAttachmentLifecycleCleanup:
             gateway_refs=[gateway_ref(tenant_a["gateway_name"]), gateway_ref(tenant_b["gateway_name"])],
             teardown=teardown_resources,
         ) as model:
-            wait_for_model_attached_to_gateways(admin_client, model, (tenant_a, tenant_b))
+            wait_for_model_attached_to_gateways(admin_client=admin_client, model=model, cases=(tenant_a, tenant_b))
 
-            delete_external_model_and_ref(admin_client, model["name"], model["namespace"])
+            delete_external_model_and_ref(admin_client=admin_client, name=model["name"], namespace=model["namespace"])
 
             for case in (tenant_a, tenant_b):
                 wait_for_no_attachment_httproute(
@@ -597,7 +592,9 @@ class TestListenerAdmissionRecovery:
         env = recovery_env
         tenant_b = env["tenant_b"]
         model = env["recovering_model"]
-        model_json = get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"])
+        model_json = get_json_or_none(
+            client=admin_client, kind="externalmodel", name=model["name"], namespace=model["namespace"]
+        )
         assert model_json is not None, f"externalmodel {model['namespace']}/{model['name']} must exist before recovery"
         spec_before = model_json["spec"]
 
@@ -619,7 +616,9 @@ class TestListenerAdmissionRecovery:
             source_secret_name=model["secret_name"],
             source_namespace=model["secret_namespace"],
         )
-        model_json = get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"])
+        model_json = get_json_or_none(
+            client=admin_client, kind="externalmodel", name=model["name"], namespace=model["namespace"]
+        )
         assert model_json is not None, f"externalmodel {model['namespace']}/{model['name']} must exist after recovery"
         spec_after = model_json["spec"]
         assert spec_after == spec_before, (
