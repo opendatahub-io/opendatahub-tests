@@ -1074,6 +1074,36 @@ def wait_for_dsc_status_ready(dsc_resource: DataScienceCluster) -> bool:
     if removed_components:
         message += f"\nRemoved components: {', '.join(removed_components)}"
 
+    # Capacity / leftover-workload hint when Dashboard (or other apps) cannot schedule
+    not_ready_types = {condition.type for condition in not_ready_conditions}
+    if "DashboardReady" in not_ready_types or "Ready" in not_ready_types:
+        try:
+            from pytest_testconfig import config as py_config
+
+            apps_ns = py_config.get("applications_namespace", "redhat-ods-applications")
+            client = dsc_resource.client
+            # Single API call: server-side filter for Pending pods, raw=True avoids per-pod GET requests
+            raw_pods: dict[str, Any] = next(
+                Pod.get(client=client, namespace=apps_ns, field_selector="status.phase=Pending", raw=True), {}
+            )
+            pending = [f"{item['metadata']['name']}:{item['status']['phase']}" for item in raw_pods.get("items", [])]
+            if pending:
+                message += f"\nPending pods in {apps_ns}: {', '.join(pending)}"
+                message += (
+                    "\nHint: DashboardReady often fails when workers lack CPU for rhods-dashboard "
+                    "(FailedScheduling / Insufficient cpu) or leftover test workloads fill the cluster."
+                )
+        except (
+            AttributeError,
+            KeyError,
+            NotFoundError,
+            ResourceNotFoundError,
+            TypeError,
+            kubernetes.client.exceptions.ApiException,
+            urllib3.exceptions.HTTPError,
+        ) as exc:
+            LOGGER.debug(f"Pod lookup failed ({type(exc).__name__}), continuing with DSC readiness check")
+
     raise ResourceNotReadyError(message)
 
 
