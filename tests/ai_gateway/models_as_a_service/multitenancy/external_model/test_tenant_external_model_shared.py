@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 import uuid
 from functools import partial
 from typing import Any
@@ -58,6 +57,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
     assert_returns_usage,
     assert_served_by_provider,
+    exhaust_tenant_token_budget,
     gateway_status_entry,
     infer_external_chat,
     infer_for_shared_model,
@@ -174,9 +174,9 @@ class TestSharedModelTwoGateways:
             model=model,
             case=tenant_external_model_tenants["tenant_a"],
         )
-        for case_key, access_key in (("tenant_a", "access_a"), ("tenant_b", "access_b")):
+        for case_key in ("tenant_a", "tenant_b"):
             case = tenant_external_model_tenants[case_key]
-            access = shared_serving[access_key]
+            access = shared_serving[case_key]
             response = infer_for_shared_model(
                 request_session_http=request_session_http,
                 case=case,
@@ -223,14 +223,14 @@ class TestTenantAuthIsolation:
                     tenant_external_model_tenants["tenant_a"],
                     tenant_external_model_tenants["tenant_b"],
                 ),
-                isolated_keys["key_a"],
+                isolated_keys["tenant_a"],
             ),
             (
                 (
                     tenant_external_model_tenants["tenant_b"],
                     tenant_external_model_tenants["tenant_a"],
                 ),
-                isolated_keys["key_b"],
+                isolated_keys["tenant_b"],
             ),
         ):
             served = infer_for_shared_model(
@@ -431,39 +431,17 @@ class TestTenantQuotaIsolation:
         )
         provider_path = quota_model["usage"]["provider_path"]
 
-        successes = 0
-        limited = None
-        deadline = time.time() + QUOTA_EXHAUSTION_TIMEOUT
-        while time.time() < deadline:
-            try:
-                limited = infer_for_shared_model(
-                    request_session_http=request_session_http,
-                    case=tenant_external_model_tenants["tenant_a"],
-                    model=model,
-                    api_key=quota_model["access_a"]["api_key"],
-                    provider_path=provider_path,
-                    retries=0,
-                )
-            except requests.RequestException:
-                time.sleep(1.0)
-                continue
-            if limited.status_code == 200:
-                successes += 1
-            elif limited.status_code == 429:
-                if successes:
-                    break
-            elif limited.status_code >= 500:
-                time.sleep(1.0)
-                continue
-            else:
-                raise AssertionError(
-                    "unexpected inference response on tenant A: "
-                    f"{limited.status_code}: {redact_sensitive(limited.text)}"
-                )
-            time.sleep(1.0)
-        assert limited is not None and limited.status_code == 429, (
+        limited, successes = exhaust_tenant_token_budget(
+            request_session_http=request_session_http,
+            case=tenant_external_model_tenants["tenant_a"],
+            model=model,
+            api_key=quota_model["tenant_a"]["api_key"],
+            provider_path=provider_path,
+            timeout=QUOTA_EXHAUSTION_TIMEOUT,
+        )
+        assert limited.status_code == 429, (
             f"tenant A did not hit its token budget after {successes} successes: "
-            f"{redact_sensitive(limited.text if limited is not None else 'no response')}"
+            f"{redact_sensitive(limited.text)}"
         )
         assert successes > 0, "tenant A hit 429 before any successful inference (limits not live?)"
 
@@ -471,7 +449,7 @@ class TestTenantQuotaIsolation:
             request_session_http=request_session_http,
             case=tenant_external_model_tenants["tenant_b"],
             model=model,
-            api_key=quota_model["access_b"]["api_key"],
+            api_key=quota_model["tenant_b"]["api_key"],
             provider_path=provider_path,
         )
         assert_returns_usage(response=response)
@@ -480,7 +458,7 @@ class TestTenantQuotaIsolation:
             request_session_http=request_session_http,
             case=tenant_external_model_tenants["tenant_b"],
             model=model,
-            api_key=quota_model["access_b"]["api_key"],
+            api_key=quota_model["tenant_b"]["api_key"],
             provider_path=provider_path,
         )
         assert_returns_usage(response=again)
