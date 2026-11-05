@@ -1,9 +1,13 @@
 """Shared workload utilities for Spark install and upgrade tests."""
 
 import shlex
+from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any
 
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
@@ -28,6 +32,23 @@ SPARK_WORKLOAD_ROLE_BINDING_NAME: str = "spark-role-binding"
 
 # gRPC port the Spark Connect server listens on; clients connect to sc://<service>:<port>.
 SPARK_CONNECT_PORT: int = 15002
+# Spark UI / PrometheusServlet metrics port on the driver and Connect server.
+SPARK_UI_PORT: int = 4040
+
+# Labels the operator stamps on operand pods (pkg/common/spark.go).
+LABEL_SPARK_ROLE: str = "spark-role"
+
+# NetworkPolicies the operator reconciles for operand pods when the OperandNetworkPolicy feature
+# gate is enabled (RHOAI 3.6+); absent on older operators and upstream installs.
+OPERAND_INGRESS_NETWORK_POLICY_NAME: str = "spark-operator-operand-ingress"
+OPERAND_EGRESS_NETWORK_POLICY_NAME: str = "spark-operator-operand-egress"
+# Per-workload executor ingress policy name suffixes (keyed per workload kind).
+SPARK_APPLICATION_EXECUTOR_POLICY_SUFFIX: str = "-sparkapp-executor"
+SPARK_CONNECT_EXECUTOR_POLICY_SUFFIX: str = "-sparkconnect-executor"
+
+# User-managed additive policy that opens consumer access (Spark UI + Connect gRPC) to the
+# driver/connect-server pods. The operator never creates or garbage-collects it.
+CONSUMER_NETWORK_POLICY_NAME: str = "spark-operator-allow-consumers"
 # OpenShift restricted-SCC-compatible container security context (no uid pinning; the SCC assigns one).
 RESTRICTED_SECURITY_CONTEXT: dict = {
     "allowPrivilegeEscalation": False,
@@ -537,3 +558,157 @@ def recreate_role_binding_in_namespace(
     rb = RoleBinding(client=client, kind_dict=source_dict, teardown=teardown)
     rb.deploy()
     return rb
+
+
+def _network_policy_appears(policy: NetworkPolicy, timeout: int) -> bool:
+    """Poll until a NetworkPolicy exists, reporting whether it appeared within the timeout.
+
+    This is a detection predicate, not an assertion: callers decide whether absence is fatal. It
+    polls because the operator may need a reconcile pass (notably right after an upgrade) before the
+    policy exists.
+
+    Args:
+        policy: The NetworkPolicy to watch.
+        timeout: Maximum seconds to wait for it to appear.
+
+    Returns:
+        bool: True if the policy exists within the timeout, otherwise False.
+    """
+    try:
+        for exists in TimeoutSampler(wait_timeout=timeout, sleep=5, func=lambda: bool(policy.exists)):
+            if exists:
+                return True
+    except TimeoutExpiredError:
+        return False
+    return False
+
+
+def operand_network_policies_present(client: DynamicClient, namespace: str, timeout: int = 60) -> bool:
+    """Report whether the operator has reconciled its operand NetworkPolicies in a namespace.
+
+    The ``OperandNetworkPolicy`` feature (enabled by the RHOAI/ODH overlays, shipped in RHOAI 3.6+)
+    makes the operator create a ``spark-operator-operand-ingress`` policy for driver/connect-server
+    pods. On an operator without the feature the policy never appears. Post-upgrade the operator needs
+    a reconcile pass before it exists, so this polls up to ``timeout`` before concluding absence.
+
+    Args:
+        client: Kubernetes client.
+        namespace: Namespace to inspect.
+        timeout: Maximum seconds to wait for the operand ingress policy to appear.
+
+    Returns:
+        bool: True if the operand ingress policy exists within the timeout, otherwise False.
+    """
+    return _network_policy_appears(
+        policy=NetworkPolicy(client=client, name=OPERAND_INGRESS_NETWORK_POLICY_NAME, namespace=namespace),
+        timeout=timeout,
+    )
+
+
+def consumer_network_policy_manifest(namespace: str) -> dict:
+    """Build the user-managed additive policy that opens consumer access to Spark drivers/servers.
+
+    Admits the Spark UI (4040) and Spark Connect gRPC (15002) to driver and connect-server pods from
+    any pod in the same namespace. It is additive, so alongside the operator's operand ingress policy
+    it only widens access. It must NOT be applied when the operand ingress policy is absent, or it
+    becomes the only ingress policy on the driver/server and cuts off executor->driver RPC.
+
+    Args:
+        namespace: Namespace the policy is created in.
+
+    Returns:
+        dict: NetworkPolicy manifest.
+    """
+    return {
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "NetworkPolicy",
+        "metadata": {"name": CONSUMER_NETWORK_POLICY_NAME, "namespace": namespace},
+        "spec": {
+            "podSelector": {
+                "matchExpressions": [
+                    {"key": LABEL_SPARK_ROLE, "operator": "In", "values": ["driver", "connect-server"]}
+                ]
+            },
+            "policyTypes": ["Ingress"],
+            "ingress": [
+                {
+                    "from": [{"podSelector": {}}],
+                    "ports": [
+                        {"protocol": "TCP", "port": SPARK_UI_PORT},
+                        {"protocol": "TCP", "port": SPARK_CONNECT_PORT},
+                    ],
+                }
+            ],
+        },
+    }
+
+
+@contextmanager
+def ensure_consumer_network_policy(
+    client: DynamicClient, namespace: str, teardown: bool
+) -> Generator[NetworkPolicy | None, Any, Any]:
+    """Create the consumer NetworkPolicy only when the operator's operand policies are active.
+
+    When the operand ingress policy is present (RHOAI 3.6+), the Spark Connect client pod cannot reach
+    the server's gRPC port without this additive policy, so it is created (or reused if it already
+    exists). When the operand policies are absent (older operator / upstream), creating it would break
+    intra-Spark traffic, so this is a no-op.
+
+    Args:
+        client: Kubernetes client.
+        namespace: Namespace to open consumer access in.
+        teardown: Whether to clean up a newly created policy on exit.
+
+    Yields:
+        NetworkPolicy | None: The consumer policy, or None when operand policies are absent.
+    """
+    existing = NetworkPolicy(client=client, name=CONSUMER_NETWORK_POLICY_NAME, namespace=namespace)
+    if not operand_network_policies_present(client=client, namespace=namespace):
+        LOGGER.info(f"Operand NetworkPolicies absent in {namespace}; skipping consumer policy (would break RPC)")
+        yield None
+    elif existing.exists:
+        yield existing
+    else:
+        with NetworkPolicy(
+            client=client, kind_dict=consumer_network_policy_manifest(namespace=namespace), teardown=teardown
+        ) as policy:
+            yield policy
+
+
+def verify_operand_network_policies(
+    client: DynamicClient,
+    namespace: str,
+    workload_name: str,
+    executor_policy_suffix: str,
+    owner_uid: str,
+    timeout: int = 300,
+) -> None:
+    """Assert the operator created its three operand NetworkPolicies and owns the per-workload one.
+
+    Each policy is polled rather than read once, because the operator may still be reconciling them
+    (notably right after an upgrade, where the workload is already Running before the policies appear).
+
+    Args:
+        client: Kubernetes client.
+        namespace: Workload namespace.
+        workload_name: Name of the SparkApplication/SparkConnect that owns the per-workload policy.
+        executor_policy_suffix: Per-kind suffix (``-sparkapp-executor`` / ``-sparkconnect-executor``).
+        owner_uid: UID of the owning workload, expected in the per-workload policy's ownerReferences.
+        timeout: Maximum seconds to wait for each policy to appear.
+
+    Raises:
+        AssertionError: If a policy is missing or the per-workload policy is not owned by the workload.
+    """
+    executor_policy_name = f"{workload_name}{executor_policy_suffix}"
+    for name in (OPERAND_EGRESS_NETWORK_POLICY_NAME, OPERAND_INGRESS_NETWORK_POLICY_NAME, executor_policy_name):
+        policy = NetworkPolicy(client=client, name=name, namespace=namespace)
+        assert _network_policy_appears(policy=policy, timeout=timeout), (
+            f"Operator did not create operand NetworkPolicy {name} in {namespace} within {timeout}s"
+        )
+
+    executor_policy = NetworkPolicy(client=client, name=executor_policy_name, namespace=namespace)
+    owner_uids = {ref.get("uid") for ref in (executor_policy.instance.metadata.get("ownerReferences") or [])}
+    assert owner_uid in owner_uids, (
+        f"Operand policy {executor_policy_name} is missing an owner reference to workload {workload_name} "
+        f"(owners: {owner_uids})"
+    )
