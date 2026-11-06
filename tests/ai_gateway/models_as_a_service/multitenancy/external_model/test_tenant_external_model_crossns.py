@@ -35,25 +35,18 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.maas_model_ref import MaaSModelRef
-from ocp_resources.secret import Secret
 
 from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils import (
-    CREDENTIAL_DATA_KEY,
-    EXTERNAL_API_FORMAT,
-    EXTERNAL_ENDPOINT,
-    EXTERNAL_TARGET_MODEL,
-    admitted_user_namespace,
-    apply_reference_grant,
     assert_served_by_provider,
     crossns_model,
     crossns_model_with_provider,
-    external_model_binding,
-    gateway_ref,
+    crossns_namespace,
+    crossns_provider,
+    crossns_secret_with_credential,
+    crossns_twin_model,
     get_json_or_none,
     infer_external_chat,
     infer_for_shared_model,
-    namespace_name,
     redact_sensitive,
     reference_grant_for,
     revoke_reference_grant,
@@ -63,8 +56,6 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     wait_for_gateway_attachment_ready,
     wait_for_no_credential_copy,
 )
-from utilities.resources.external_model import ExternalModel
-from utilities.resources.external_provider import ExternalProvider
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -397,43 +388,29 @@ class TestCredentialSourceSelection:
         with ExitStack() as stack:
             env = crossns_env
             shared_credential = "shared-cred"
-            provider_credential = f"sk-extmod-prov-{uuid.uuid4().hex[:8]}"  # pragma: allowlist secret
-            stack.enter_context(
-                cm=Secret(
-                    client=admin_client,
-                    name=shared_credential,
-                    namespace=env["provider_ns"],
-                    type="Opaque",
-                    string_data={CREDENTIAL_DATA_KEY: provider_credential},
-                    teardown=env["teardown"],
-                    wait_for_resource=True,
-                )
+            provider_credential = crossns_secret_with_credential(
+                admin_client=admin_client,
+                stack=stack,
+                env=env,
+                name=shared_credential,
+                namespace=env["provider_ns"],
             )
-            model_credential = f"sk-extmod-model-{uuid.uuid4().hex[:8]}"  # pragma: allowlist secret
-            stack.enter_context(
-                cm=Secret(
-                    client=admin_client,
-                    name=shared_credential,
-                    namespace=env["model_ns"],
-                    type="Opaque",
-                    string_data={CREDENTIAL_DATA_KEY: model_credential},
-                    teardown=env["teardown"],
-                    wait_for_resource=True,
-                )
+            model_credential = crossns_secret_with_credential(
+                admin_client=admin_client,
+                stack=stack,
+                env=env,
+                name=shared_credential,
+                namespace=env["model_ns"],
             )
-
             provider_name = f"e2e-crossns-credsel-{uuid.uuid4().hex[:6]}-provider"
-            stack.enter_context(
-                cm=ExternalProvider(
-                    client=admin_client,
-                    name=provider_name,
-                    namespace=env["provider_ns"],
-                    provider="openai",
-                    endpoint=EXTERNAL_ENDPOINT,
-                    auth={"type": "apikey", "secretRef": {"name": shared_credential}},
-                    teardown=env["teardown"],
-                    wait_for_resource=True,
-                )
+            crossns_provider(
+                admin_client=admin_client,
+                stack=stack,
+                env=env,
+                name=provider_name,
+                namespace=env["provider_ns"],
+                secret_name=shared_credential,
+                credential=provider_credential,
             )
 
             default_model = crossns_model_with_provider(
@@ -506,33 +483,19 @@ class TestCredentialSourceSelection:
         with ExitStack() as stack:
             env = crossns_env
             provider_name = f"e2e-crossns-missing-{uuid.uuid4().hex[:6]}-provider"
-            provider_credential = f"sk-extmod-prov-{uuid.uuid4().hex[:8]}"  # pragma: allowlist secret
-            secret_name = f"{provider_name}-cred"
-            stack.enter_context(
-                cm=Secret(
-                    client=admin_client,
-                    name=secret_name,
-                    namespace=env["provider_ns"],
-                    type="Opaque",
-                    string_data={CREDENTIAL_DATA_KEY: provider_credential},
-                    teardown=env["teardown"],
-                    wait_for_resource=True,
-                )
-            )
-            stack.enter_context(
-                cm=ExternalProvider(
-                    client=admin_client,
-                    name=provider_name,
-                    namespace=env["provider_ns"],
-                    provider="openai",
-                    endpoint=EXTERNAL_ENDPOINT,
-                    auth={"type": "apikey", "secretRef": {"name": secret_name}},
-                    teardown=env["teardown"],
-                    wait_for_resource=True,
-                )
+            crossns_provider(
+                admin_client=admin_client,
+                stack=stack,
+                env=env,
+                name=provider_name,
+                namespace=env["provider_ns"],
             )
 
-            missing_override = "does-not-exist-cred"
+            # The override must resolve in the MODEL namespace only: the name
+            # deliberately matches the provider-local Secret, so a resolver
+            # that wrongly falls back to the provider namespace would find it
+            # and serve instead of failing.
+            missing_override = f"{provider_name}-cred"
             model = crossns_model_with_provider(
                 admin_client=admin_client,
                 env=env,
@@ -587,111 +550,30 @@ class TestSameNamedProvidersTwoNamespaces:
             env = crossns_env
             case = env["tenant"]
             shared_provider = f"e2e-crossns-twin-{uuid.uuid4().hex[:6]}"
-            credential_1 = f"sk-extmod-t1-{uuid.uuid4().hex[:8]}"  # pragma: allowlist secret
-            credential_2 = f"sk-extmod-t2-{uuid.uuid4().hex[:8]}"  # pragma: allowlist secret
-            shared_secret = f"{shared_provider}-cred"
-            tag_1 = f"{shared_provider}-ns1"
-            tag_2 = f"{shared_provider}-ns2"
             client_tag = f"{shared_provider}-client"
-
-            provider_ns_1 = namespace_name(
-                namespace=stack.enter_context(
-                    cm=admitted_user_namespace(
-                        admin_client,
-                        "e2e-extmod-crossns-p1",
-                        case["gateway_name"],
-                        teardown=env["teardown"],
-                    )
-                )
-            )
-            provider_ns_2 = namespace_name(
-                namespace=stack.enter_context(
-                    cm=admitted_user_namespace(
-                        admin_client,
-                        "e2e-extmod-crossns-p2",
-                        case["gateway_name"],
-                        teardown=env["teardown"],
-                    )
-                )
-            )
-            for provider_ns, credential in ((provider_ns_1, credential_1), (provider_ns_2, credential_2)):
-                stack.enter_context(
-                    cm=Secret(
-                        client=admin_client,
-                        name=shared_secret,
-                        namespace=provider_ns,
-                        type="Opaque",
-                        string_data={CREDENTIAL_DATA_KEY: credential},
-                        teardown=env["teardown"],
-                        wait_for_resource=True,
-                    )
-                )
-                stack.enter_context(
-                    cm=ExternalProvider(
-                        client=admin_client,
-                        name=shared_provider,
-                        namespace=provider_ns,
-                        provider="openai",
-                        endpoint=EXTERNAL_ENDPOINT,
-                        auth={"type": "apikey", "secretRef": {"name": shared_secret}},
-                        teardown=env["teardown"],
-                        wait_for_resource=True,
-                    )
-                )
-                apply_reference_grant(
+            provider_namespaces = [
+                crossns_namespace(admin_client=admin_client, stack=stack, env=env, prefix="e2e-extmod-crossns-p1"),
+                crossns_namespace(admin_client=admin_client, stack=stack, env=env, prefix="e2e-extmod-crossns-p2"),
+            ]
+            credentials = [
+                crossns_provider(
                     admin_client=admin_client,
-                    env=env,
                     stack=stack,
-                    name=f"{shared_provider}-grant",
-                    provider_namespace=provider_ns,
-                    from_namespace=env["model_ns"],
-                    to_name=shared_provider,
+                    env=env,
+                    name=shared_provider,
+                    namespace=provider_namespace,
+                    grant_from_model_ns=True,
                 )
-
-            name = f"e2e-crossns-twinmodel-{uuid.uuid4().hex[:6]}"
-            stack.enter_context(
-                cm=ExternalModel(
-                    client=admin_client,
-                    name=name,
-                    namespace=env["model_ns"],
-                    external_provider_refs=[
-                        external_model_binding(
-                            provider_name=shared_provider,
-                            provider_namespace=provider_ns_1,
-                            path_tag=tag_1,
-                        ),
-                        {
-                            "ref": {"name": shared_provider, "namespace": provider_ns_2},
-                            "targetModel": EXTERNAL_TARGET_MODEL,
-                            "apiFormat": EXTERNAL_API_FORMAT,
-                            "path": f"/anything/{tag_2}",
-                        },
-                    ],
-                    gateway_refs=[gateway_ref(gateway_name=case["gateway_name"])],
-                    teardown=env["teardown"],
-                    wait_for_resource=True,
-                )
+                for provider_namespace in provider_namespaces
+            ]
+            model = crossns_twin_model(
+                admin_client=admin_client,
+                stack=stack,
+                env=env,
+                name=f"e2e-crossns-twinmodel-{uuid.uuid4().hex[:6]}",
+                provider_name=shared_provider,
+                provider_namespaces=provider_namespaces,
             )
-            stack.enter_context(
-                cm=MaaSModelRef(
-                    client=admin_client,
-                    name=name,
-                    namespace=env["model_ns"],
-                    model_ref={
-                        "name": name,
-                        "namespace": env["model_ns"],
-                        "kind": "ExternalModel",
-                        "apiGroup": "inference.opendatahub.io",
-                    },
-                    teardown=env["teardown"],
-                    wait_for_resource=True,
-                )
-            )
-            model = {
-                "name": name,
-                "namespace": env["model_ns"],
-                "client_name": name,
-            }
 
             access = serve_model_in_tenant_stack(
                 admin_client=admin_client,
@@ -703,8 +585,8 @@ class TestSameNamedProvidersTwoNamespaces:
             )
             wait_for_gateway_attachment_ready(
                 admin_client=admin_client,
-                model_name=name,
-                model_namespace=env["model_ns"],
+                model_name=model["name"],
+                model_namespace=model["namespace"],
                 gateway_name=case["gateway_name"],
             )
 
@@ -721,10 +603,15 @@ class TestSameNamedProvidersTwoNamespaces:
                 assert response.status_code == 200, (
                     f"inference failed on multi-provider model: {redact_sensitive(response.text)}"
                 )
-                if credential_1 in response.text:
-                    seen.add("provider-ns-1")
-                if credential_2 in response.text:
-                    seen.add("provider-ns-2")
-            assert seen == {"provider-ns-1", "provider-ns-2"}, (
+                for provider_index, (credential, tag) in enumerate(
+                    zip(credentials, model["path_tags"], strict=True), start=1
+                ):
+                    if credential in response.text:
+                        assert tag in response.text, (
+                            f"credential of provider ns {provider_index} served through the wrong "
+                            f"destination: expected path tag {tag!r} in the response"
+                        )
+                        seen.add(f"provider-ns-{provider_index}")
+            assert seen == {f"provider-ns-{index}" for index in (1, 2)}, (
                 f"expected both same-named providers to serve, saw {seen}"
             )
