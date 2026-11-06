@@ -218,6 +218,17 @@ class TestMissingGrant:
             )
 
 
+# AGC stages provider withdrawal behind a rollout-safety gate that the
+# last-provider (empty overlay) case can never satisfy, so revoking or
+# narrowing the grant leaves the attachment in AttachmentPending forever
+# (the drain annotation is never written). Tracked in RHOAIENG-102979 and
+# against the ai-gateway-controller last-provider scope (#106); re-enable
+# both tests once the controller fix lands.
+LAST_PROVIDER_DRAIN_DEFECT = (
+    "AGC last-provider withdrawal never drains (attachment stays AttachmentPending; RHOAIENG-102979)"
+)
+
+
 @pytest.mark.usefixtures(
     "maas_subscription_controller_enabled_latest",
     "authorino_tls_configured",
@@ -229,6 +240,7 @@ class TestGrantRevocation:
     runtime configuration."""
 
     @pytest.mark.tier2
+    @pytest.mark.skip(reason=LAST_PROVIDER_DRAIN_DEFECT)
     def test_revoke_stops_access(
         self,
         admin_client: DynamicClient,
@@ -297,6 +309,7 @@ class TestGrantRevocation:
             )
 
     @pytest.mark.tier2
+    @pytest.mark.skip(reason=LAST_PROVIDER_DRAIN_DEFECT)
     def test_narrowed_grant_stops_access(
         self,
         admin_client: DynamicClient,
