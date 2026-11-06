@@ -735,11 +735,14 @@ def _require_praxis_default_tenant(
     GatewayNotManaged reason that never appears (timeout, not skip).
     """
 
-    def _praxis_image_deployed() -> bool:
+    def _praxis_image_deployed() -> None:
         deployment = get_json_or_none(
             client=admin_client, kind="deployment", name="payload-processing", namespace=MAAS_GATEWAY_NAMESPACE
         )
-        return PRAXIS_IMAGE_MARKER in deployment_image(deployment)
+        image = deployment_image(deployment=deployment)
+        assert PRAXIS_IMAGE_MARKER in image, (
+            f"default tenant payload-processing image is not praxis-extproc yet: {image or 'deployment not found'}"
+        )
 
     # Reconciliation may still be rolling the praxis image when the suite
     # starts: poll for it within a bounded window before deciding to skip,
