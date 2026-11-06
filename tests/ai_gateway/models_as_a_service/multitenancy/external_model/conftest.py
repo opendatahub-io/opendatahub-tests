@@ -56,6 +56,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     usage_provider,
     wait_for_attachment_httproute,
     wait_implicitly_attached,
+    wait_until,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
     admit_namespace_to_gateway,
@@ -77,6 +78,7 @@ from utilities.resources.external_provider import ExternalProvider
 LOGGER = structlog.get_logger(name=__name__)
 
 LIMITED_TOKEN_LIMIT = 3
+PRAXIS_IMAGE_WAIT_TIMEOUT = 120
 UNLIMITED_TOKEN_LIMIT = 100
 
 
@@ -735,10 +737,23 @@ def _require_praxis_default_tenant(
     the gatewayRefs schema these tests would patch it and wait for a
     GatewayNotManaged reason that never appears (timeout, not skip).
     """
-    deployment = get_json_or_none(
-        client=admin_client, kind="deployment", name="payload-processing", namespace=MAAS_GATEWAY_NAMESPACE
-    )
-    if PRAXIS_IMAGE_MARKER not in deployment_image(deployment):
+
+    def _praxis_image_deployed() -> bool:
+        deployment = get_json_or_none(
+            client=admin_client, kind="deployment", name="payload-processing", namespace=MAAS_GATEWAY_NAMESPACE
+        )
+        return PRAXIS_IMAGE_MARKER in deployment_image(deployment)
+
+    # Reconciliation may still be rolling the praxis image when the suite
+    # starts: poll for it within a bounded window before deciding to skip,
+    # so a slow install does not silently disable the whole module.
+    try:
+        wait_until(
+            check=_praxis_image_deployed,
+            timeout=PRAXIS_IMAGE_WAIT_TIMEOUT,
+            what="default tenant payload-processing to run the praxis-extproc image",
+        )
+    except TimeoutError:
         pytest.skip(
             "default tenant payload-processing is not praxis-extproc; its IPP serves "
             "models without gatewayRefs and the AGC leaves them alone"

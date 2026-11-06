@@ -594,138 +594,137 @@ class TestSameNamedProvidersTwoNamespaces:
             tag_2 = f"{shared_provider}-ns2"
             client_tag = f"{shared_provider}-client"
 
-            with ExitStack() as test_stack:
-                provider_ns_1 = namespace_name(
-                    namespace=test_stack.enter_context(
-                        cm=admitted_user_namespace(
-                            admin_client,
-                            "e2e-extmod-crossns-p1",
-                            case["gateway_name"],
-                            teardown=env["teardown"],
-                        )
+            provider_ns_1 = namespace_name(
+                namespace=stack.enter_context(
+                    cm=admitted_user_namespace(
+                        admin_client,
+                        "e2e-extmod-crossns-p1",
+                        case["gateway_name"],
+                        teardown=env["teardown"],
                     )
                 )
-                provider_ns_2 = namespace_name(
-                    namespace=test_stack.enter_context(
-                        cm=admitted_user_namespace(
-                            admin_client,
-                            "e2e-extmod-crossns-p2",
-                            case["gateway_name"],
-                            teardown=env["teardown"],
-                        )
+            )
+            provider_ns_2 = namespace_name(
+                namespace=stack.enter_context(
+                    cm=admitted_user_namespace(
+                        admin_client,
+                        "e2e-extmod-crossns-p2",
+                        case["gateway_name"],
+                        teardown=env["teardown"],
                     )
                 )
-                for provider_ns, credential in ((provider_ns_1, credential_1), (provider_ns_2, credential_2)):
-                    stack.enter_context(
-                        cm=Secret(
-                            client=admin_client,
-                            name=shared_secret,
-                            namespace=provider_ns,
-                            type="Opaque",
-                            string_data={CREDENTIAL_DATA_KEY: credential},
-                            teardown=env["teardown"],
-                            wait_for_resource=True,
-                        )
-                    )
-                    stack.enter_context(
-                        cm=ExternalProvider(
-                            client=admin_client,
-                            name=shared_provider,
-                            namespace=provider_ns,
-                            provider="openai",
-                            endpoint=EXTERNAL_ENDPOINT,
-                            auth={"type": "apikey", "secretRef": {"name": shared_secret}},
-                            teardown=env["teardown"],
-                            wait_for_resource=True,
-                        )
-                    )
-                    apply_reference_grant(
-                        admin_client=admin_client,
-                        env=env,
-                        stack=stack,
-                        name=f"{shared_provider}-grant",
-                        provider_namespace=provider_ns,
-                        from_namespace=env["model_ns"],
-                        to_name=shared_provider,
-                    )
-
-                name = f"e2e-crossns-twinmodel-{uuid.uuid4().hex[:6]}"
+            )
+            for provider_ns, credential in ((provider_ns_1, credential_1), (provider_ns_2, credential_2)):
                 stack.enter_context(
-                    cm=ExternalModel(
+                    cm=Secret(
                         client=admin_client,
-                        name=name,
-                        namespace=env["model_ns"],
-                        external_provider_refs=[
-                            external_model_binding(
-                                provider_name=shared_provider,
-                                provider_namespace=provider_ns_1,
-                                path_tag=tag_1,
-                            ),
-                            {
-                                "ref": {"name": shared_provider, "namespace": provider_ns_2},
-                                "targetModel": EXTERNAL_TARGET_MODEL,
-                                "apiFormat": EXTERNAL_API_FORMAT,
-                                "path": f"/anything/{tag_2}",
-                            },
-                        ],
-                        gateway_refs=[gateway_ref(gateway_name=case["gateway_name"])],
+                        name=shared_secret,
+                        namespace=provider_ns,
+                        type="Opaque",
+                        string_data={CREDENTIAL_DATA_KEY: credential},
                         teardown=env["teardown"],
                         wait_for_resource=True,
                     )
                 )
                 stack.enter_context(
-                    cm=MaaSModelRef(
+                    cm=ExternalProvider(
                         client=admin_client,
-                        name=name,
-                        namespace=env["model_ns"],
-                        model_ref={
-                            "name": name,
-                            "namespace": env["model_ns"],
-                            "kind": "ExternalModel",
-                            "apiGroup": "inference.opendatahub.io",
-                        },
+                        name=shared_provider,
+                        namespace=provider_ns,
+                        provider="openai",
+                        endpoint=EXTERNAL_ENDPOINT,
+                        auth={"type": "apikey", "secretRef": {"name": shared_secret}},
                         teardown=env["teardown"],
                         wait_for_resource=True,
                     )
                 )
-                model = {
-                    "name": name,
-                    "namespace": env["model_ns"],
-                    "client_name": name,
-                }
-
-                access = serve_model_in_tenant_stack(
+                apply_reference_grant(
                     admin_client=admin_client,
-                    request_session_http=request_session_http,
-                    ocp_token=ocp_token_for_actor,
                     env=env,
                     stack=stack,
-                    model=model,
-                )
-                wait_for_gateway_attachment_ready(
-                    admin_client=admin_client,
-                    model_name=name,
-                    model_namespace=env["model_ns"],
-                    gateway_name=case["gateway_name"],
+                    name=f"{shared_provider}-grant",
+                    provider_namespace=provider_ns,
+                    from_namespace=env["model_ns"],
+                    to_name=shared_provider,
                 )
 
-                seen: set[str] = set()
-                for _request_index in range(12):
-                    response = infer_external_chat(
-                        request_session_http=request_session_http,
-                        gateway_url=case["gateway_url"],
-                        model_namespace=model["namespace"],
-                        model_client_name=model["client_name"],
-                        api_key=access["api_key"],
-                        path_tag=client_tag,
-                    )
-                    assert response.status_code == 200, (
-                        f"inference failed on multi-provider model: {redact_sensitive(response.text)}"
-                    )
-                    if credential_1 in response.text:
-                        seen.add("provider-ns-1")
-                    if credential_2 in response.text:
-                        seen.add("provider-ns-2")
-                assert seen == {"provider-ns-1", "provider-ns-2"}, (
-                    f"expected both same-named providers to serve, saw {seen}"
+            name = f"e2e-crossns-twinmodel-{uuid.uuid4().hex[:6]}"
+            stack.enter_context(
+                cm=ExternalModel(
+                    client=admin_client,
+                    name=name,
+                    namespace=env["model_ns"],
+                    external_provider_refs=[
+                        external_model_binding(
+                            provider_name=shared_provider,
+                            provider_namespace=provider_ns_1,
+                            path_tag=tag_1,
+                        ),
+                        {
+                            "ref": {"name": shared_provider, "namespace": provider_ns_2},
+                            "targetModel": EXTERNAL_TARGET_MODEL,
+                            "apiFormat": EXTERNAL_API_FORMAT,
+                            "path": f"/anything/{tag_2}",
+                        },
+                    ],
+                    gateway_refs=[gateway_ref(gateway_name=case["gateway_name"])],
+                    teardown=env["teardown"],
+                    wait_for_resource=True,
                 )
+            )
+            stack.enter_context(
+                cm=MaaSModelRef(
+                    client=admin_client,
+                    name=name,
+                    namespace=env["model_ns"],
+                    model_ref={
+                        "name": name,
+                        "namespace": env["model_ns"],
+                        "kind": "ExternalModel",
+                        "apiGroup": "inference.opendatahub.io",
+                    },
+                    teardown=env["teardown"],
+                    wait_for_resource=True,
+                )
+            )
+            model = {
+                "name": name,
+                "namespace": env["model_ns"],
+                "client_name": name,
+            }
+
+            access = serve_model_in_tenant_stack(
+                admin_client=admin_client,
+                request_session_http=request_session_http,
+                ocp_token=ocp_token_for_actor,
+                env=env,
+                stack=stack,
+                model=model,
+            )
+            wait_for_gateway_attachment_ready(
+                admin_client=admin_client,
+                model_name=name,
+                model_namespace=env["model_ns"],
+                gateway_name=case["gateway_name"],
+            )
+
+            seen: set[str] = set()
+            for _request_index in range(12):
+                response = infer_external_chat(
+                    request_session_http=request_session_http,
+                    gateway_url=case["gateway_url"],
+                    model_namespace=model["namespace"],
+                    model_client_name=model["client_name"],
+                    api_key=access["api_key"],
+                    path_tag=client_tag,
+                )
+                assert response.status_code == 200, (
+                    f"inference failed on multi-provider model: {redact_sensitive(response.text)}"
+                )
+                if credential_1 in response.text:
+                    seen.add("provider-ns-1")
+                if credential_2 in response.text:
+                    seen.add("provider-ns-2")
+            assert seen == {"provider-ns-1", "provider-ns-2"}, (
+                f"expected both same-named providers to serve, saw {seen}"
+            )
