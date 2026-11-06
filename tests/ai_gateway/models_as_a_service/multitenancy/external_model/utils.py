@@ -987,10 +987,9 @@ def attachment_httproutes(
     routes: list[dict[str, Any]] = []
     for route in list_json(admin_client, "httproute", route_namespace):
         for parent in (route.get("spec") or {}).get("parentRefs") or []:
-            if (
-                parent.get("name") == gateway_name
-                and (parent.get("namespace") or gateway_namespace) == gateway_namespace
-            ):
+            # An omitted parentRef namespace means the Gateway in the ROUTE's
+            # namespace (Gateway API default), not the target gateway's.
+            if parent.get("name") == gateway_name and (parent.get("namespace") or route_namespace) == gateway_namespace:
                 routes.append(route)
                 break
     return routes
@@ -1002,9 +1001,12 @@ def httproute_parent_conditions(
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
 ) -> list[dict[str, Any]]:
     """Route status conditions for the parentRef selecting the gateway."""
+    route_namespace = route["metadata"]["namespace"]
     for parent in (route.get("status") or {}).get("parents") or []:
         ref = parent.get("parentRef") or {}
-        if ref.get("name") == gateway_name and (ref.get("namespace") or gateway_namespace) == gateway_namespace:
+        # An omitted parentRef namespace means the Gateway in the ROUTE's
+        # namespace (Gateway API default), not the target gateway's.
+        if ref.get("name") == gateway_name and (ref.get("namespace") or route_namespace) == gateway_namespace:
             return parent.get("conditions") or []
     return []
 
