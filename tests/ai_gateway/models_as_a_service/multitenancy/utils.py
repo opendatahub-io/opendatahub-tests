@@ -424,14 +424,12 @@ def isolation_bootstrap_gateway_body(
     }
     listeners: list[dict[str, Any]] = []
     if not https_only:
-        listeners.append(
-            {
-                "name": "http",
-                "port": GATEWAY_HTTP_PORT,
-                "protocol": "HTTP",
-                "allowedRoutes": allowed_routes,
-            }
-        )
+        listeners.append({
+            "name": "http",
+            "port": GATEWAY_HTTP_PORT,
+            "protocol": "HTTP",
+            "allowedRoutes": allowed_routes,
+        })
     listeners.append(https_listener)
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
@@ -1152,7 +1150,7 @@ def _gateway_maas_auth_policy_status_snapshot(
     if not gateway_policy.exists:
         try:
             gateway_policy.get()
-        except (NotFoundError, ResourceNotFoundError):
+        except NotFoundError, ResourceNotFoundError:
             return (
                 f"Gateway AuthPolicy '{gateway_namespace}/{policy_name}': not found "
                 "(maas-controller may not have created it yet)"
