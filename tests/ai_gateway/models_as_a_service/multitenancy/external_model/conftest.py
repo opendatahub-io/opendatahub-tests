@@ -154,7 +154,7 @@ def tenant_external_model_tenants(
             )
             deploy_and_verify_aitenant_ready(aitenant=aitenant)
             if not per_tenant_processing_uses_praxis(admin_client, params["aitenant_name"]):
-                pytest.skip(
+                pytest.fail(
                     f"per-tenant payload-processing for {params['aitenant_name']} is not "
                     "praxis-extproc; the AGC/Praxis multi-tenant contract is not active"
                 )
