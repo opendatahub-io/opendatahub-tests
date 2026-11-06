@@ -223,17 +223,20 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
     try:
         yield bundle
     finally:
-        if exported is not None:
-            # The temp file may already be gone (e.g. a /tmp cleanup); its
-            # deletion must not skip the environment restoration below.
-            try:
-                os.unlink(exported)
-            except FileNotFoundError:
-                pass
-        if previous is None:
-            os.environ.pop("REQUESTS_CA_BUNDLE", None)
-        else:
-            os.environ["REQUESTS_CA_BUNDLE"] = previous
+        try:
+            if exported is not None:
+                # The temp file may already be gone (e.g. a /tmp cleanup); a
+                # missing file is fine, but any other deletion error must not
+                # skip the environment restoration below.
+                try:
+                    os.unlink(exported)
+                except FileNotFoundError:
+                    pass
+        finally:
+            if previous is None:
+                os.environ.pop("REQUESTS_CA_BUNDLE", None)
+            else:
+                os.environ["REQUESTS_CA_BUNDLE"] = previous
 
 
 def combined_ca_bundle_path(*, bundle_path: str) -> str:
@@ -245,9 +248,20 @@ def combined_ca_bundle_path(*, bundle_path: str) -> str:
     usable. The caller owns the returned file's lifetime.
     """
     with tempfile.NamedTemporaryFile(mode="w", suffix="-combined-ca.pem", delete=False, encoding="utf-8") as combined:
-        with open(file=bundle_path, encoding="utf-8") as cluster_bundle:
-            combined.write(cluster_bundle.read())
-        with open(file=certifi.where(), encoding="utf-8") as default_bundle:
-            combined.write("\n")
-            combined.write(default_bundle.read())
+        try:
+            with open(file=bundle_path, encoding="utf-8") as cluster_bundle:
+                combined.write(cluster_bundle.read())
+            with open(file=certifi.where(), encoding="utf-8") as default_bundle:
+                combined.write("\n")
+                combined.write(default_bundle.read())
+        except BaseException:
+            # A partially written bundle must not linger on disk; it is only
+            # ever consumed through REQUESTS_CA_BUNDLE, so delete it and let
+            # the construction failure propagate.
+            combined.close()
+            try:
+                os.unlink(combined.name)
+            except OSError:
+                pass
+            raise
     return combined.name
