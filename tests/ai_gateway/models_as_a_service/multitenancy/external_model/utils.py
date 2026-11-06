@@ -2580,6 +2580,7 @@ def default_tenant_model_stack(
     *,
     prefix: str,
     namespace: str,
+    teardown: bool = True,
 ) -> Generator[dict[str, Any], Any, Any]:
     """A 3.5-shaped stack in the model namespace: credential Secret, provider with
     ``auth.type: simple``, ExternalModel without gatewayRefs and its MaaSModelRef."""
@@ -2602,6 +2603,7 @@ def default_tenant_model_stack(
                 type="Opaque",
                 string_data={CREDENTIAL_DATA_KEY: model["credential"]},
                 wait_for_resource=True,
+                teardown=teardown,
             )
         )
         stack.enter_context(
@@ -2613,6 +2615,7 @@ def default_tenant_model_stack(
                 endpoint=EXTERNAL_ENDPOINT,
                 auth={"type": "simple", "secretRef": {"name": model["secret_name"]}},
                 wait_for_resource=True,
+                teardown=teardown,
             )
         )
         stack.enter_context(
@@ -2629,6 +2632,7 @@ def default_tenant_model_stack(
                     }
                 ],
                 wait_for_resource=True,
+                teardown=teardown,
             )
         )
         stack.enter_context(
@@ -2643,9 +2647,43 @@ def default_tenant_model_stack(
                     "apiGroup": "inference.opendatahub.io",
                 },
                 wait_for_resource=True,
+                teardown=teardown,
             )
         )
         yield model
+
+
+def wait_for_provider_ready(
+    admin_client: DynamicClient,
+    provider_name: str,
+    provider_namespace: str,
+    timeout: int = READY_TIMEOUT,
+) -> None:
+    """Wait until an ExternalProvider reports its own validated Ready status."""
+
+    def _check() -> bool:
+        provider = get_json_or_none(
+            client=admin_client, kind="externalprovider", name=provider_name, namespace=provider_namespace
+        )
+        assert provider is not None, f"ExternalProvider {provider_namespace}/{provider_name} not found"
+        status = provider.get("status")
+        assert status is not None, f"provider {provider_name} reports no status yet: {redact_sensitive(status)}"
+        conditions = status.get("conditions")
+        assert conditions is not None, (
+            f"provider {provider_name} reports no conditions yet: {redact_sensitive(status)}"
+        )
+        ready = next((condition for condition in conditions if condition["type"] == "Ready"), None)
+        assert ready is not None, (
+            f"provider {provider_name} reports no Ready condition yet: {redact_sensitive(status)}"
+        )
+        phase = status.get("phase")
+        assert phase is not None, f"provider {provider_name} reports no phase yet: {redact_sensitive(status)}"
+        assert phase == "Ready" and ready["status"] == "True", (
+            f"provider {provider_name} is not Ready: {redact_sensitive(status)}"
+        )
+        return True
+
+    wait_until(check=_check, timeout=timeout, what=f"provider {provider_namespace}/{provider_name} Ready")
 
 
 def wait_implicitly_attached(
@@ -2728,6 +2766,7 @@ def serve_in_default_tenant(
     ocp_token: str,
     base_url: str,
     model: dict[str, Any],
+    teardown: bool = True,
 ) -> Generator[str, Any, Any]:
     """MaaSAuthPolicy + MaaSSubscription in the default tenant; yields an API key."""
     policy_name, subscription_name = f"{model['name']}-access", f"{model['name']}-sub"
@@ -2740,6 +2779,7 @@ def serve_in_default_tenant(
                 model_refs=[{"name": model["name"], "namespace": model["namespace"]}],
                 subjects={"groups": [{"name": "system:authenticated"}]},
                 wait_for_resource=True,
+                teardown=teardown,
             )
         )
         policy.wait_for_condition(condition="Ready", status="True", timeout=READY_TIMEOUT)
@@ -2758,6 +2798,7 @@ def serve_in_default_tenant(
                 ],
                 priority=0,
                 wait_for_resource=True,
+                teardown=teardown,
             )
         )
         subscription.wait_for_condition(condition="Ready", status="True", timeout=READY_TIMEOUT)
@@ -2779,10 +2820,8 @@ def serve_in_default_tenant(
             f"failed to mint API key on default maas-api {base_url}: "
             f"{response.status_code} {redact_sensitive(response.text)}"
         )
-        api_key = body.get("key")
-        assert api_key, f"API key missing in response: {redact_sensitive(body)}"
-        key_id = body.get("id")
-        assert key_id, f"API key ID missing in response: {redact_sensitive(body)}"
+        api_key = body["key"]
+        key_id = body["id"]
 
         def _revoke_key() -> None:
             try:
@@ -2801,7 +2840,8 @@ def serve_in_default_tenant(
                     f"{revoke_response.status_code} {redact_sensitive(revoke_response.text)}"
                 )
 
-        stack.callback(_revoke_key)  # noqa: FCN001
+        if teardown:
+            stack.callback(_revoke_key)  # noqa: FCN001
         yield api_key
 
 
