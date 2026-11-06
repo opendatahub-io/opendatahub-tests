@@ -9,6 +9,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
@@ -25,6 +26,7 @@ from tests.spark.utils import (
     UPGRADE_NAMESPACE,
     create_spark_connect_spec,
     create_spark_pi_application_spec,
+    ensure_consumer_network_policy,
     get_spark_role_bindings,
     get_spark_roles,
     get_spark_service_accounts,
@@ -456,3 +458,22 @@ def spark_connect_application(
     with SparkConnect(client=admin_client, kind_dict=manifest, teardown=True) as spark_connect:
         wait_for_spark_connect_ready(client=admin_client, spark_connect=spark_connect)
         yield spark_connect
+
+
+@pytest.fixture(scope="session")
+def spark_consumer_network_policy(
+    admin_client: DynamicClient,
+    spark_namespace_fixture: Namespace,
+    spark_connect_application: SparkConnect,
+    teardown_resources: bool,
+) -> Generator[NetworkPolicy | None, Any, Any]:
+    """Open same-namespace consumer access to the Spark Connect server when operand policies are active.
+
+    The operator's operand ingress policy (RHOAI 3.6+) denies non-operand pods, so the client pod
+    cannot reach the server's gRPC port without this additive policy. On an operator without the
+    feature it is a no-op, since adding it would instead cut off executor->server traffic.
+    """
+    with ensure_consumer_network_policy(
+        client=admin_client, namespace=spark_namespace_fixture.name, teardown=teardown_resources
+    ) as policy:
+        yield policy
