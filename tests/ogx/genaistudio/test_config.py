@@ -32,7 +32,7 @@ def test_build_genai_playground_config_passthrough_provider() -> None:
     """Verify the dashboard's genai-bff-proxy remote::passthrough provider is present."""
     config = build_genai_playground_config()
 
-    passthrough = _get_inference_provider(config, GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)
+    passthrough = _get_inference_provider(config=config, provider_type=GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)
     assert len(passthrough) == 1, "Expected exactly one remote::passthrough inference provider"
     provider = passthrough[0]
     assert provider["provider_id"] == GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_ID
@@ -48,12 +48,12 @@ def test_build_genai_playground_config_base_url_contains_namespace() -> None:
     """Verify the passthrough base_url embeds the namespace like the dashboard BFF proxy URL."""
     config = build_genai_playground_config(namespace="test-ogx-genai-playground")
 
-    provider = _get_inference_provider(config, GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)[0]
+    provider = _get_inference_provider(config=config, provider_type=GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)[0]
     assert provider["config"]["base_url"].endswith("/ns/test-ogx-genai-playground")
 
     custom_url = "http://mock-proxy.test-ns.svc.cluster.local:9999/genai-proxy/ns/test-ns"
     config = build_genai_playground_config(passthrough_base_url=custom_url)
-    provider = _get_inference_provider(config, GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)[0]
+    provider = _get_inference_provider(config=config, provider_type=GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)[0]
     assert provider["config"]["base_url"] == custom_url
 
 
@@ -126,4 +126,4 @@ def test_get_genai_playground_configmap_spec() -> None:
     assert configmap_spec["labels"]["ogx.io/watch"] == "true"
     assert GENAI_PLAYGROUND_CONFIGMAP_KEY in configmap_spec["data"]
     config = configmap_spec["data"][GENAI_PLAYGROUND_CONFIGMAP_KEY]
-    assert _get_inference_provider(config, GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)
+    assert _get_inference_provider(config=config, provider_type=GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)
