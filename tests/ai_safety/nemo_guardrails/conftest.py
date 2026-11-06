@@ -11,8 +11,11 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.nemo_guardrails import NemoGuardrails
+from ocp_resources.role import Role
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
+from ocp_resources.service_account import ServiceAccount
 
 from tests.ai_safety.nemo_guardrails.constants import (
     NEMO_DEFAULT_CONFIG_CM_PII,
@@ -26,6 +29,13 @@ from tests.ai_safety.nemo_guardrails.utils import (
 )
 from utilities.constants import LLMdInferenceSimConfig
 from utilities.resources.route import Route as UtilitiesRoute
+
+
+def _resource_name(resource: Namespace | InferenceService) -> str:
+    """Return a Kubernetes resource name, asserting the wrapper populated it."""
+    name = resource.name
+    assert name is not None, "Resource must have a name"
+    return name
 
 
 # ===========================
@@ -60,8 +70,8 @@ def nemo_llm_judge_configmap(
 ) -> Generator[ConfigMap, Any, Any]:
     """ConfigMap with LLM-as-a-judge configuration."""
     config_data = create_llm_judge_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=_resource_name(model_namespace),
+        model_isvc_name=_resource_name(llm_d_inference_sim_isvc),
         model_name=LLMdInferenceSimConfig.model_name,
     )
 
@@ -82,8 +92,8 @@ def nemo_presidio_configmap(
 ) -> Generator[ConfigMap, Any, Any]:
     """ConfigMap with Presidio PII detection configuration."""
     config_data = create_presidio_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=_resource_name(model_namespace),
+        model_isvc_name=_resource_name(llm_d_inference_sim_isvc),
         model_name=LLMdInferenceSimConfig.model_name,
         input_entities=[
             PresidioEntity.EMAIL_ADDRESS,
@@ -113,8 +123,8 @@ def nemo_multi_config_a(
 ) -> Generator[ConfigMap, Any, Any]:
     """First ConfigMap for multi-configuration test."""
     config_data = create_llm_judge_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=_resource_name(model_namespace),
+        model_isvc_name=_resource_name(llm_d_inference_sim_isvc),
         model_name=LLMdInferenceSimConfig.model_name,
     )
 
@@ -135,8 +145,8 @@ def nemo_multi_config_b(
 ) -> Generator[ConfigMap, Any, Any]:
     """Second ConfigMap for multi-configuration test."""
     config_data = create_presidio_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=_resource_name(model_namespace),
+        model_isvc_name=_resource_name(llm_d_inference_sim_isvc),
         model_name=LLMdInferenceSimConfig.model_name,
         input_entities=[PresidioEntity.EMAIL_ADDRESS],
         output_entities=[PresidioEntity.PERSON],
@@ -240,6 +250,74 @@ def nemo_guardrails_presidio(
 
 
 @pytest.fixture(scope="class")
+def nemo_guardrails_external_caller_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    """Namespace used as the source for cross-namespace NeMo Guardrails requests."""
+    with Namespace(client=admin_client, name="external-namespace-caller") as namespace:
+        namespace.wait_for_status(status=Namespace.Status.ACTIVE)
+        yield namespace
+
+
+@pytest.fixture(scope="class")
+def nemo_guardrails_external_caller_service_account(
+    admin_client: DynamicClient,
+    nemo_guardrails_external_caller_namespace: Namespace,
+) -> Generator[ServiceAccount, Any, Any]:
+    """ServiceAccount used by the cross-namespace admin caller pod."""
+    with ServiceAccount(
+        client=admin_client,
+        name="nemo-admin-caller",
+        namespace=nemo_guardrails_external_caller_namespace.name,
+        wait_for_resource=True,
+    ) as service_account:
+        yield service_account
+
+
+@pytest.fixture(scope="class")
+def nemo_guardrails_external_caller_admin_role(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[Role, Any, Any]:
+    """Allow the external caller to create NemoGuardrails resources for admin-listener authorization."""
+    with Role(
+        client=admin_client,
+        name="nemo-admin-caller-create-guardrails",
+        namespace=model_namespace.name,
+        rules=[
+            {
+                "apiGroups": ["trustyai.opendatahub.io"],
+                "resources": ["nemoguardrails"],
+                "resourceNames": ["nemo-presidio-auth-cross-namespace"],
+                "verbs": ["create"],
+            }
+        ],
+        wait_for_resource=True,
+    ) as role:
+        yield role
+
+
+@pytest.fixture(scope="class")
+def nemo_guardrails_external_caller_admin_role_binding(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    nemo_guardrails_external_caller_service_account: ServiceAccount,
+    nemo_guardrails_external_caller_admin_role: Role,
+) -> Generator[RoleBinding, Any, Any]:
+    """Bind the external caller ServiceAccount to admin-listener create permission."""
+    with RoleBinding(
+        client=admin_client,
+        name="nemo-admin-caller-create-guardrails",
+        namespace=model_namespace.name,
+        subjects_kind="ServiceAccount",
+        subjects_name=nemo_guardrails_external_caller_service_account.name,
+        subjects_namespace=nemo_guardrails_external_caller_service_account.namespace,
+        role_ref_kind="Role",
+        role_ref_name=nemo_guardrails_external_caller_admin_role.name,
+        wait_for_resource=True,
+    ) as role_binding:
+        yield role_binding
+
+
+@pytest.fixture(scope="class")
 def nemo_guardrails_presidio_auth(
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -268,6 +346,70 @@ def nemo_guardrails_presidio_auth(
                 "valueFrom": {"secretKeyRef": {"name": nemo_api_token_secret.name, "key": "token"}},
             }
         ],
+    ) as nemo_cr:
+        deployment = Deployment(
+            client=admin_client,
+            name=nemo_cr.name,
+            namespace=nemo_cr.namespace,
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
+        yield nemo_cr
+
+
+@pytest.fixture(scope="class")
+def nemo_guardrails_presidio_auth_cross_namespace(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    nemo_presidio_configmap: ConfigMap,
+    nemo_api_token_secret: Secret,
+    nemo_guardrails_external_caller_namespace: Namespace,
+) -> Generator[NemoGuardrails, Any, Any]:
+    """Auth-enabled Presidio CR allowing the external caller namespace to reach public and admin listeners."""
+    cr_name = "nemo-presidio-auth-cross-namespace"
+    resource_dict = {
+        "apiVersion": f"{NemoGuardrails.api_group}/v1alpha1",
+        "kind": "NemoGuardrails",
+        "metadata": {
+            "name": cr_name,
+            "namespace": model_namespace.name,
+            "annotations": {"security.opendatahub.io/enable-auth": "true"},
+        },
+        "spec": {
+            "nemoConfigs": [
+                {
+                    "name": "presidio",
+                    "configMaps": [nemo_presidio_configmap.name],
+                    "default": True,
+                }
+            ],
+            "replicas": 1,
+            "env": [
+                {
+                    "name": "OPENAI_API_KEY",
+                    "valueFrom": {"secretKeyRef": {"name": nemo_api_token_secret.name, "key": "token"}},
+                }
+            ],
+            "networkPolicy": {
+                "additionalIngress": [
+                    {
+                        "namespaceSelector": {
+                            "matchLabels": {
+                                "kubernetes.io/metadata.name": nemo_guardrails_external_caller_namespace.name
+                            }
+                        },
+                        "podSelector": {"matchLabels": {"app": "external-namespace-caller-pod"}},
+                        "listeners": ["Public", "Admin"],
+                    }
+                ]
+            },
+        },
+    }
+    with NemoGuardrails(
+        client=admin_client,
+        name=cr_name,
+        namespace=model_namespace.name,
+        kind_dict=resource_dict,
     ) as nemo_cr:
         deployment = Deployment(
             client=admin_client,
@@ -369,8 +511,8 @@ def nemo_config_update_configmap(
 ) -> Generator[ConfigMap, Any, Any]:
     """ConfigMap for config update test (will be modified during test)."""
     config_data = create_llm_judge_config(
-        namespace=model_namespace.name,
-        model_isvc_name=llm_d_inference_sim_isvc.name,
+        namespace=_resource_name(model_namespace),
+        model_isvc_name=_resource_name(llm_d_inference_sim_isvc),
         model_name=LLMdInferenceSimConfig.model_name,
     )
 
