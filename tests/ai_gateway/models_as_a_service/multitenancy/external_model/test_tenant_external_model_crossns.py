@@ -603,14 +603,11 @@ class TestSameNamedProvidersTwoNamespaces:
                 assert response.status_code == 200, (
                     f"inference failed on multi-provider model: {redact_sensitive(response.text)}"
                 )
-                for provider_index, (credential, tag) in enumerate(
-                    zip(credentials, model["path_tags"], strict=True), start=1
-                ):
+                # The simulator echoes the CLIENT's request path, not the
+                # provider binding's path, so the per-provider credential is
+                # the only signal identifying which same-named provider served.
+                for provider_index, credential in enumerate(credentials, start=1):
                     if credential in response.text:
-                        assert tag in response.text, (
-                            f"credential of provider ns {provider_index} served through the wrong "
-                            f"destination: expected path tag {tag!r} in the response"
-                        )
                         seen.add(f"provider-ns-{provider_index}")
             assert seen == {f"provider-ns-{index}" for index in (1, 2)}, (
                 f"expected both same-named providers to serve, saw {seen}"
