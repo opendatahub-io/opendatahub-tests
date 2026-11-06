@@ -153,7 +153,10 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
             f"response did not come from the model's provider: {redact_sensitive(response.text)}"
         )
         assert model["credential"] in response.text, "the model's credential did not reach the provider"
-        assert implicit_model["api_key"] not in response.text, "the client's MaaS API key was forwarded to the provider"
+        # Compare before asserting so pytest's failure introspection cannot
+        # render the client's MaaS API key as part of the operands.
+        client_key_forwarded = implicit_model["api_key"] in response.text
+        assert not client_key_forwarded, "the client's MaaS API key was forwarded to the provider"
 
     @pytest.mark.tier3
     def test_unknown_key_rejected(
