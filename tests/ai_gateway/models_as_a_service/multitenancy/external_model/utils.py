@@ -49,6 +49,7 @@ resource names):
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import re
@@ -1702,8 +1703,14 @@ def assert_served_by_provider(
     assert path_tag in url, f"request was not served by the provider bound to {path_tag!r}; echoed url: {url}"
     headers = echo_headers(response=response)
     if credential is not None:
-        authorization = headers.get("Authorization") or headers.get("authorization") or ""
-        assert credential in authorization, (
+        authorization = (headers.get("Authorization") or headers.get("authorization") or "").strip()
+        # Compare the whole header, not a substring: a longer secret that
+        # contains the expected one must not pass. hmac.compare_digest keeps
+        # the comparison constant-time.
+        injected = any(
+            hmac.compare_digest(candidate, authorization) for candidate in (f"Bearer {credential}", credential)
+        )
+        assert injected, (
             f"expected credential was not injected; Authorization header: {redact_sensitive(authorization)}"
         )
     return headers
@@ -2033,8 +2040,9 @@ def assert_not_served(response: requests.Response) -> None:
     model — observed under load while filters reload, and equally proof
     that no serve happened.
     """
-    assert response.status_code != 200, (
-        f"expected the model to not be served, got {response.status_code}: {redact_sensitive(response.text)}"
+    assert response.status_code in (401, 403, 404, 502, 503), (
+        f"expected a documented refusal (401/403/404, or 502/503 from the gateway), "
+        f"got {response.status_code}: {redact_sensitive(response.text)}"
     )
     if response.status_code in (502, 503):
         assert (
