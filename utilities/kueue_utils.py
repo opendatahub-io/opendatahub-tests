@@ -11,7 +11,6 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.api_service import APIService
 from ocp_resources.cluster_service_version import ClusterServiceVersion
 from ocp_resources.deployment import Deployment
-from ocp_resources.job import Job
 from ocp_resources.mutating_webhook_config import MutatingWebhookConfiguration
 from ocp_resources.pod import Pod
 from ocp_resources.resource import MissingRequiredArgumentError, NamespacedResource, Resource, ResourceEditor
@@ -633,57 +632,6 @@ def _wait_for_kueue_controller_pods_gone(admin_client: DynamicClient, timeout: i
         LOGGER.warning(f"Kueue controller pods did not terminate within {timeout}s, proceeding")
 
 
-def pause_kueue_controller(admin_client: DynamicClient) -> int:
-    """Scale the Kueue controller to 0 and remove visibility APIServices.
-
-    Returns the original replica count so the caller can restore it after the
-    operation that required the pause (typically a namespace deletion). The
-    replica count is returned even if removing the visibility APIServices
-    fails, so the caller can still resume the controller instead of leaving
-    it paused indefinitely.
-    """
-    controller = Deployment(
-        client=admin_client,
-        name="kueue-controller-manager",
-        namespace=KUEUE_OPERATOR_NAMESPACE,
-    )
-    if not controller.exists:
-        LOGGER.warning("kueue-controller-manager deployment not found, skipping pause")
-        return 0
-
-    replicas = controller.instance.spec.replicas
-    original_replicas = 1 if replicas is None else replicas
-    LOGGER.info(f"Pausing kueue-controller-manager (scaling from {original_replicas} to 0)")
-    ResourceEditor(patches={controller: {"spec": {"replicas": 0}}}).update()
-    _wait_for_kueue_controller_pods_gone(admin_client=admin_client)
-
-    try:
-        remove_kueue_visibility_api_services(admin_client=admin_client)
-    except ResourceNotFoundError, ApiException:
-        LOGGER.warning(
-            "Failed to remove Kueue visibility APIServices while pausing the controller; "
-            "continuing so the caller can still resume it",
-            exc_info=True,
-        )
-    return original_replicas
-
-
-def resume_kueue_controller(admin_client: DynamicClient, replicas: int) -> None:
-    """Scale the Kueue controller back to the given replica count."""
-    if replicas <= 0:
-        return
-    controller = Deployment(
-        client=admin_client,
-        name="kueue-controller-manager",
-        namespace=KUEUE_OPERATOR_NAMESPACE,
-    )
-    if not controller.exists:
-        LOGGER.warning("kueue-controller-manager deployment not found, skipping resume")
-        return
-    LOGGER.info(f"Resuming kueue-controller-manager (scaling to {replicas})")
-    ResourceEditor(patches={controller: {"spec": {"replicas": replicas}}}).update()
-
-
 def remove_kueue_visibility_api_services(admin_client: DynamicClient, wait: bool = False) -> None:
     """Remove visibility APIServices that slow namespace deletion.
 
@@ -734,38 +682,3 @@ def full_kueue_controller_cleanup(admin_client: DynamicClient) -> None:
         if webhook.name in _KUEUE_WEBHOOK_NAMES:
             LOGGER.info(f"Removing ValidatingWebhookConfiguration {webhook.name}")
             webhook.delete(wait=False)
-
-
-def drain_namespace_kueue_resources(admin_client: DynamicClient, namespace: str) -> None:
-    """Delete all Jobs and Workloads in the namespace before namespace teardown.
-
-    Kueue Workloads hold a `resource-in-use` finalizer on their ClusterQueue.
-    If the namespace is deleted while Workloads still exist, the namespace
-    gets stuck in Terminating and blocks ClusterQueue cleanup.
-    """
-    for job in Job.get(client=admin_client, namespace=namespace):
-        LOGGER.info(f"Draining: deleting Job {job.name}")
-        job.delete(wait=False)
-    for workload in Workload.get(client=admin_client, namespace=namespace):
-        LOGGER.info(f"Draining: deleting Workload {workload.name}")
-        workload.delete(wait=False)
-
-    def remaining_kueue_resources() -> list[str]:
-        return [
-            f"{resource.kind}/{resource.name}"
-            for resource_cls in (Job, Workload)
-            for resource in resource_cls.get(client=admin_client, namespace=namespace)
-        ]
-
-    remaining: list[str] = []
-    try:
-        for remaining in TimeoutSampler(
-            wait_timeout=Timeout.TIMEOUT_4MIN,
-            sleep=5,
-            func=remaining_kueue_resources,
-        ):
-            if not remaining:
-                LOGGER.info(f"Namespace {namespace} drained of Jobs and Workloads")
-                return
-    except TimeoutExpiredError:
-        LOGGER.warning(f"Namespace {namespace} still holds Kueue resources after drain: {remaining}")
