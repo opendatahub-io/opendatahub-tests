@@ -770,6 +770,7 @@ def implicit_model(
     ocp_token_for_actor: str,
     base_url: str,
     default_tenant_model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[dict[str, Any], Any, Any]:
     """A 3.5-shaped model implicitly attached to the default Gateway and served by the default tenant."""
     with ExitStack() as stack:
@@ -778,10 +779,18 @@ def implicit_model(
                 admin_client,
                 prefix="e2e-dft",
                 namespace=namespace_name(default_tenant_model_namespace),
+                teardown=teardown_resources,
             )
         )
         attachment = wait_implicitly_attached(admin_client=admin_client, model=model)
         api_key = stack.enter_context(
-            cm=serve_in_default_tenant(admin_client, request_session_http, ocp_token_for_actor, base_url, model)
+            cm=serve_in_default_tenant(
+                admin_client,
+                request_session_http,
+                ocp_token_for_actor,
+                base_url,
+                model,
+                teardown=teardown_resources,
+            )
         )
         yield {"model": model, "api_key": api_key, **attachment}
