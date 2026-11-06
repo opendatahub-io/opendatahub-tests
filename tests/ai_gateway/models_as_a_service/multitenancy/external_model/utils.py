@@ -2159,9 +2159,15 @@ def wait_for_provider_ready(
 def wait_implicitly_attached(
     admin_client: DynamicClient,
     model: dict[str, Any],
+    *,
+    timeout: int = READY_TIMEOUT,
 ) -> dict[str, Any]:
     """Wait for the implicit attachment's result, accepted route, credential
-    copy and DestinationRule; returns the result and route."""
+    copy and DestinationRule; returns the result and route.
+
+    ``timeout`` covers every waited object; pass a larger value for restores
+    after a gatewayRefs transition, which can take minutes while the shared
+    default-tenant ExtProc Deployment is torn down and reinstalled."""
 
     def _destination_rules() -> list[dict[str, Any]]:
         return destination_rules_referencing(  # noqa: FCN001 - namespace feeds *args
@@ -2177,6 +2183,7 @@ def wait_implicitly_attached(
         model_name=model["name"],
         model_namespace=model["namespace"],
         gateway_name=MAAS_GATEWAY_NAME,
+        timeout=timeout,
     )
     result = gateway_status_entry(
         admin_client=admin_client,
@@ -2197,8 +2204,9 @@ def wait_implicitly_attached(
         tenant_namespace=DEFAULT_TENANT_NAMESPACE,
         source_secret_name=model["secret_name"],
         source_namespace=model["namespace"],
+        timeout=timeout,
     )
-    wait_until(check=_published, timeout=READY_TIMEOUT, what=f"DestinationRule for {model['name']}")
+    wait_until(check=_published, timeout=timeout, what=f"DestinationRule for {model['name']}")
     return {"result": result, "route": route}
 
 
