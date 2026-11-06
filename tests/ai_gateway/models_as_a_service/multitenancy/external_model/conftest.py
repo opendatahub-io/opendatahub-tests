@@ -79,7 +79,10 @@ LOGGER = structlog.get_logger(name=__name__)
 
 LIMITED_TOKEN_LIMIT = 3
 PRAXIS_IMAGE_WAIT_TIMEOUT = 120
-UNLIMITED_TOKEN_LIMIT = 100
+# Effectively unlimited: the simulator can report more than 100 tokens for a
+# single response, and the usage scenario must let tenant B serve consecutive
+# requests inside one window without a spurious 429.
+UNLIMITED_TOKEN_LIMIT = 100000
 
 
 @pytest.fixture(scope="session", autouse=True)
