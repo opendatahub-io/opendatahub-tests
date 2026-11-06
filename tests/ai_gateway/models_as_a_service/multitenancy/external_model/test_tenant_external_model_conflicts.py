@@ -103,6 +103,9 @@ class TestModelNameConflict:
                 namespace=env["user_ns_1"],
                 gateway_refs=[gateway],
             )
+            # Sequencing sleep, not a poll: space the creationTimestamps of the
+            # same-named models so conflict-resolution ordering is deterministic
+            # (there is no condition to sample between the two creations).
             time.sleep(2)
             tenant_own = provision_model_in_stack(
                 stack=stack,
@@ -177,6 +180,9 @@ class TestModelNameConflict:
                 namespace=env["user_ns_1"],
                 gateway_refs=[gateway],
             )
+            # Sequencing sleep, not a poll: space the creationTimestamps of the
+            # same-named models so conflict-resolution ordering is deterministic
+            # (there is no condition to sample between the two creations).
             time.sleep(2)
             youngest = provision_model_in_stack(
                 stack=stack,
