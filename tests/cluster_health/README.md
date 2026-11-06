@@ -32,7 +32,7 @@ Tests use the following markers defined in `pytest.ini`:
 
 - **`test_data_science_cluster_initialization_healthy`** - Validates the DSCInitialization resource reaches `READY` status (120s timeout)
 - **`test_data_science_cluster_healthy`** - Validates the DataScienceCluster resource reaches `READY` status (120s timeout)
-- **`test_pods_cluster_healthy`** - Validates all pods in operator and application namespaces reach Running/Completed state (180s timeout). Parametrized across `operator_namespace` and `applications_namespace` from global config
+- **`test_pods_cluster_healthy`** - Validates all pods in operator and application namespaces reach Running/Completed state (300s timeout). Parametrized across `operator_namespace` and `applications_namespace` from global config
 
 ## Running Tests
 
