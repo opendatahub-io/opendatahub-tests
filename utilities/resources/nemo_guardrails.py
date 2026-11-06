@@ -16,6 +16,7 @@ class NemoGuardrails(NamespacedResource):
 
     def __init__(
         self,
+        ai_gateway_mode: bool | None = None,
         allowed_consumers: dict[str, Any] | None = None,
         ca_bundle_config: dict[str, Any] | None = None,
         env: list[Any] | None = None,
@@ -27,6 +28,12 @@ class NemoGuardrails(NamespacedResource):
     ) -> None:
         r"""
         Args:
+            ai_gateway_mode (bool): AIGatewayMode enables cross-namespace deployment for AIGateway compatibility.
+              If enabled, NemoGuardrails workloads will be created in the AI Gateway infra namespace. All
+              referenced configmaps and secrets will also be copied into the infra namespace, and their
+              lifecycle will be manged by the NemoGuardrails controller. If AIGatewayMode is false or
+              unspecified, workloads will be created in the same namespace as the Custom Resource.
+
             allowed_consumers (dict[str, Any]): Controls which namespaces may attach an AIGuardrail
               consumer to this server. Set namespaces.from to "Same" to allow only the server's own
               namespace (the default when this field is omitted), "All" to allow any namespace, or
@@ -52,6 +59,7 @@ class NemoGuardrails(NamespacedResource):
         """
         super().__init__(**kwargs)
 
+        self.ai_gateway_mode = ai_gateway_mode
         self.allowed_consumers = allowed_consumers
         self.ca_bundle_config = ca_bundle_config
         self.env = env
@@ -72,6 +80,9 @@ class NemoGuardrails(NamespacedResource):
             _spec = self.res["spec"]
 
             _spec["nemoConfigs"] = self.nemo_configs
+
+            if self.ai_gateway_mode is not None:
+                _spec["aiGatewayMode"] = self.ai_gateway_mode
 
             if self.allowed_consumers is not None:
                 _spec["allowedConsumers"] = self.allowed_consumers

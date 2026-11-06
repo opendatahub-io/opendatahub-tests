@@ -11,12 +11,16 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.nemo_guardrails import NemoGuardrails
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
+from pytest_testconfig import config as py_config
 
 from tests.ai_safety.nemo_guardrails.constants import (
     NEMO_DEFAULT_CONFIG_CM_PII,
     NEMO_DEFAULT_CONFIG_CM_PREFIX,
+    NEMO_INFRA_NAMESPACE_BY_APPLICATIONS_NAMESPACE,
+    NEMO_WORKLOAD_NAMESPACE_LABEL,
     PresidioEntity,
 )
 from tests.ai_safety.nemo_guardrails.utils import (
@@ -25,6 +29,7 @@ from tests.ai_safety.nemo_guardrails.utils import (
     wait_for_nemo_guardrails_health,
 )
 from utilities.constants import LLMdInferenceSimConfig
+from utilities.infra import create_ns
 from utilities.resources.route import Route as UtilitiesRoute
 
 
@@ -570,6 +575,67 @@ def nemo_guardrails_default_config(
         )
         deployment.wait_for_replicas()
         yield nemo_cr
+
+
+@pytest.fixture(scope="class")
+def nemo_workload_namespace(admin_client: DynamicClient, model_namespace: Namespace) -> Generator[str, Any, Any]:
+    """Namespace the operator deploys NeMo Guardrails workloads into, labeled to accept them for the class."""
+    infra_namespace_name = NEMO_INFRA_NAMESPACE_BY_APPLICATIONS_NAMESPACE.get(py_config["applications_namespace"])
+    if infra_namespace_name is None:
+        yield model_namespace.name
+        return
+
+    infra_namespace = Namespace(client=admin_client, name=infra_namespace_name)
+    if not infra_namespace.exists:
+        pytest.skip(f"AI Gateway infra namespace {infra_namespace_name!r} does not exist")
+
+    with ResourceEditor(patches={infra_namespace: {"metadata": {"labels": {NEMO_WORKLOAD_NAMESPACE_LABEL: "true"}}}}):
+        yield infra_namespace_name
+
+
+@pytest.fixture(scope="class")
+def nemo_infra_namespace(nemo_workload_namespace: str, model_namespace: Namespace) -> str:
+    """AI Gateway infra namespace hosting NeMo Guardrails workloads; skips when workloads stay in the CR namespace."""
+    if nemo_workload_namespace == model_namespace.name:
+        pytest.skip("NeMo Guardrails workloads are deployed into the CR namespace, not an AI Gateway infra namespace")
+    return nemo_workload_namespace
+
+
+@pytest.fixture(scope="class")
+def nemo_infra_namespace_ca_bundle(
+    admin_client: DynamicClient,
+    nemo_infra_namespace: str,
+) -> Generator[ConfigMap, Any, Any]:
+    """CA bundle ConfigMap living in the AI Gateway infra namespace."""
+    with ConfigMap(
+        client=admin_client,
+        name="nemo-infra-ca-bundle",
+        namespace=nemo_infra_namespace,
+        data={"ca.crt": "placeholder"},
+    ) as cm:
+        yield cm
+
+
+@pytest.fixture(scope="class")
+def nemo_unrelated_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    """Namespace that is neither the NemoGuardrails namespace nor its workload namespace."""
+    with create_ns(admin_client=admin_client, name="test-nemo-unrelated") as ns:
+        yield ns
+
+
+@pytest.fixture(scope="class")
+def nemo_unrelated_namespace_ca_bundle(
+    admin_client: DynamicClient,
+    nemo_unrelated_namespace: Namespace,
+) -> Generator[ConfigMap, Any, Any]:
+    """CA bundle ConfigMap living in a namespace unrelated to the NemoGuardrails server."""
+    with ConfigMap(
+        client=admin_client,
+        name="nemo-unrelated-ca-bundle",
+        namespace=nemo_unrelated_namespace.name,
+        data={"ca.crt": "placeholder"},
+    ) as cm:
+        yield cm
 
 
 @pytest.fixture(scope="class")

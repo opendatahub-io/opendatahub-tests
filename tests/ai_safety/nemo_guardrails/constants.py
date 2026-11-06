@@ -8,6 +8,14 @@ NEMO_GUARDRAILS_IMAGE: str = AiSafetyImages.NEMO_GUARDRAILS
 NEMO_GUARDRAILS_PORT_AUTH = 8443
 NEMO_GUARDRAILS_PORT_NO_AUTH = 8000
 
+# Workload namespace placement: on ODH/RHOAI the operator deploys NeMo Guardrails workloads into the
+# AI Gateway infra namespace, which must carry the opt-in label below.
+NEMO_WORKLOAD_NAMESPACE_LABEL = "trustyai.opendatahub.io/nemo-guardrails-workload"
+NEMO_INFRA_NAMESPACE_BY_APPLICATIONS_NAMESPACE: dict[str, str] = {
+    "redhat-ods-applications": "redhat-ai-gateway-infra",
+    "opendatahub": "odh-ai-gateway-infra",
+}
+
 # Default config ConfigMap names (as deployed by the operator after kustomize namePrefix)
 NEMO_DEFAULT_CONFIG_CM_PREFIX = "trustyai-service-operator-nemo-guardrails-default"
 NEMO_DEFAULT_CONFIG_CM_ALL = "trustyai-service-operator-nemo-guardrails-default-all"

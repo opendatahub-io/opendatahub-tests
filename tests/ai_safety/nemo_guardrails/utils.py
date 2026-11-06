@@ -9,6 +9,8 @@ import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
+from ocp_resources.event import Event
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from requests import Response
@@ -424,3 +426,150 @@ def nemo_cr_phase(nemo_cr: NemoGuardrails) -> str | None:
         The phase string, or None if the operator has not written it yet
     """
     return (nemo_cr.instance.status or {}).get("phase")
+
+
+def nemo_cr_endpoint(nemo_cr: NemoGuardrails) -> str | None:
+    """
+    Read the internal Service URL reported by a NemoGuardrails server.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The status.endpoint value, or None if the operator has not written it yet
+    """
+    return (nemo_cr.instance.status or {}).get("endpoint")
+
+
+def nemo_workload_name(nemo_cr: NemoGuardrails, workload_namespace: str) -> str:
+    """
+    Name of the Deployment and Service the operator creates for a NemoGuardrails server.
+
+    Args:
+        nemo_cr: NemoGuardrails resource that owns the workload
+        workload_namespace: Namespace the workload is deployed into
+
+    Returns:
+        The server name in its own namespace, or "<server namespace>-<server name>" in a shared infra namespace
+    """
+    if workload_namespace == nemo_cr.namespace:
+        return nemo_cr.name
+    return f"{nemo_cr.namespace}-{nemo_cr.name}"
+
+
+def nemo_internal_endpoint(nemo_cr: NemoGuardrails, workload_namespace: str, scheme: str) -> str:
+    """
+    In-cluster Service URL the operator should report in status.endpoint.
+
+    Args:
+        nemo_cr: NemoGuardrails resource that owns the workload
+        workload_namespace: Namespace the workload is deployed into
+        scheme: "https" when auth is enabled, "http" otherwise
+
+    Returns:
+        The expected internal Service URL
+    """
+    service_name = nemo_workload_name(nemo_cr=nemo_cr, workload_namespace=workload_namespace)
+    return f"{scheme}://{service_name}.{workload_namespace}.svc.cluster.local"
+
+
+def wait_for_nemo_workload_ready(client: DynamicClient, nemo_cr: NemoGuardrails, workload_namespace: str) -> Deployment:
+    """
+    Wait until the Deployment the operator created for a NemoGuardrails server has all replicas ready.
+
+    Args:
+        client: DynamicClient to query the cluster
+        nemo_cr: NemoGuardrails resource that owns the workload
+        workload_namespace: Namespace the workload is deployed into
+
+    Returns:
+        The ready Deployment
+    """
+    deployment = Deployment(
+        client=client,
+        name=nemo_workload_name(nemo_cr=nemo_cr, workload_namespace=workload_namespace),
+        namespace=workload_namespace,
+        wait_for_resource=True,
+    )
+    deployment.wait_for_replicas()
+    return deployment
+
+
+def nemo_cr_workload_namespace(nemo_cr: NemoGuardrails) -> str | None:
+    """
+    Read the namespace a NemoGuardrails server reports its workload in.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The status.workloadNamespace value, or None if the operator has not written it yet
+    """
+    return (nemo_cr.instance.status or {}).get("workloadNamespace")
+
+
+def wait_for_nemo_endpoint(nemo_cr: NemoGuardrails, expected_endpoint: str) -> None:
+    """
+    Wait until a NemoGuardrails server reports the expected status.endpoint.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+        expected_endpoint: Internal Service URL the operator should report
+
+    Raises:
+        TimeoutExpiredError: If status.endpoint does not match within the timeout
+    """
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=lambda: nemo_cr_endpoint(nemo_cr=nemo_cr),
+    ):
+        if sample == expected_endpoint:
+            break
+
+
+def nemo_cr_ca_status(nemo_cr: NemoGuardrails) -> dict[str, Any]:
+    """
+    Read the CA bundle status reported by a NemoGuardrails server.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The status.ca fields (e.g. userCAFound, userCAError), or an empty dict if not written yet
+    """
+    return dict((nemo_cr.instance.status or {}).get("ca") or {})
+
+
+def nemo_cr_user_ca_error(nemo_cr: NemoGuardrails) -> str | None:
+    """
+    Read the user CA bundle error reported by a NemoGuardrails server.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The status.ca.userCAError value, or None if no error has been reported
+    """
+    return nemo_cr_ca_status(nemo_cr=nemo_cr).get("userCAError")
+
+
+def list_nemo_warning_events(client: DynamicClient, nemo_cr: NemoGuardrails, reason: str) -> list[dict[str, Any]]:
+    """
+    List Warning Events with a given reason that the operator recorded on a NemoGuardrails server.
+
+    Args:
+        client: DynamicClient to query the cluster
+        nemo_cr: NemoGuardrails resource the Events were recorded on
+        reason: Event reason to match (e.g. "CABundleNamespaceRejected")
+
+    Returns:
+        Matching Events as dicts
+    """
+    field_selector = (
+        f"involvedObject.kind={nemo_cr.kind},involvedObject.name={nemo_cr.name},type=Warning,reason={reason}"
+    )
+    return [
+        event.to_dict()
+        for event in Event.list(client=client, namespace=nemo_cr.namespace, field_selector=field_selector)
+    ]
