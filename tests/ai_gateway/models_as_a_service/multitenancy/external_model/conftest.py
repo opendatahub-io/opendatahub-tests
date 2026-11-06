@@ -28,9 +28,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     EXTERNAL_ENDPOINT,
     admitted_user_namespace,
     deploy_aitenant_best_effort,
-    external_model_stack,
     extmod_tenant_test_params,
-    gateway_ref,
     namespace_name,
     per_tenant_processing_uses_praxis,
     provision_and_serve_in_tenant,
@@ -158,7 +156,7 @@ def tenant_external_model_tenants(
             )
             deploy_and_verify_aitenant_ready(aitenant=aitenant)
             if not per_tenant_processing_uses_praxis(admin_client, params["aitenant_name"]):
-                pytest.skip(
+                pytest.fail(
                     f"per-tenant payload-processing for {params['aitenant_name']} is not "
                     "praxis-extproc; the AGC/Praxis multi-tenant contract is not active"
                 )
