@@ -32,6 +32,7 @@ namespaces with unique names.
 from __future__ import annotations
 
 import base64
+import hmac
 import uuid
 from typing import Any
 
@@ -51,6 +52,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     credential_copy_in,
     delete_external_model_and_ref,
     destination_rules_referencing,
+    echo_headers,
     external_model_stack,
     gateway_ref,
     get_json_or_none,
@@ -839,19 +841,27 @@ class TestCredentialRotationFollowsSource:
                 api_key=env["access"]["api_key"],
             )
             if response.status_code == 200:
-                if rotated_credential in response.text:
+                authorization = (echo_headers(response=response).get("Authorization") or "").strip()
+
+                def _carries(credential: str) -> bool:
+                    return any(
+                        hmac.compare_digest(candidate, authorization)
+                        for candidate in (f"Bearer {credential}", credential)
+                    )
+
+                if _carries(rotated_credential):
                     return response
-                if model["credential"] in response.text:
+                if _carries(model["credential"]):
                     serving_state["stale_observed"] = True
-                    assert rotated_credential in response.text, (
+                    assert _carries(rotated_credential), (
                         "serving still carries the pre-rotation credential while the "
                         "rotation propagates (stale data-plane injection)"
                     )
                 else:
                     pytest.fail(
                         "serving returned 200 with neither the rotated nor the "
-                        "original credential after rotation: "
-                        f"{redact_sensitive(response.text)[:300]}"
+                        f"original credential after rotation; Authorization header: "
+                        f"{redact_sensitive(authorization)}"
                     )
             else:
                 serving_state["error_observed"] = True
