@@ -491,7 +491,11 @@ class TestCredentialSourceSelection:
                 namespace=env["provider_ns"],
             )
 
-            missing_override = "does-not-exist-cred"
+            # The override must resolve in the MODEL namespace only: the name
+            # deliberately matches the provider-local Secret, so a resolver
+            # that wrongly falls back to the provider namespace would find it
+            # and serve instead of failing.
+            missing_override = f"{provider_name}-cred"
             model = crossns_model_with_provider(
                 admin_client=admin_client,
                 env=env,
@@ -599,8 +603,14 @@ class TestSameNamedProvidersTwoNamespaces:
                 assert response.status_code == 200, (
                     f"inference failed on multi-provider model: {redact_sensitive(response.text)}"
                 )
-                for provider_index, credential in enumerate(credentials, start=1):
+                for provider_index, (credential, tag) in enumerate(
+                    zip(credentials, model["path_tags"], strict=True), start=1
+                ):
                     if credential in response.text:
+                        assert tag in response.text, (
+                            f"credential of provider ns {provider_index} served through the wrong "
+                            f"destination: expected path tag {tag!r} in the response"
+                        )
                         seen.add(f"provider-ns-{provider_index}")
             assert seen == {f"provider-ns-{index}" for index in (1, 2)}, (
                 f"expected both same-named providers to serve, saw {seen}"

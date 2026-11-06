@@ -2468,7 +2468,12 @@ def crossns_twin_model(
             wait_for_resource=True,
         )
     )
-    return {"name": name, "namespace": env["model_ns"], "client_name": name}
+    return {
+        "name": name,
+        "namespace": env["model_ns"],
+        "client_name": name,
+        "path_tags": [f"{name}-ns{index}" for index in range(1, len(provider_namespaces) + 1)],
+    }
 
 
 @contextmanager
