@@ -717,16 +717,6 @@ def aitenant_has_status(
     return get_aitenant_ready_reason(aitenant=aitenant) == ready_reason
 
 
-def fresh_aitenant(aitenant: AITenant) -> AITenant:
-    """Return a new handle to re-read the AITenant from the API."""
-    return AITenant(
-        client=aitenant.client,
-        name=aitenant.name,
-        namespace=aitenant.namespace,
-        wait_for_resource=False,
-    )
-
-
 def refresh_maas_namespaced_resource(resource: NamespacedResource) -> NamespacedResource:
     """Return a new handle with an up-to-date instance from the API."""
     return type(resource)(

@@ -20,7 +20,7 @@ from ocp_resources.replica_set import ReplicaSet
 from ocp_resources.resource import NamespacedResource
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
+from timeout_sampler import TimeoutExpiredError, retry
 
 from tests.model_serving.maas_billing.external_model.utils import (
     get_httproute,
@@ -329,7 +329,7 @@ def get_legacy_maas_service(
         service = Service(client=client, name=resource_name, namespace=namespace)
         if service.exists:
             return service
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"Service {namespace}/{resource_name} not found")
     return None
 
@@ -344,7 +344,7 @@ def get_legacy_maas_service_entry(
         service_entry = ServiceEntry(client=client, name=resource_name, namespace=namespace)
         if service_entry.exists:
             return service_entry
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"ServiceEntry {namespace}/{resource_name} not found")
     return None
 
@@ -359,7 +359,7 @@ def get_legacy_maas_destination_rule(
         destination_rule = DestinationRule(client=client, name=resource_name, namespace=namespace)
         if destination_rule.exists:
             return destination_rule
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"DestinationRule {namespace}/{resource_name} not found")
     return None
 

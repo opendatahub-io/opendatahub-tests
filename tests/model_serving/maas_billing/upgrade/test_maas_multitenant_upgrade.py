@@ -6,10 +6,10 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 
+from tests.model_serving.maas_billing.multitenancy.aitenant.utils import verify_aitenant_ready
 from tests.model_serving.maas_billing.multitenancy.utils import (
     verify_maas_api_deployment_for_aitenant,
 )
-from tests.model_serving.maas_billing.praxis.utils import verify_praxis_payload_processing_active_for_aitenant
 from tests.model_serving.maas_billing.upgrade.utils import (
     MultitenantUpgradeTenantRecord,
     aitenant_for_multitenant_upgrade_record,
@@ -24,7 +24,6 @@ from tests.model_serving.maas_billing.upgrade.utils import (
     verify_multitenant_upgrade_models_list_probe,
     verify_multitenant_upgrade_tenant_governance_survived,
 )
-from tests.model_serving.maas_billing.multitenancy.aitenant.utils import verify_aitenant_ready
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -205,15 +204,16 @@ class TestPostUpgradeMultitenantMaaS:
             )
 
     @pytest.mark.post_upgrade
-    def test_multitenant_maas_api_and_payload_processing_ready_post_upgrade(
+    def test_multitenant_maas_api_ready_post_upgrade(
         self,
         admin_client: DynamicClient,
-        aitenant_infra_namespace: str,
         maas_api_infra_namespace: str,
         maas_multitenant_upgrade_tenant_records: list[MultitenantUpgradeTenantRecord],
     ) -> None:
         """Given multitenant baseline, when upgrade completes,
-        then each maas-api-{tenant} Deployment is Available and Praxis payload processing is active.
+        then each maas-api-{tenant} Deployment is Available (RHOAIENG-100389).
+
+        Praxis payload-processing assertions are not included on 3.5; that stack differs from main.
         """
         for tenant_record in maas_multitenant_upgrade_tenant_records:
             verify_maas_api_deployment_for_aitenant(
@@ -221,15 +221,6 @@ class TestPostUpgradeMultitenantMaaS:
                 api_namespace=maas_api_infra_namespace,
                 aitenant_name=tenant_record["aitenant_name"],
                 tenant_namespace_name=tenant_record["tenant_namespace_name"],
-            )
-            aitenant = aitenant_for_multitenant_upgrade_record(
-                admin_client=admin_client,
-                aitenant_infra_namespace=aitenant_infra_namespace,
-                tenant_record=tenant_record,
-            )
-            verify_praxis_payload_processing_active_for_aitenant(
-                admin_client=admin_client,
-                aitenant=aitenant,
             )
 
     @pytest.mark.post_upgrade

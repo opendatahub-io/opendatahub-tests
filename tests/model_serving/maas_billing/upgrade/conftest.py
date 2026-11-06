@@ -35,7 +35,6 @@ from tests.model_serving.maas_billing.upgrade.utils import (
     LegacyMigrationBaseline,
     MaaSBaseline,
     MultitenantUpgradeTenantRecord,
-    capture_legacy_migration_baseline,
     capture_maas_baseline,
     capture_multitenant_upgrade_baseline,
     cluster_has_inference_external_model_crd,
@@ -48,11 +47,9 @@ from tests.model_serving.maas_billing.upgrade.utils import (
     load_multitenant_upgrade_baseline_from_configmap,
     multitenant_upgrade_tenant_aitenant_names,
     provision_multitenant_upgrade_aitenant,
-    save_legacy_migration_baseline_to_configmap,
     save_maas_baseline_to_configmap,
     save_multitenant_upgrade_baseline_to_configmap,
     tenant_base_url_for_record,
-    wait_for_legacy_maas_networking_present,
 )
 from tests.model_serving.maas_billing.utils import (
     MaaSTenantResource,
