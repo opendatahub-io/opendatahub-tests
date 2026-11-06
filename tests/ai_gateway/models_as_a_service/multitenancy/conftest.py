@@ -325,19 +325,12 @@ def tenant_isolation_model_storage_uri() -> str:
 
 
 @pytest.fixture(scope="class")
-def tenant_isolation_governance_ready_timeout() -> int:
-    """Max wait for tenant MaaSAuthPolicy and MaaSSubscription Ready in isolation setup."""
-    return 300
-
-
-@pytest.fixture(scope="class")
 def isolation_tenant_governance(
     admin_client: DynamicClient,
     two_aitenant_test_contexts: tuple[AITenantTestContext, AITenantTestContext],
     maas_free_group: str,
     teardown_resources: bool,
     tenant_isolation_model_storage_uri: str,
-    tenant_isolation_governance_ready_timeout: int,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_name: str,
@@ -346,44 +339,52 @@ def isolation_tenant_governance(
 ) -> Generator[list[TenantIsolationGovernance], Any, Any]:
     """Provision a tenant-local model, auth policy, and subscription per AITenant (dev order)."""
     governance_contexts: list[TenantIsolationGovernance] = []
+    tenant_outcomes: list[str] = []
     with ExitStack() as stack:
-        for test_context in two_aitenant_test_contexts:
+        for tenant_index, test_context in enumerate(two_aitenant_test_contexts):
+            tenant_label = "A" if tenant_index == 0 else "B"
             gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=test_context["aitenant"])
             tenant_namespace_name = test_context["tenant_namespace_name"]
             aitenant_name = test_context["aitenant_name"]
             auth_policy_name = tenant_isolation_auth_policy_name(aitenant_name=aitenant_name)
             subscription_name = tenant_isolation_subscription_name(aitenant_name=aitenant_name)
-
-            stack.enter_context(
-                cm=provision_tenant_model(
-                    admin_client=admin_client,
-                    model_name=TENANT_ISOLATION_MODEL_NAME,
-                    tenant_namespace_name=tenant_namespace_name,
-                    gateway_name=gateway_name,
-                    gateway_namespace=gateway_namespace,
-                    aws_access_key=aws_access_key_id,
-                    aws_secret_access_key=aws_secret_access_key,
-                    aws_s3_region=models_s3_bucket_region,
-                    aws_s3_bucket=models_s3_bucket_name,
-                    aws_s3_endpoint=models_s3_bucket_endpoint,
-                    storage_uri=tenant_isolation_model_storage_uri,
-                    teardown=teardown_resources,
+            try:
+                stack.enter_context(
+                    cm=provision_tenant_model(
+                        admin_client=admin_client,
+                        model_name=TENANT_ISOLATION_MODEL_NAME,
+                        tenant_namespace_name=tenant_namespace_name,
+                        gateway_name=gateway_name,
+                        gateway_namespace=gateway_namespace,
+                        aws_access_key=aws_access_key_id,
+                        aws_secret_access_key=aws_secret_access_key,
+                        aws_s3_region=models_s3_bucket_region,
+                        aws_s3_bucket=models_s3_bucket_name,
+                        aws_s3_endpoint=models_s3_bucket_endpoint,
+                        storage_uri=tenant_isolation_model_storage_uri,
+                        teardown=teardown_resources,
+                    )
                 )
-            )
-            stack.enter_context(
-                cm=make_tenant_model_accessible(
-                    admin_client=admin_client,
-                    model_name=TENANT_ISOLATION_MODEL_NAME,
-                    model_namespace=tenant_namespace_name,
-                    tenant_namespace_name=tenant_namespace_name,
-                    auth_policy_name=auth_policy_name,
-                    subscription_name=subscription_name,
-                    owner_group_name="system:authenticated",
-                    free_group_name=maas_free_group,
-                    teardown=teardown_resources,
-                    ready_timeout=tenant_isolation_governance_ready_timeout,
+                stack.enter_context(
+                    cm=make_tenant_model_accessible(
+                        admin_client=admin_client,
+                        model_name=TENANT_ISOLATION_MODEL_NAME,
+                        model_namespace=tenant_namespace_name,
+                        tenant_namespace_name=tenant_namespace_name,
+                        auth_policy_name=auth_policy_name,
+                        subscription_name=subscription_name,
+                        owner_group_name="system:authenticated",
+                        free_group_name=maas_free_group,
+                        gateway_name=gateway_name,
+                        gateway_namespace=gateway_namespace,
+                        teardown=teardown_resources,
+                    )
                 )
-            )
+            except Exception as error:
+                tenant_outcomes.append(
+                    f"Tenant {tenant_label} ({aitenant_name}, namespace={tenant_namespace_name}): FAILED\n{error}"
+                )
+                continue
             governance_contexts.append(
                 TenantIsolationGovernance(
                     aitenant_name=aitenant_name,
@@ -393,6 +394,16 @@ def isolation_tenant_governance(
                     auth_policy_name=auth_policy_name,
                     subscription_name=subscription_name,
                 )
+            )
+            tenant_outcomes.append(
+                f"Tenant {tenant_label} ({aitenant_name}, namespace={tenant_namespace_name}): governance Ready "
+                f"(policy={auth_policy_name}, subscription={subscription_name})"
+            )
+        if len(governance_contexts) != len(two_aitenant_test_contexts):
+            pytest.fail(
+                "Multitenancy isolation governance did not become Ready for all tenants. "
+                "Usage-log and other two-tenant tests will not run the test body until both succeed.\n\n"
+                + "\n\n".join(tenant_outcomes)
             )
         yield governance_contexts
 

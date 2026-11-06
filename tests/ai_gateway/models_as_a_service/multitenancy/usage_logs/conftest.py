@@ -50,12 +50,6 @@ def tenant_isolation_model_storage_uri() -> str:  # noqa: UFN001
     return ModelStorage.OCI.TINYLLAMA
 
 
-@pytest.fixture(scope="class")
-def tenant_isolation_governance_ready_timeout() -> int:  # noqa: UFN001
-    """Two AITenant gateways on one cluster: tenant B MaaSAuthPolicy often exceeds 300s (Authorino backlog)."""
-    return 600
-
-
 @pytest.fixture(scope="session")
 def usage_logs_multi_tenant_e2e_monitoring_namespace(admin_client: DynamicClient) -> str:
     """Fail fast when pipeline prerequisites for usage-log multitenancy E2E are missing."""
