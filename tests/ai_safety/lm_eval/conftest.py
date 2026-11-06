@@ -3,6 +3,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -16,6 +17,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import Config, FixtureRequest
+from pytest_testconfig import config as py_config
 
 from tests.ai_safety.image_constants import AiSafetyImages
 from tests.ai_safety.lm_eval.constants import (
@@ -45,6 +47,8 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
 LMEVALJOB_NAME: str = "lmeval-test-job"
+
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="function")
@@ -198,8 +202,12 @@ def oci_registry_pod_with_seaweedfs(
     seaweedfs_service: Service,
     oci_registry_seaweedfs_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
-    """OCI registry (zot) backed by the shared SeaweedFS S3 API, with credentials supplied by a Secret."""
+    """OCI registry backed by the shared SeaweedFS S3 API, with credentials supplied by a Secret.
+
+    Uses zot, except on ppc64le clusters where a multi-arch registry image is used instead.
+    """
     fixture_config = getattr(request, "param", {})
+    is_ppc64le = py_config.get("cluster_architecture") == "ppc64le"
     pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
 
     if labels := fixture_config.get("labels"):
@@ -207,6 +215,26 @@ def oci_registry_pod_with_seaweedfs(
 
     seaweedfs_fqdn = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
     seaweedfs_endpoint = f"{seaweedfs_fqdn}:{SeaweedFs.Metadata.DEFAULT_PORT}"
+
+    # The multi-arch registry image is configured through REGISTRY_* env vars instead of ZOT_*
+    if is_ppc64le:
+        s3_prefix = "REGISTRY_STORAGE_S3_"
+        registry_env = [
+            {"name": "REGISTRY_STORAGE", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+            {
+                "name": "REGISTRY_HTTP_ADDR",
+                "value": f"{OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS}:{OCIRegistry.Metadata.DEFAULT_PORT}",
+            },
+            {"name": "REGISTRY_LOG_LEVEL", "value": "info"},
+        ]
+    else:
+        s3_prefix = "ZOT_STORAGE_STORAGEDRIVER_"
+        registry_env = [
+            {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+            {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+            {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+            {"name": "ZOT_LOG_LEVEL", "value": "info"},
+        ]
 
     with Pod(
         client=admin_client,
@@ -216,25 +244,25 @@ def oci_registry_pod_with_seaweedfs(
             {
                 "args": fixture_config.get("args"),
                 "env": [
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+                    *registry_env,
                     {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
+                        "name": f"{s3_prefix}ROOTDIRECTORY",
                         "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
                     },
                     {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET",
+                        "name": f"{s3_prefix}BUCKET",
                         "value": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
                     },
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{seaweedfs_endpoint}"},
+                    {"name": f"{s3_prefix}REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
+                    {"name": f"{s3_prefix}REGIONENDPOINT", "value": f"http://{seaweedfs_endpoint}"},
                     {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY",
+                        "name": f"{s3_prefix}ACCESSKEY",
                         "valueFrom": {
                             "secretKeyRef": {"name": oci_registry_seaweedfs_secret.name, "key": "AWS_ACCESS_KEY_ID"},
                         },
                     },
                     {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY",
+                        "name": f"{s3_prefix}SECRETKEY",
                         "valueFrom": {
                             "secretKeyRef": {
                                 "name": oci_registry_seaweedfs_secret.name,
@@ -243,16 +271,13 @@ def oci_registry_pod_with_seaweedfs(
                         },
                     },
                     {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
+                        "name": f"{s3_prefix}SECURE",
                         "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
                     },
                     {
-                        "name": "ZOT_STORAGE_STORAGEDRIVER_FORCEPATHSTYLE",
+                        "name": f"{s3_prefix}FORCEPATHSTYLE",
                         "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
                     },
-                    {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
-                    {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
-                    {"name": "ZOT_LOG_LEVEL", "value": "info"},
                 ],
                 "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
                 "name": OCIRegistry.Metadata.NAME,
