@@ -19,7 +19,7 @@ from tests.ai_safety.evalhub.utils import (
     wait_for_evalhub_job_workload_inadmissible,
 )
 from utilities.constants import Timeout
-from utilities.kueue_utils import ClusterQueue, LocalQueue, check_gated_pods_and_running_pods
+from utilities.kueue_utils import ClusterQueue, LocalQueue, count_pods_started
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -140,15 +140,15 @@ class TestEvalHubKueueJobDeletion:
 
             selector = evalhub_runtime_label_selector(evalhub_job_id=job_id)
             try:
-                for running, _ in TimeoutSampler(
+                for started_pods in TimeoutSampler(
                     wait_timeout=Timeout.TIMEOUT_10MIN,
                     sleep=5,
-                    func=check_gated_pods_and_running_pods,
+                    func=count_pods_started,
                     labels=[selector],
                     namespace=evalhub_kueue_namespace.name,
                     admin_client=admin_client,
                 ):
-                    if running >= 1:
+                    if started_pods >= 1:
                         break
             except TimeoutExpiredError:
                 pytest.fail(f"Pod for job {job_id} did not reach running state within {Timeout.TIMEOUT_10MIN}s")
