@@ -1126,7 +1126,7 @@ def get_rhods_operator_installed_csv() -> ClusterServiceVersion | None:
 
 
 @retry(
-    wait_timeout=120,
+    wait_timeout=300,
     sleep=5,
     exceptions_dict={ResourceNotReadyError: []},
 )
@@ -1141,7 +1141,7 @@ def wait_for_dsci_status_ready(dsci_resource: DSCInitialization) -> bool:
 
 
 @retry(
-    wait_timeout=120,
+    wait_timeout=300,
     sleep=5,
     exceptions_dict={ResourceNotReadyError: []},
 )
