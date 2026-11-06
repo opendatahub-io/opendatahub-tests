@@ -38,7 +38,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="class")
-def ogx_server(
+def ogx_server(  # noqa: UFN001 — intentionally shadows the parent conftest fixture (see module docstring)
     request: FixtureRequest,
     pytestconfig: pytest.Config,
     unprivileged_client: DynamicClient,
@@ -91,7 +91,8 @@ def ogx_server(
         )
         ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
         yield ogx_srv
-        ogx_srv.clean_up()
+        if teardown_resources:
+            ogx_srv.clean_up()
         return
 
     with (
