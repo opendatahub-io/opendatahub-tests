@@ -591,7 +591,10 @@ class TestSameNamedProvidersTwoNamespaces:
             )
 
             seen: set[str] = set()
-            for _request_index in range(12):
+            # Requests are not pinned to a provider, so a fixed sample can
+            # starve one provider by chance: poll with a bounded budget until
+            # BOTH providers have served instead of sampling a fixed count.
+            for _request_index in range(40):
                 response = infer_external_chat(
                     request_session_http=request_session_http,
                     gateway_url=case["gateway_url"],
@@ -609,6 +612,8 @@ class TestSameNamedProvidersTwoNamespaces:
                 for provider_index, credential in enumerate(credentials, start=1):
                     if credential in response.text:
                         seen.add(f"provider-ns-{provider_index}")
+                if len(seen) == len(credentials):
+                    break
             assert seen == {f"provider-ns-{index}" for index in (1, 2)}, (
                 f"expected both same-named providers to serve, saw {seen}"
             )
