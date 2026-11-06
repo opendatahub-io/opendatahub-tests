@@ -606,10 +606,11 @@ def require_crossns_provider_support(admin_client: DynamicClient) -> None:
 
     The AGC ships cross-namespace provider support (validated 8/8 against a
     product nightly), so the scenarios run wherever the ReferenceGrant CRD
-    the feature depends on is installed, and skip on clusters without it.
+    the feature depends on is installed; a cluster without it is a setup
+    failure, not a skip.
     """
     if get_json_or_none(client=admin_client, kind="crd", name=REFERENCE_GRANT_CRD_NAME) is None:
-        pytest.skip(f"ReferenceGrant CRD {REFERENCE_GRANT_CRD_NAME} is not installed")
+        pytest.fail(f"ReferenceGrant CRD {REFERENCE_GRANT_CRD_NAME} is not installed")
 
 
 _WITHDRAWAL_ISSUE_FLAGS = {
@@ -2366,6 +2367,149 @@ def reference_grant_for(
 def revoke_reference_grant(grant: ReferenceGrant) -> None:
     """Delete a ReferenceGrant (the attachment waits confirm the effect)."""
     grant.delete()
+
+
+def crossns_namespace(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    prefix: str,
+) -> str:
+    """Create a namespace admitted to the tenant gateway; return its name."""
+    return namespace_name(
+        namespace=stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                prefix,
+                env["tenant"]["gateway_name"],
+                teardown=env["teardown"],
+            )
+        )
+    )
+
+
+def crossns_secret_with_credential(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    name: str,
+    namespace: str,
+) -> str:
+    """Create an Opaque Secret holding a fresh api-key; return the credential."""
+    credential = f"sk-extmod-{name[:24]}-{uuid.uuid4().hex[:8]}"  # pragma: allowlist secret
+    stack.enter_context(
+        cm=Secret(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            type="Opaque",
+            string_data={CREDENTIAL_DATA_KEY: credential},
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    return credential
+
+
+def crossns_provider(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    name: str,
+    namespace: str,
+    *,
+    secret_name: str | None = None,
+    credential: str | None = None,
+    grant_from_model_ns: bool = False,
+) -> str:
+    """Provision an ExternalProvider; return the credential it injects.
+
+    Creates a dedicated Secret unless *secret_name* names an existing Secret
+    whose *credential* is already known. With *grant_from_model_ns*, also
+    applies the ReferenceGrant admitting the model namespace to this provider.
+    """
+    if secret_name is None or credential is None:
+        credential = crossns_secret_with_credential(
+            admin_client=admin_client, stack=stack, env=env, name=f"{name}-cred", namespace=namespace
+        )
+        secret_name = f"{name}-cred"
+    stack.enter_context(
+        cm=ExternalProvider(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            provider="openai",
+            endpoint=EXTERNAL_ENDPOINT,
+            auth={"type": "apikey", "secretRef": {"name": secret_name}},
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    if grant_from_model_ns:
+        apply_reference_grant(
+            admin_client=admin_client,
+            stack=stack,
+            env=env,
+            name=f"{name}-grant",
+            provider_namespace=namespace,
+            from_namespace=env["model_ns"],
+            to_name=name,
+        )
+    assert credential is not None, "credential must be provided or generated with the Secret"
+    return credential
+
+
+def crossns_twin_model(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    *,
+    name: str,
+    provider_name: str,
+    provider_namespaces: list[str],
+) -> dict[str, Any]:
+    """Create a model binding *provider_name* once per *provider_namespaces*,
+    with a distinct path tag per binding, plus its MaaSModelRef."""
+    refs = [
+        external_model_binding(
+            provider_name=provider_name,
+            provider_namespace=provider_namespace,
+            path_tag=f"{name}-ns{index}",
+        )
+        for index, provider_namespace in enumerate(provider_namespaces, start=1)
+    ]
+    stack.enter_context(
+        cm=ExternalModel(
+            client=admin_client,
+            name=name,
+            namespace=env["model_ns"],
+            external_provider_refs=refs,
+            gateway_refs=[gateway_ref(gateway_name=env["tenant"]["gateway_name"])],
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    stack.enter_context(
+        cm=MaaSModelRef(
+            client=admin_client,
+            name=name,
+            namespace=env["model_ns"],
+            model_ref={
+                "name": name,
+                "namespace": env["model_ns"],
+                "kind": "ExternalModel",
+                "apiGroup": "inference.opendatahub.io",
+            },
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    return {
+        "name": name,
+        "namespace": env["model_ns"],
+        "client_name": name,
+        "path_tags": [f"{name}-ns{index}" for index in range(1, len(provider_namespaces) + 1)],
+    }
 
 
 @contextmanager
