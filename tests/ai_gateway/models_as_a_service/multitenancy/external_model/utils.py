@@ -2141,13 +2141,9 @@ def wait_for_provider_ready(
         status = provider.get("status")
         assert status is not None, f"provider {provider_name} reports no status yet: {redact_sensitive(status)}"
         conditions = status.get("conditions")
-        assert conditions is not None, (
-            f"provider {provider_name} reports no conditions yet: {redact_sensitive(status)}"
-        )
+        assert conditions is not None, f"provider {provider_name} reports no conditions yet: {redact_sensitive(status)}"
         ready = next((condition for condition in conditions if condition["type"] == "Ready"), None)
-        assert ready is not None, (
-            f"provider {provider_name} reports no Ready condition yet: {redact_sensitive(status)}"
-        )
+        assert ready is not None, f"provider {provider_name} reports no Ready condition yet: {redact_sensitive(status)}"
         phase = status.get("phase")
         assert phase is not None, f"provider {provider_name} reports no phase yet: {redact_sensitive(status)}"
         assert phase == "Ready" and ready["status"] == "True", (
