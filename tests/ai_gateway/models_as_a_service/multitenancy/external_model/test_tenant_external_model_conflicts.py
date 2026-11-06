@@ -67,6 +67,12 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 
 LOGGER = structlog.get_logger(name=__name__)
+# When the tenant's own model displaces an already-attached older model, the
+# loser's published route is withdrawn through AGC's staged drain (route held
+# for the request timeout plus a margin after the reduced revision serves,
+# ai-gateway-controller#145), so its ModelNameConflict reason can only appear
+# after the drain; wait past the full window.
+WITHDRAWAL_DRAIN_TIMEOUT: int = 480
 
 
 @pytest.mark.usefixtures(
@@ -129,6 +135,7 @@ class TestModelNameConflict:
                 model_namespace=older["namespace"],
                 gateway_name=tenant_a["gateway_name"],
                 reason="ModelNameConflict",
+                timeout=WITHDRAWAL_DRAIN_TIMEOUT,
             )
             wait_for_no_attachment_httproute(
                 admin_client=admin_client,

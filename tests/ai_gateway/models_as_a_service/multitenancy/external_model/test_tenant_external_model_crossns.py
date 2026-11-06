@@ -60,6 +60,12 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
 LOGGER = structlog.get_logger(name=__name__)
 
 GRANT_FAILURE_PATTERN = r"grant|authoriz|not allowed|permission|forbidden|reference"
+# AGC stages provider withdrawal: the withdrawn provider's route is held for
+# the route request timeout (300s) plus a margin, counted only from when the
+# reduced ExtProc revision is confirmed serving (ai-gateway-controller#145).
+# Revoking or narrowing the grant therefore cannot report the authorization
+# failure within the default readiness window; wait past the full drain.
+WITHDRAWAL_DRAIN_TIMEOUT: int = 480
 MISSING_SECRET_PATTERN = r"secret"
 
 
@@ -270,6 +276,7 @@ class TestGrantRevocation:
                 model_namespace=model["namespace"],
                 gateway_name=gateway,
                 message_pattern=GRANT_FAILURE_PATTERN,
+                timeout=WITHDRAWAL_DRAIN_TIMEOUT,
             )
             wait_for_no_credential_copy(
                 admin_client=admin_client,
@@ -350,6 +357,7 @@ class TestGrantRevocation:
                 model_namespace=model["namespace"],
                 gateway_name=gateway,
                 message_pattern=GRANT_FAILURE_PATTERN,
+                timeout=WITHDRAWAL_DRAIN_TIMEOUT,
             )
             denied = infer_for_shared_model(
                 request_session_http=request_session_http,
