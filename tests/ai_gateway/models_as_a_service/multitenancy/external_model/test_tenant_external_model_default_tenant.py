@@ -34,6 +34,7 @@ alone.
 from __future__ import annotations
 
 import re
+from contextlib import ExitStack
 from typing import Any
 
 import pytest
@@ -53,6 +54,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     namespace_name,
     patch_external_model_gateway_refs,
     redact_sensitive,
+    serve_in_default_tenant,
     wait_for_gateway_attachment_reason,
     wait_for_provider_ready,
     wait_implicitly_attached,
@@ -65,6 +67,15 @@ LOGGER = structlog.get_logger(name=__name__)
 
 
 UNMANAGED_GATEWAY_NAME = "e2e-dft-unmanaged-gateway"
+# Replacing gatewayRefs tears down the implicit attachment's objects and, with
+# them, the shared default-tenant ExtProc Deployment; the reinstall can lag the
+# teardown by minutes (observed ~5 minutes, tracked against AGC), so restores
+# after a refs transition get a wider window than a first-time attachment.
+REFS_TRANSITION_RESTORE_TIMEOUT: int = 600
+# While one model's gatewayRefs transition is in flight, poll the other model
+# this long to catch a degradation window instead of sampling a single moment.
+REFS_TRANSITION_PROBE_INTERVAL: int = 15
+REFS_TRANSITION_PROBE_DURATION: int = 360
 
 
 @pytest.mark.usefixtures(
@@ -228,10 +239,122 @@ class TestImplicitAttachmentLifecycle:
             patch_external_model_gateway_refs(
                 admin_client=admin_client, name=model["name"], namespace=model["namespace"], refs=None
             )
-            wait_implicitly_attached(admin_client=admin_client, model=model)
+            wait_implicitly_attached(admin_client=admin_client, model=model, timeout=REFS_TRANSITION_RESTORE_TIMEOUT)
             assert (
                 gateway_status_entry(admin_client, model["name"], model["namespace"], UNMANAGED_GATEWAY_NAME) is None
             ), f"removing gatewayRefs must drop the {UNMANAGED_GATEWAY_NAME} result"
+
+    @pytest.mark.tier3
+    def test_gateway_refs_replace_does_not_degrade_other_models(
+        self,
+        admin_client: DynamicClient,
+        request_session_http: requests.Session,
+        ocp_token_for_actor: str,
+        base_url: str,
+        default_gateway_url: str,
+        default_tenant_model_namespace: Namespace,
+        teardown_resources: bool,
+    ) -> None:
+        """Given two implicitly attached models sharing the default tenant's ExtProc
+        Deployment, when one model's gatewayRefs are replaced and then removed, then the
+        other model serves without interruption throughout and the edited model serves
+        again once its implicit attachment is restored.
+        """
+        with ExitStack() as stack:
+            namespace = namespace_name(namespace=default_tenant_model_namespace)
+            model_a = stack.enter_context(
+                cm=default_tenant_model_stack(
+                    admin_client, prefix="e2e-dft-refs2", namespace=namespace, teardown=teardown_resources
+                )
+            )
+            model_b = stack.enter_context(
+                cm=default_tenant_model_stack(
+                    admin_client, prefix="e2e-dft-coex", namespace=namespace, teardown=teardown_resources
+                )
+            )
+            route_name_a = wait_implicitly_attached(admin_client=admin_client, model=model_a)["route"]["metadata"][
+                "name"
+            ]
+            wait_implicitly_attached(admin_client=admin_client, model=model_b)
+            api_key_a = stack.enter_context(
+                cm=serve_in_default_tenant(
+                    admin_client,
+                    request_session_http,
+                    ocp_token_for_actor,
+                    base_url,
+                    model_a,
+                    teardown=teardown_resources,
+                )
+            )
+            api_key_b = stack.enter_context(
+                cm=serve_in_default_tenant(
+                    admin_client,
+                    request_session_http,
+                    ocp_token_for_actor,
+                    base_url,
+                    model_b,
+                    teardown=teardown_resources,
+                )
+            )
+
+            def infer_and_expect_provider_served(model: dict[str, Any], api_key: str) -> None:
+                response = infer_chat_completion(
+                    request_session_http=request_session_http,
+                    gateway_url=default_gateway_url,
+                    model=model,
+                    api_key=api_key,
+                )
+                assert response.status_code == 200, (
+                    f"expected 200 for {model['name']}, got {response.status_code}: {redact_sensitive(response.text)}"
+                )
+                assert model["path_tag"] in response.text, (
+                    f"response for {model['name']} did not come from its provider: {redact_sensitive(response.text)}"
+                )
+
+            infer_and_expect_provider_served(model=model_b, api_key=api_key_b)
+
+            patch_external_model_gateway_refs(
+                admin_client=admin_client,
+                name=model_a["name"],
+                namespace=model_a["namespace"],
+                refs=[gateway_ref(UNMANAGED_GATEWAY_NAME)],
+            )
+            wait_for_gateway_attachment_reason(
+                admin_client=admin_client,
+                model_name=model_a["name"],
+                model_namespace=model_a["namespace"],
+                gateway_name=UNMANAGED_GATEWAY_NAME,
+                reason="GatewayNotManaged",
+            )
+            wait_not_implicitly_attached(admin_client=admin_client, model=model_a, route_name=route_name_a)
+            patch_external_model_gateway_refs(
+                admin_client=admin_client, name=model_a["name"], namespace=model_a["namespace"], refs=None
+            )
+            # The two models share one default-tenant ExtProc Deployment, so the
+            # teardown of model_a's implicit attachment can in principle take
+            # model_b's serving path down with it. Poll across the whole
+            # transition window instead of sampling one moment; keep the full
+            # status history so a failure shows whether the degradation was a
+            # blip or a sustained outage.
+            probe_history: list[str] = []
+            probes = REFS_TRANSITION_PROBE_DURATION // REFS_TRANSITION_PROBE_INTERVAL
+            for probe_index in range(probes):
+                response = infer_chat_completion(
+                    request_session_http=request_session_http,
+                    gateway_url=default_gateway_url,
+                    model=model_b,
+                    api_key=api_key_b,
+                )
+                probe_history.append(f"{probe_index * REFS_TRANSITION_PROBE_INTERVAL}s:{response.status_code}")
+                assert response.status_code == 200, (
+                    f"{model_b['name']} degraded while {model_a['name']} transitioned "
+                    f"gatewayRefs; probe history [{', '.join(probe_history)}]: "
+                    f"{redact_sensitive(response.text)}"
+                )
+
+            wait_implicitly_attached(admin_client=admin_client, model=model_a, timeout=REFS_TRANSITION_RESTORE_TIMEOUT)
+            infer_and_expect_provider_served(model=model_a, api_key=api_key_a)
+            infer_and_expect_provider_served(model=model_b, api_key=api_key_b)
 
     @pytest.mark.tier3
     def test_model_delete_removes_implicit_attachment(
