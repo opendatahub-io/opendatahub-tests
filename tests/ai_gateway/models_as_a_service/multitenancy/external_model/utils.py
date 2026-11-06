@@ -2756,8 +2756,17 @@ def infer_chat_completion(
     }
     responses: list[requests.Response] = []
 
+    # The shared request session disables trust_env so that its own
+    # verify=False is honored; requests then ignores REQUESTS_CA_BUNDLE
+    # for per-request verify=True calls, so resolve the bundle here (same
+    # as infer_external_chat) and verify the gateway's certificate.
+    bundle_path = os.environ.get("REQUESTS_CA_BUNDLE")
+    verify: bool | str = bundle_path or True
+
     def _post_and_require_stable() -> requests.Response:
-        response = request_session_http.post(url=url, headers=headers, json=payload, timeout=INFERENCE_REQUEST_TIMEOUT)
+        response = request_session_http.post(
+            url=url, headers=headers, json=payload, timeout=INFERENCE_REQUEST_TIMEOUT, verify=verify
+        )
         responses.append(response)
         transient = response.status_code >= 500 or (
             response.status_code == 429 and "retry" in (response.text or "").lower()
