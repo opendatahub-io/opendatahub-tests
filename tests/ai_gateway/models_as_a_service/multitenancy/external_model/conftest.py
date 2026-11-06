@@ -967,14 +967,18 @@ def same_named_pair(
         }
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def broken_pair(
     admin_client: DynamicClient,
     request_session_http: requests.Session,
     ocp_token_for_actor: str,
     conflicts_env: dict[str, Any],
 ) -> Generator[dict[str, Any], Any]:
-    """A healthy served model plus a broken foreign model on the same gateway."""
+    """A healthy served model plus a broken foreign model on the same gateway.
+
+    Function-scoped on purpose: the deletion test destroys the broken model,
+    so a shared instance would break any test that runs after it.
+    """
     with ExitStack() as stack:
         env = conflicts_env
         tenant_a = env["tenant_a"]
