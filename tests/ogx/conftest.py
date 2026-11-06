@@ -40,7 +40,7 @@ from tests.ogx.utils import (
     wait_for_unique_ogx_pod,
 )
 from utilities import infra
-from utilities.constants import Annotations, DscComponents
+from utilities.constants import Annotations, DscComponents, Timeout
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.general import generate_random_name
 from utilities.resources.ogx_server import OgxServer
@@ -68,7 +68,90 @@ def distribution_name(pytestconfig: pytest.Config) -> str:
 
 
 @pytest.fixture(scope="class")
-def enabled_ogx_operator(dsc_resource: DataScienceCluster) -> Generator[DataScienceCluster, Any, Any]:
+def enabled_ogx_operator(
+    pytestconfig: pytest.Config,
+    dsc_resource: DataScienceCluster,
+    teardown_resources: bool,
+) -> Generator[DataScienceCluster, Any, Any]:
+    """Keep the OGX operator managed across an upgrade run."""
+    original_state_annotation = "tests.opendatahub.io/ogx-upgrade-original-management-state"
+    component_absent = "ComponentAbsent"
+    management_state_absent = "ManagementStateAbsent"
+    original_component = dsc_resource.instance.spec.components.get(DscComponents.OGX)
+    current_state = original_component.get("managementState") if original_component is not None else None
+    annotations = getattr(dsc_resource.instance.metadata, "annotations", None) or {}
+    saved_state = annotations.get(original_state_annotation)
+    valid_states = {
+        DscComponents.ManagementState.MANAGED,
+        DscComponents.ManagementState.REMOVED,
+        DscComponents.ManagementState.UNMANAGED,
+        component_absent,
+        management_state_absent,
+    }
+
+    def restore_ogx_state() -> None:
+        """Restore the DSC after all post-upgrade fixtures have finished."""
+        original_state = (getattr(dsc_resource.instance.metadata, "annotations", None) or {}).get(
+            original_state_annotation
+        )
+        if original_state is None:
+            return
+        if original_state == component_absent:
+            component_patch: dict[str, Any] | None = None
+        elif original_state == management_state_absent:
+            component_patch = {"managementState": None}
+        else:
+            component_patch = {"managementState": original_state}
+        ResourceEditor(
+            patches={
+                dsc_resource: {
+                    "spec": {"components": {DscComponents.OGX: component_patch}},
+                    "metadata": {"annotations": {original_state_annotation: None}},
+                }
+            }
+        ).update()
+
+    if pytestconfig.option.post_upgrade and not pytestconfig.option.pre_upgrade:
+        assert current_state == DscComponents.ManagementState.MANAGED, (
+            f"Expected OGX to remain Managed through the upgrade, got {current_state}"
+        )
+        if saved_state is not None:
+            assert saved_state in valid_states, f"Unexpected saved OGX managementState: {saved_state}"
+            pytestconfig.add_cleanup(func=restore_ogx_state)
+        yield dsc_resource
+        return
+
+    if pytestconfig.option.pre_upgrade and not teardown_resources:
+        if saved_state is not None:
+            original_state = saved_state
+        elif original_component is None:
+            original_state = component_absent
+        elif current_state is None:
+            original_state = management_state_absent
+        else:
+            original_state = current_state
+        assert original_state in valid_states, f"Unexpected OGX managementState: {original_state}"
+
+        if current_state != DscComponents.ManagementState.MANAGED:
+            patch: dict[str, Any] = {
+                "spec": {"components": {DscComponents.OGX: {"managementState": DscComponents.ManagementState.MANAGED}}}
+            }
+        else:
+            patch = {}
+        if saved_state is None:
+            patch["metadata"] = {"annotations": {original_state_annotation: original_state}}
+        if patch:
+            ResourceEditor(patches={dsc_resource: patch}).update()
+        dsc_resource.wait_for_condition(
+            condition=DscComponents.ConditionType.OGX_READY,
+            status="True",
+            timeout=Timeout.TIMEOUT_5MIN,
+        )
+        if pytestconfig.option.post_upgrade:
+            pytestconfig.add_cleanup(func=restore_ogx_state)
+        yield dsc_resource
+        return
+
     with update_components_in_dsc(
         dsc=dsc_resource,
         components={
