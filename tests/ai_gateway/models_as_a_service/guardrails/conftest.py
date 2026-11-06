@@ -148,6 +148,7 @@ def guardrails_nemo_server(
         namespace=maas_subscription_namespace.name,
         # Praxis calls NeMo directly over HTTP; kube-rbac-proxy must not front the Service.
         annotations={"security.opendatahub.io/enable-auth": "false"},
+        ai_gateway_mode=True,
         nemo_configs=[
             {
                 "name": NEMO_PII_CONFIG_ID,
@@ -218,12 +219,13 @@ def phase_nemo_server(
     maas_subscription_namespace: Namespace,
     phase_nemo_configmap: ConfigMap,
 ) -> Generator[NemoGuardrails, Any, Any]:
-    """Ready NeMo provider for the input-and-output phase tests."""
+    """Ready NeMo provider for the input-and-output phase tests, with its workload in the AI Gateway infra namespace."""
     with NemoGuardrails(
         client=admin_client,
         name=f"maas-nemo-phase-{guardrails_resource_suffix}",
         namespace=maas_subscription_namespace.name,
         annotations={"security.opendatahub.io/enable-auth": "false"},
+        ai_gateway_mode=True,
         # The phase policy is also used to verify MaaSModelRef attachments.
         allowed_consumers={"namespaces": {"from": "All"}},
         nemo_configs=[

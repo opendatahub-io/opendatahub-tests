@@ -4,6 +4,7 @@ ECHO_SIM_PORT: int = 8000
 
 NEMO_PII_CONFIG_ID: str = "pii-detect"
 NEMO_PHASE_CONFIG_ID: str = "phase-detect"
+NEMO_AI_GATEWAY_MODE_LABEL = "aiGatewayMode"
 
 AI_GUARDRAIL_TIMEOUT: str = "5s"
 INPUT_CHECK_NAME: str = "pii-input"
