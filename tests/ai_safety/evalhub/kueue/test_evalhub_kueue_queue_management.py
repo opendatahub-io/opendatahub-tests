@@ -170,13 +170,6 @@ class TestEvalHubKueueWorkloadConditions:
                     "Expected a non-empty QuotaReserved message to aid troubleshooting"
                 )
 
-            try:
-                wait_for_evalhub_job(**common, job_id=job_id, timeout=60)
-            except TimeoutExpiredError:
-                LOGGER.warning(
-                    f"Job {job_id} did not reach a terminal state within 60s after the "
-                    "ClusterQueue hold was lifted; ignoring since the test's assertions already passed"
-                )
         finally:
             if job_id:
                 try:
