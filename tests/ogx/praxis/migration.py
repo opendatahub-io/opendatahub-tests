@@ -11,6 +11,7 @@ from tests.ogx.praxis.constants import (
     MIGRATION_FALLBACK_TENANT,
     OGX_CONNECTION_SECRET_KEY,
     PRAXIS_CONNECTION_SECRET_KEY,
+    PRAXIS_GATEWAY_POD_LABELS,
 )
 from utilities.resources.ogx_server import OgxServer
 
@@ -94,6 +95,10 @@ def run_migration(
                     },
                     "praxisMode": {
                         "enabled": True,
+                        "praxisSelector": {
+                            "namespace": ogx_server.namespace,
+                            "podSelector": {"matchLabels": PRAXIS_GATEWAY_POD_LABELS},
+                        },
                         "migrationJob": {
                             "enabled": True,
                             "targetConnectionString": {
@@ -137,7 +142,10 @@ def _wait_for_migration_job_completion(client: DynamicClient, ogx_server: OgxSer
         sleep=_MIGRATION_JOB_POLL_INTERVAL,
         func=lambda: job.instance,
     ):
-        for condition in instance.status.conditions or []:
+        if not instance.status or not instance.status.conditions:
+            continue
+
+        for condition in instance.status.conditions:
             if condition.status != ResourceConstants.Condition.Status.TRUE:
                 continue
 
