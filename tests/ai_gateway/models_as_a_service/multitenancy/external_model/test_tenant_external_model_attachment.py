@@ -819,7 +819,7 @@ class TestCredentialRotationFollowsSource:
         # for the deadline verdict); a 200 carrying neither key is a hard
         # failure; non-200 responses break serving and only the deadline
         # verdict tells the stale-key gap apart from it.
-        serving_state = {"stale_observed": False, "last_error_excerpt": ""}
+        serving_state = {"stale_observed": False, "error_observed": False, "last_error_excerpt": ""}
 
         def _serving_carries_rotated_credential() -> requests.Response:
             response = infer_for_shared_model(
@@ -844,7 +844,7 @@ class TestCredentialRotationFollowsSource:
                         f"{redact_sensitive(response.text)[:300]}"
                     )
             else:
-                serving_state["stale_observed"] = False
+                serving_state["error_observed"] = True
                 serving_state["last_error_excerpt"] = (
                     f"{response.status_code}: {redact_sensitive(value=response.text)[:300]}"
                 )
@@ -861,6 +861,14 @@ class TestCredentialRotationFollowsSource:
                 what=f"serving traffic on {tenant_b['gateway_name']} to carry the rotated credential",
             )
         except TimeoutError:
+            if serving_state["stale_observed"] and serving_state["error_observed"]:
+                pytest.fail(
+                    "serving was intermittent after credential rotation (both failed "
+                    "requests and stale-key successes within "
+                    f"{TENANT_EXTERNAL_MODEL_READY_TIMEOUT}s; last error: "
+                    f"{serving_state['last_error_excerpt']}) — distinct from the "
+                    "known stale-key gap, which never breaks serving"
+                )
             if serving_state["stale_observed"]:
                 pytest.skip(
                     "credential rotation did not reach serving traffic within "
