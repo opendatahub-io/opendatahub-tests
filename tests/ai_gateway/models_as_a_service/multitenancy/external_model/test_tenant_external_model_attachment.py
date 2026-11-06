@@ -79,7 +79,11 @@ from utilities.constants import MAAS_GATEWAY_NAMESPACE
 
 LOGGER = structlog.get_logger(name=__name__)
 
-DETACH_RATE_LIMIT_SETTLE_ATTEMPTS: int = 6
+# Detaching a gateway rewrites the rate-limit configuration for the remaining
+# gateway (transient 429s) and reduces the routing-overlay revision the
+# remaining gateway's extproc must pick up (transient empty-body 404s from the
+# provider-selection sink while the kubelet syncs the ConfigMap volume).
+DETACH_SERVING_SETTLE_TIMEOUT: int = 180
 DETACH_RATE_LIMIT_SETTLE_RETRY_INTERVAL: int = 5
 
 RECONCILE_WAIT = 8
@@ -328,12 +332,8 @@ class TestAttachmentLifecycleCleanup:
             with serve_in_tenant_and_cleanup(
                 admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
             ) as access_b:
-                # Detaching a gateway rewrites the rate-limit configuration for the
-                # remaining gateway; until that rewrite settles, limitador can deny
-                # the first requests with 429 even though the fresh subscription's
-                # limits allow them. 429 is never a legitimate outcome here, so
-                # retry within a bounded window instead of failing on the race.
-                def infer_until_rate_limits_settle() -> requests.Response:
+
+                def infer_until_serving_settles() -> requests.Response:
                     response = infer_for_shared_model(
                         request_session_http=request_session_http,
                         case=tenant_b,
@@ -348,13 +348,23 @@ class TestAttachmentLifecycleCleanup:
                         "post-detach inference rate-limited while the remaining "
                         f"gateway's limits settle: {redact_sensitive(response.text)}"
                     )
+                    # The reduced overlay takes time to reach the remaining
+                    # gateway's extproc; until then requests land on the
+                    # provider-selection sink (empty-body 404). Neither 429 nor
+                    # the sink 404 is a legitimate steady state here, so keep
+                    # polling within the bounded settle window.
+                    assert not (response.status_code == 404 and not response.text.strip()), (
+                        "post-detach inference hit the provider-selection sink "
+                        "(empty-body 404) while the reduced overlay propagates to "
+                        f"{tenant_b['gateway_name']}'s extproc"
+                    )
                     return response
 
                 response = wait_until(
-                    check=infer_until_rate_limits_settle,
-                    timeout=DETACH_RATE_LIMIT_SETTLE_ATTEMPTS * DETACH_RATE_LIMIT_SETTLE_RETRY_INTERVAL,
+                    check=infer_until_serving_settles,
+                    timeout=DETACH_SERVING_SETTLE_TIMEOUT,
                     interval=DETACH_RATE_LIMIT_SETTLE_RETRY_INTERVAL,
-                    what=f"post-detach inference on {tenant_b['gateway_name']} to clear the transient rate limit",
+                    what=f"post-detach inference on {tenant_b['gateway_name']} to settle",
                 )
                 assert_served_by_provider(response=response, path_tag=model["path_tag"], credential=model["credential"])
 
