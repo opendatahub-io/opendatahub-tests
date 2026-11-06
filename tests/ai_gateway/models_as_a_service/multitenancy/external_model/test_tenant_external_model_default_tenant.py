@@ -54,9 +54,9 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     patch_external_model_gateway_refs,
     redact_sensitive,
     wait_for_gateway_attachment_reason,
+    wait_for_provider_ready,
     wait_implicitly_attached,
     wait_not_implicitly_attached,
-    wait_until,
 )
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
@@ -94,23 +94,17 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
         assert re.fullmatch(rf"external-model-{re.escape(model['name'])}-[0-9a-f]{{12}}", route_name), (
             f"{route_name} is not an attachment route name (external-model-<model>-<hash>)"
         )
-        parents = [
-            (parent.get("namespace"), parent.get("name"))
-            for parent in (route.get("spec") or {}).get("parentRefs") or []
-        ]
+        parents = [(parent["namespace"], parent["name"]) for parent in route["spec"]["parentRefs"]]
         assert parents == [(MAAS_GATEWAY_NAMESPACE, MAAS_GATEWAY_NAME)], f"unexpected route parentRefs: {parents}"
         external_model = get_json_or_none(
             client=admin_client, kind="externalmodel", name=model["name"], namespace=model["namespace"]
         )
         assert external_model is not None, f"ExternalModel {model['namespace']}/{model['name']} not found"
-        spec = external_model.get("spec") or {}
+        spec = external_model["spec"]
         assert not spec.get("gatewayRefs"), f"the implicit attachment must not mutate spec: {spec}"
-        status = external_model.get("status")
-        assert status is not None, f"ExternalModel {model['name']} reports no status yet: {redact_sensitive(status)}"
-        assert status.get("gateways") is not None, f"ExternalModel {model['name']} lists no gateways: {status}"
+        status = external_model["status"]
         results = [(entry["namespace"], entry["name"]) for entry in status["gateways"]]
         assert results == [(MAAS_GATEWAY_NAMESPACE, MAAS_GATEWAY_NAME)], f"unexpected status.gateways: {results}"
-        assert status.get("httpRouteName") is not None, f"ExternalModel {model['name']} names no route: {status}"
         assert status["httpRouteName"] == route_name, (
             f"status.httpRouteName {status['httpRouteName']!r} must name the single attachment "
             f"route {route_name} (maas-controller resolves the model's route from it)"
@@ -127,29 +121,12 @@ class TestDefaultTenantServesModelWithoutGatewayRefs:
         """
         model = implicit_model["model"]
 
-        def _check() -> bool:
-            provider = get_json_or_none(
-                client=admin_client, kind="externalprovider", name=model["provider"], namespace=model["namespace"]
-            )
-            assert provider is not None, f"ExternalProvider {model['namespace']}/{model['provider']} not found"
-            status = provider.get("status")
-            assert status is not None, f"provider {model['provider']} reports no status yet: {redact_sensitive(status)}"
-            conditions = status.get("conditions")
-            assert conditions is not None, (
-                f"provider {model['provider']} reports no conditions yet: {redact_sensitive(status)}"
-            )
-            ready = next((condition for condition in conditions if condition["type"] == "Ready"), None)
-            assert ready is not None, (
-                f"provider {model['provider']} reports no Ready condition yet: {redact_sensitive(status)}"
-            )
-            phase = status.get("phase")
-            assert phase is not None, f"provider {model['provider']} reports no phase yet: {redact_sensitive(status)}"
-            assert phase == "Ready" and ready["status"] == "True", (
-                f"provider {model['provider']} is not Ready: {redact_sensitive(status)}"
-            )
-            return True
-
-        wait_until(check=_check, timeout=READY_TIMEOUT, what=f"provider {model['provider']} Ready")
+        wait_for_provider_ready(
+            admin_client=admin_client,
+            provider_name=model["provider"],
+            provider_namespace=model["namespace"],
+            timeout=READY_TIMEOUT,
+        )
 
     @pytest.mark.tier2
     def test_served_through_default_gateway(
@@ -216,6 +193,7 @@ class TestImplicitAttachmentLifecycle:
         self,
         admin_client: DynamicClient,
         default_tenant_model_namespace: Namespace,
+        teardown_resources: bool,
     ) -> None:
         """Given an implicitly attached model, when gatewayRefs bind it to an unmanaged Gateway,
         then the binding is refused with GatewayNotManaged and the implicit attachment is removed
@@ -225,6 +203,7 @@ class TestImplicitAttachmentLifecycle:
             admin_client,
             prefix="e2e-dft-refs",
             namespace=namespace_name(default_tenant_model_namespace),
+            teardown=teardown_resources,
         ) as model:
             route_name = wait_implicitly_attached(admin_client=admin_client, model=model)["route"]["metadata"]["name"]
 
@@ -256,6 +235,7 @@ class TestImplicitAttachmentLifecycle:
         self,
         admin_client: DynamicClient,
         default_tenant_model_namespace: Namespace,
+        teardown_resources: bool,
     ) -> None:
         """Given an implicitly attached model, when the model and its MaaSModelRef are deleted,
         then the implicit attachment and every object it published are removed.
@@ -264,6 +244,7 @@ class TestImplicitAttachmentLifecycle:
             admin_client,
             prefix="e2e-dft-del",
             namespace=namespace_name(default_tenant_model_namespace),
+            teardown=teardown_resources,
         ) as model:
             route_name = wait_implicitly_attached(admin_client=admin_client, model=model)["route"]["metadata"]["name"]
 
