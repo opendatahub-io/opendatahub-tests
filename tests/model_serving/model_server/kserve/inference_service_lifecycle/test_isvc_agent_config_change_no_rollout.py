@@ -32,11 +32,11 @@ pytestmark = [pytest.mark.tier1, pytest.mark.rawdeployment, pytest.mark.usefixtu
 
 @pytest.mark.usefixtures("patched_kserve_agent_config")
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "unprivileged_model_namespace, mlserver_kserve_serving_runtime, mlserver_kserve_inference_service",
     [
         pytest.param(
             {"name": "test-agent-config-no-rollout"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+            RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
             RAW_DEPLOYMENT_AGENT_CONFIG_ISVC_CONFIG,
             id="test_raw_agent_config_change_no_rollout",
         ),

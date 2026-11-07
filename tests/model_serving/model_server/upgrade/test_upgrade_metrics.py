@@ -3,6 +3,8 @@ import pytest
 from tests.model_serving.model_server.upgrade.utils import (
     get_isvc_baseline,
     get_metrics_value,
+    get_upgrade_isvc_inference_config,
+    get_upgrade_isvc_metrics_query,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
     verify_metrics_configmap_exists,
@@ -15,7 +17,6 @@ from tests.model_serving.model_server.utils import (
 )
 from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.rawdeployment,
@@ -50,7 +51,7 @@ class TestPreUpgradeMetricsServer:
         """Verify inference works and metrics are captured before upgrade"""
         verify_inference_response(
             inference_service=metrics_inference_service_fixture,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=metrics_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
@@ -63,17 +64,14 @@ class TestPreUpgradeMetricsServer:
 
         run_inference_multiple_times(
             isvc=metrics_inference_service_fixture,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=metrics_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             iterations=total_runs,
             run_in_parallel=True,
         )
 
-        metrics_query = (
-            f'ovms_requests_success{{namespace="{metrics_inference_service_fixture.namespace}", '
-            f'name="{metrics_inference_service_fixture.name}"}}'
-        )
+        metrics_query = get_upgrade_isvc_metrics_query(inference_service=metrics_inference_service_fixture)
 
         verify_metrics_retained(
             prometheus=prometheus,
@@ -116,10 +114,7 @@ class TestPostUpgradeMetricsServer:
     @pytest.mark.dependency(depends=["metrics_isvc_exists"])
     def test_metrics_post_upgrade_historical_data_retained(self, metrics_inference_service_fixture, prometheus):
         """Verify historical metrics data is retained after upgrade"""
-        metrics_query = (
-            f'ovms_requests_success{{namespace="{metrics_inference_service_fixture.namespace}", '
-            f'name="{metrics_inference_service_fixture.name}"}}'
-        )
+        metrics_query = get_upgrade_isvc_metrics_query(inference_service=metrics_inference_service_fixture)
 
         verify_metrics_retained(
             prometheus=prometheus,
@@ -131,16 +126,13 @@ class TestPostUpgradeMetricsServer:
     @pytest.mark.dependency(depends=["metrics_isvc_exists"])
     def test_metrics_post_upgrade_new_requests_captured(self, metrics_inference_service_fixture, prometheus):
         """Verify new inference requests are captured in metrics after upgrade"""
-        metrics_query = (
-            f'ovms_requests_success{{namespace="{metrics_inference_service_fixture.namespace}", '
-            f'name="{metrics_inference_service_fixture.name}"}}'
-        )
+        metrics_query = get_upgrade_isvc_metrics_query(inference_service=metrics_inference_service_fixture)
 
         pre_request_value = get_metrics_value(prometheus=prometheus, query=metrics_query) or 0
 
         verify_inference_response(
             inference_service=metrics_inference_service_fixture,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=metrics_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,

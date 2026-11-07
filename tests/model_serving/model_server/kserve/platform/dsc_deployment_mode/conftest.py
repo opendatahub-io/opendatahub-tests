@@ -15,7 +15,7 @@ from pytest_testconfig import config as py_config
 from tests.model_serving.model_server.kserve.platform.dsc_deployment_mode.utils import (
     patch_dsc_default_deployment_mode,
 )
-from utilities.constants import Labels, ModelAndFormat
+from utilities.constants import Labels, ModelFormat
 from utilities.inference_utils import create_isvc
 
 
@@ -42,21 +42,21 @@ def inferenceservice_config_cm(admin_client: DynamicClient) -> ConfigMap:
 
 
 @pytest.fixture(scope="class")
-def ovms_inference_service(
+def dsc_mlserver_inference_service(
     request: FixtureRequest,
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    ovms_kserve_serving_runtime: ServingRuntime,
+    mlserver_kserve_serving_runtime: ServingRuntime,
     ci_endpoint_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     with create_isvc(
         client=unprivileged_client,
         name=request.param["name"],
         namespace=unprivileged_model_namespace.name,
-        runtime=ovms_kserve_serving_runtime.name,
+        runtime=mlserver_kserve_serving_runtime.name,
         storage_path=request.param["model-dir"],
         storage_key=ci_endpoint_s3_secret.name,
-        model_format=ModelAndFormat.OPENVINO_IR,
+        model_format=ModelFormat.ONNX,
         model_version=request.param["model-version"],
         labels={Labels.Kserve.NETWORKING_KSERVE_IO: Labels.Kserve.EXPOSED},
         wait_for_predictor_pods=False,

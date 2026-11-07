@@ -19,7 +19,9 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     wait_for_isvc_ready_false,
 )
 
-pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("skip_if_arm64_cluster_detected")]
+pytestmark = [
+    pytest.mark.rawdeployment,
+]
 
 
 @pytest.mark.tier2
@@ -61,12 +63,12 @@ class TestPvcFailures:
     def test_isvc_reports_not_ready_with_bad_pvc(
         self,
         admin_client: DynamicClient,
-        bad_pvc_ovms_isvc: InferenceService,
+        bad_pvc_mlserver_isvc: InferenceService,
     ) -> None:
         """Given an ISVC backed by an unbound PVC, it must report Ready=False.
 
         When:
-            An OVMS RawDeployment InferenceService is created with
+            An MLServer RawDeployment InferenceService is created with
             ``storage_uri=pvc://bad-sc-pvc/models/`` where the PVC is Pending.
 
         Then:
@@ -80,7 +82,7 @@ class TestPvcFailures:
             applications_namespace=applications_namespace,
         )
         try:
-            wait_for_isvc_ready_false(isvc=bad_pvc_ovms_isvc)
+            wait_for_isvc_ready_false(isvc=bad_pvc_mlserver_isvc)
         finally:
             assert_kserve_control_plane_stable(
                 admin_client=admin_client,

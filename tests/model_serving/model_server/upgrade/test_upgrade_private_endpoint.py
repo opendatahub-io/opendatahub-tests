@@ -2,6 +2,7 @@ import pytest
 
 from tests.model_serving.model_server.upgrade.utils import (
     get_isvc_baseline,
+    get_upgrade_isvc_inference_config,
     verify_inference_generation,
     verify_isvc_internal_access,
     verify_isvc_pods_not_restarted_against_baseline,
@@ -12,7 +13,6 @@ from tests.model_serving.model_server.upgrade.utils import (
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -51,7 +51,9 @@ class TestPreUpgradePrivateEndpoint:
         """Verify internal model inference before upgrade"""
         verify_inference_response(
             inference_service=private_endpoint_inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(
+                inference_service=private_endpoint_inference_service_fixture
+            ),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,
@@ -121,7 +123,9 @@ class TestPostUpgradePrivateEndpoint:
         """Verify internal model inference after upgrade"""
         verify_inference_response(
             inference_service=private_endpoint_inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(
+                inference_service=private_endpoint_inference_service_fixture
+            ),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,

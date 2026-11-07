@@ -24,16 +24,16 @@ RAW_DEPLOYMENT_ISVC_CONFIG = {
 
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "unprivileged_model_namespace, mlserver_kserve_serving_runtime, mlserver_kserve_inference_service",
     [
         pytest.param(
             {"name": "test-raw-update"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+            RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
             RAW_DEPLOYMENT_ISVC_CONFIG,
         ),
         pytest.param(
             {"name": "test-raw-multi-update"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+            RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
             {
                 **RAW_DEPLOYMENT_ISVC_CONFIG,
                 "min-replicas": 4,
@@ -46,15 +46,15 @@ class TestRawISVCEnvVarsUpdates:
     """Validate adding and removing environment variables on a KServe raw deployment ISVC.
 
     Steps:
-        1. Deploy an OVMS inference service with custom environment variables.
+        1. Deploy an MLServer inference service with custom environment variables.
         2. Verify the environment variables are present in the predictor pods.
         3. Remove the environment variables from the inference service.
         4. Verify the environment variables are no longer present in the predictor pods.
     """
 
-    def test_raw_with_isvc_env_vars(self, ovms_kserve_inference_service):
+    def test_raw_with_isvc_env_vars(self, mlserver_kserve_inference_service):
         """Test adding environment variables to the inference service"""
-        verify_env_vars_in_isvc_pods(isvc=ovms_kserve_inference_service, env_vars=ISVC_ENV_VARS, vars_exist=True)
+        verify_env_vars_in_isvc_pods(isvc=mlserver_kserve_inference_service, env_vars=ISVC_ENV_VARS, vars_exist=True)
 
     def test_raw_remove_isvc_env_vars(self, removed_isvc_env_vars):
         """Test removing environment variables from the inference service"""

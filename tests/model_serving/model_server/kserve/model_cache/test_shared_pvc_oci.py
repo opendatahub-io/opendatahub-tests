@@ -16,7 +16,7 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import ModelCarImage, ModelFormat, ModelName, Protocols, RuntimeTemplates
 from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_RESNET50_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.tier2,
@@ -31,10 +31,10 @@ pytestmark = [
     "unprivileged_model_namespace, serving_runtime_from_template",
     [
         pytest.param(
-            {"name": f"{ModelFormat.OPENVINO}-model-cache-shared-pvc"},
+            {"name": f"{ModelFormat.ONNX}-model-cache-shared-pvc"},
             {
                 "name": f"{ModelName.MNIST}-runtime",
-                "template-name": RuntimeTemplates.OVMS_KSERVE,
+                "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
             },
             id="test_public_oci_shared_pvc",
@@ -46,7 +46,7 @@ class TestPublicOCISharedPVC:
     """Validate a public OCI import shared by two NFS-backed predictor replicas.
 
     Steps:
-        1. Import the standard MNIST ModelCar into a pre-provisioned NFS RWX PVC.
+        1. Import the MLServer ONNX (ResNet-50) ModelCar into a pre-provisioned NFS RWX PVC.
         2. Serve two replicas on different nodes from the same read-only claim.
         3. Verify inference through the route and directly on each predictor replica.
     """
@@ -77,7 +77,7 @@ class TestPublicOCISharedPVC:
         )
         verify_inference_response(
             inference_service=modelcar_shared_pvc_isvc,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
@@ -85,7 +85,7 @@ class TestPublicOCISharedPVC:
         verify_inference_on_each_predictor_pod(
             pods=pods,
             isvc=modelcar_shared_pvc_isvc,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
         )
-        assert_modelcar_absent_from_pods(pods=pods, source_uri=ModelCarImage.MNIST_8_1)
+        assert_modelcar_absent_from_pods(pods=pods, source_uri=ModelCarImage.MLSERVER_ONNX)

@@ -20,14 +20,14 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config"), py
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "unprivileged_model_namespace, mlserver_kserve_serving_runtime, mlserver_kserve_inference_service",
     [
         pytest.param(
             {"name": "raw-onnx-vis"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+            RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
             {
                 "name": "onnx-route-visibility",
-                "model-version": ModelVersion.OPSET13,
+                "model-version": ModelVersion.V1,
                 "model-dir": "test-dir",
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
             },
@@ -46,17 +46,17 @@ class TestRestRawDeploymentRoutes:
         5. Revert the route to local-cluster visibility and verify internal HTTP access still works.
     """
 
-    def test_default_visibility_value(self, ovms_kserve_inference_service):
+    def test_default_visibility_value(self, mlserver_kserve_inference_service):
         """Verify default route visibility label is absent on a raw deployment.
 
         Given a raw deployment ISVC with no visibility label explicitly set,
         When the ISVC labels are inspected,
         Then the networking.kserve.io label must not be present.
         """
-        labels = ovms_kserve_inference_service.labels or {}
+        labels = mlserver_kserve_inference_service.labels or {}
         assert labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) is None
 
-    def test_rest_raw_deployment_internal_route(self, ovms_kserve_inference_service):
+    def test_rest_raw_deployment_internal_route(self, mlserver_kserve_inference_service):
         """Verify inference succeeds over the internal HTTP route.
 
         Given a raw deployment ISVC with no external route,
@@ -64,7 +64,7 @@ class TestRestRawDeploymentRoutes:
         Then the response must be successful.
         """
         verify_inference_response(
-            inference_service=ovms_kserve_inference_service,
+            inference_service=mlserver_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
@@ -116,12 +116,12 @@ class TestRestRawDeploymentRoutes:
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_raw_inference_service",
+    "unprivileged_model_namespace, mlserver_kserve_serving_runtime, mlserver_raw_inference_service",
     [
         pytest.param(
             {"name": "raw-deployment-onnx-mnist-rest-timeout"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
-            {"name": ModelFormat.ONNX, "model-version": ModelVersion.OPSET13, "model-dir": "test-dir"},
+            RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
+            {"name": ModelFormat.ONNX, "model-version": ModelVersion.V1, "model-dir": "test-dir"},
         )
     ],
     indirect=True,
@@ -137,7 +137,7 @@ class TestRestRawDeploymentRoutesTimeout:
     """
 
     @pytest.mark.dependency(name="test_rest_raw_deployment_routes_timeout__exposed_route")
-    def test_rest_raw_deployment_exposed_route(self, ovms_raw_inference_service):
+    def test_rest_raw_deployment_exposed_route(self, mlserver_raw_inference_service):
         """Verify inference succeeds over the exposed external HTTPS route before timeout is set.
 
         Given a raw deployment ISVC with an external route and no timeout annotation,
@@ -145,7 +145,7 @@ class TestRestRawDeploymentRoutesTimeout:
         Then the response must be successful.
         """
         verify_inference_response(
-            inference_service=ovms_raw_inference_service,
+            inference_service=mlserver_raw_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
@@ -153,7 +153,7 @@ class TestRestRawDeploymentRoutesTimeout:
         )
 
     @pytest.mark.parametrize(
-        "ovms_raw_isvc_patched_annotations",
+        "mlserver_raw_isvc_patched_annotations",
         [
             pytest.param({
                 "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: OpenshiftRouteTimeout.TIMEOUT_1MICROSEC}
@@ -162,7 +162,7 @@ class TestRestRawDeploymentRoutesTimeout:
         indirect=True,
     )
     @pytest.mark.dependency(depends=["test_rest_raw_deployment_routes_timeout__exposed_route"])
-    def test_rest_raw_deployment_exposed_route_with_timeout(self, ovms_raw_isvc_patched_annotations):
+    def test_rest_raw_deployment_exposed_route_with_timeout(self, mlserver_raw_isvc_patched_annotations):
         """Verify inference fails with 504 when the route timeout is set to 1 microsecond.
 
         Given a raw deployment ISVC with the HAProxy timeout annotation set to 1 microsecond,
@@ -170,14 +170,14 @@ class TestRestRawDeploymentRoutesTimeout:
         Then the request must fail with an InferenceResponseError matching HTTP 504.
         """
         wait_for_route_timeout(
-            name=ovms_raw_isvc_patched_annotations.name,
-            namespace=ovms_raw_isvc_patched_annotations.namespace,
+            name=mlserver_raw_isvc_patched_annotations.name,
+            namespace=mlserver_raw_isvc_patched_annotations.namespace,
             route_timeout=OpenshiftRouteTimeout.TIMEOUT_1MICROSEC,
         )
 
         with pytest.raises(InferenceResponseError, match="504"):
             verify_inference_response(
-                inference_service=ovms_raw_isvc_patched_annotations,
+                inference_service=mlserver_raw_isvc_patched_annotations,
                 inference_config=ONNX_INFERENCE_CONFIG,
                 inference_type=Inference.INFER,
                 protocol=Protocols.HTTPS,

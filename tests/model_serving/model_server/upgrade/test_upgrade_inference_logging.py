@@ -5,6 +5,7 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_server.upgrade.utils import (
     ISVCBaseline,
     get_isvc_baseline,
+    get_upgrade_isvc_inference_config,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
 )
@@ -14,7 +15,6 @@ from tests.model_serving.model_server.utils import (
 )
 from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -49,7 +49,7 @@ class TestPreUpgradeInferenceLogging:
         """Test inference on the logging-enabled ISVC before upgrade"""
         verify_inference_response(
             inference_service=logging_inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=logging_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,
@@ -137,7 +137,7 @@ class TestPostUpgradeInferenceLogging:
         """Test inference on the logging-enabled ISVC after upgrade"""
         verify_inference_response(
             inference_service=logging_inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=logging_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,

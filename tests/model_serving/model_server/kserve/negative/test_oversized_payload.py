@@ -29,7 +29,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     assert_pods_healthy,
 )
 
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 OVERSIZED_PAYLOAD_EXPECTED_CODES: set[int] = {
     HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
@@ -78,7 +78,7 @@ class TestOversizedPayload:
     """KServe rejects or gracefully handles oversized inference request bodies.
 
     Preconditions:
-        - OVMS RawDeployment InferenceService is deployed and Ready
+        - MLServer RawDeployment InferenceService is deployed and Ready
 
     Expected Results:
         - HTTP Status Code: 413 or other 4xx / 503 indicating rejection
@@ -87,7 +87,7 @@ class TestOversizedPayload:
 
     def test_oversized_payload_returns_error(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
     ) -> None:
         """Verify that sending a 6 MB body returns an error status code.
 
@@ -95,7 +95,7 @@ class TestOversizedPayload:
         When sending a POST request with a 6 MB body that exceeds server limits
         Then the response must be a 4xx/503 error code indicating rejection
         """
-        status_code, response_body = _send_oversized_request(inference_service=negative_test_ovms_isvc)
+        status_code, response_body = _send_oversized_request(inference_service=negative_test_mlserver_isvc)
 
         assert status_code in OVERSIZED_PAYLOAD_EXPECTED_CODES, (
             f"Expected 413/400/408/503 for oversized payload ({OVERSIZED_PAYLOAD_SIZE_BYTES} bytes), "
@@ -105,7 +105,7 @@ class TestOversizedPayload:
     def test_model_pod_remains_healthy_after_oversized_payload(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         initial_pod_state: dict[str, dict[str, Any]],
     ) -> None:
         """Verify that the predictor pod does not crash after an oversized payload.
@@ -114,9 +114,9 @@ class TestOversizedPayload:
         When sending a 6 MB request body that should be rejected
         Then the same pods (by UID) should still be running without additional restarts
         """
-        _send_oversized_request(inference_service=negative_test_ovms_isvc)
+        _send_oversized_request(inference_service=negative_test_mlserver_isvc)
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc,
+            isvc=negative_test_mlserver_isvc,
             initial_pod_state=initial_pod_state,
         )

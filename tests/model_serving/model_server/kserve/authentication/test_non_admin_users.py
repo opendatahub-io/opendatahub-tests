@@ -7,12 +7,9 @@ from utilities.constants import Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-# The test deploys an OVMS runtime, whose image is not built for arm64
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
-
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, unprivileged_s3_ovms_raw_inference_service",
+    "unprivileged_model_namespace, unprivileged_s3_mlserver_raw_inference_service",
     [
         pytest.param(
             {"name": "test-non-admin-raw"},
@@ -28,17 +25,17 @@ class TestRawUnprivilegedUser:
 
     Steps:
         1. Create a namespace with unprivileged user credentials.
-        2. Deploy an OVMS model as a raw deployment using the non-admin user.
+        2. Deploy an MLServer model as a raw deployment using the non-admin user.
         3. Query the deployed model via REST and verify a successful inference response.
     """
 
     def test_non_admin_deploy_raw_and_query_model(
         self,
-        unprivileged_s3_ovms_raw_inference_service,
+        unprivileged_s3_mlserver_raw_inference_service,
     ):
         """Verify non admin can deploy a Raw model and query using REST"""
         verify_inference_response(
-            inference_service=unprivileged_s3_ovms_raw_inference_service,
+            inference_service=unprivileged_s3_mlserver_raw_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
