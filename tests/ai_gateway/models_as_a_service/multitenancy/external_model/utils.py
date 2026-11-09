@@ -1414,28 +1414,25 @@ def destination_rules_referencing(
     *namespaces: str,
     also_matching: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
-    """DestinationRules that reference *model_name* (by name or labels).
+    """DestinationRules that reference *model_name* (by exact provider label).
 
-    AGC creates the provider DestinationRules in the Gateway namespace under
-    hashed names that are not part of the shared contract — discovery matches
-    on references to the model (test provider names embed the model name, and
-    the rules carry them in names and ``external-provider`` labels).
-    *also_matching* additionally requires every string to appear in the same
-    metadata (e.g. a gateway name, to scope to one attachment's rules).
+    AGC labels every Gateway-namespace DestinationRule with the exact provider
+    name under the ``external-provider`` label, and test providers are named
+    ``<model_name>-provider``: the label pins a rule to exactly one model's
+    provider, so a longer model name embedding this one never matches.
+    *also_matching* requires every gateway name to equal the rule's
+    ``external-gateway`` label exactly.
     """
+    provider_label = f"{model_name}-provider"
     matches: list[dict[str, Any]] = []
-    needles = [model_name, *also_matching]
     for namespace in namespaces:
         for rule in list_json(admin_client, "destinationrule", namespace):
-            metadata = rule.get("metadata") or {}
-            owners = [(owner or {}).get("name") or "" for owner in metadata.get("ownerReferences") or []]
-            blob = json.dumps({
-                "name": metadata.get("name") or "",
-                "labels": metadata.get("labels") or {},
-                "ownerReferences": owners,
-            })
-            if all(needle in blob for needle in needles):
-                matches.append(rule)
+            labels = (rule.get("metadata") or {}).get("labels") or {}
+            if labels.get("inference.opendatahub.io/external-provider") != provider_label:
+                continue
+            if any(labels.get("inference.opendatahub.io/external-gateway") != gateway for gateway in also_matching):
+                continue
+            matches.append(rule)
     return matches
 
 
