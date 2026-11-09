@@ -858,7 +858,9 @@ class TestCredentialRotationFollowsSource:
                     return response
                 if _carries(model["credential"]):
                     serving_state["stale_observed"] = True
-                    assert _carries(rotated_credential), (
+                    # raise (not assert): pytest's assertion rewriting would
+                    # interpolate the credential value into the failure detail
+                    raise AssertionError(
                         "serving still carries the pre-rotation credential while the "
                         "rotation propagates (stale data-plane injection)"
                     )
