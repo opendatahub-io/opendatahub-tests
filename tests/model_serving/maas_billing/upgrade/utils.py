@@ -442,6 +442,7 @@ def resolve_legacy_maas_networking_resource_name(
             return candidate
     return None
 
+
 def capture_legacy_migration_baseline(
     client: DynamicClient,
     model_name: str,
@@ -466,6 +467,7 @@ def capture_legacy_migration_baseline(
     }
     LOGGER.info(f"Captured legacy external model migration baseline: {baseline}")
     return baseline
+
 
 def save_legacy_migration_baseline_to_configmap(
     client: DynamicClient,
