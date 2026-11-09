@@ -844,7 +844,8 @@ def _revoke_orphaned_duplicate_keys(
         except Exception as error:  # noqa: BLE001 - one duplicate must not stop the rest
             LOGGER.warning(
                 f"orphan-key dedupe: revoking key id={duplicate.get('id')} raised, "
-                f"continuing with remaining duplicates: {error}"
+                f"continuing with remaining duplicates",
+                error_type=type(error).__name__,
             )
 
 
@@ -969,7 +970,6 @@ def create_api_key(
     response = last_response if last_response is not None else response
     if response is None or response.status_code not in (200, 201):
         status = response.status_code if response is not None else "no response"
-        body = response.text[:500] if response is not None else "no HTTP response received"
         retry_summary = (
             f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries} "
             f"proxy_error_retries={proxy_error_retries}"
@@ -979,7 +979,9 @@ def create_api_key(
             # caller never sees; revoke same-name keys this call created.
             revoke_keys_created_by_this_call(keep_key_id="")
         if raise_on_error:
-            raise AssertionError(f"api-key create failed: status={status} body={body} {retry_summary}")
+            # No response body in the message: it can carry credentials or
+            # customer data into test logs.
+            raise AssertionError(f"api-key create failed: status={status} {retry_summary}")
         return response, {}  # type: ignore[return-value]
 
     try:
@@ -1019,9 +1021,7 @@ def revoke_api_key(
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
     except json.JSONDecodeError as error:
-        raise AssertionError(
-            f"revoke_api_key returned non-JSON response: status={response.status_code} body={response.text[:200]}"
-        ) from error
+        raise AssertionError(f"revoke_api_key returned non-JSON response: status={response.status_code}") from error
     return response, parsed_body
 
 
