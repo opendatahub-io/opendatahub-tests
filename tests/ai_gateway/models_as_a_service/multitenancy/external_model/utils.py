@@ -2041,18 +2041,14 @@ def assert_not_served(response: requests.Response) -> None:
     status (e.g. 429, 500) proves nothing about routing and fails.
     """
     assert response.status_code in (401, 403, 404, 502, 503), (
-        f"expected a documented refusal (401/403/404, or 502/503 from the gateway), "
-        f"got {response.status_code}: {redact_sensitive(response.text)}"
+        f"expected a documented refusal (401/403/404, or 502/503 from the gateway), got {response.status_code}"
     )
     if response.status_code in (502, 503):
         assert (
             not (response.text or "").strip()
             or "Internal Server Error" in response.text
             or "Service Unavailable" in response.text
-        ), (
-            f"5xx carries a provider-shaped body, expected a gateway-generated "
-            f"refusal/failure: {redact_sensitive(response.text)}"
-        )
+        ), "5xx carries a provider-shaped body, expected a gateway-generated refusal/failure"
 
 
 def provision_and_serve_in_tenant(
