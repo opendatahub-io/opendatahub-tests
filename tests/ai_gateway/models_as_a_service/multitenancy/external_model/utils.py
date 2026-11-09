@@ -2034,21 +2034,14 @@ def assert_not_served(response: requests.Response) -> None:
     """Assert a response proves the model was not served.
 
     A successful serve is a 200 from the echo provider. Only the documented
-    refusal statuses pass: 401/403/404 (auth denial / no route) and, with a
-    gateway-generated (non-provider) body, 502/503 — envoy-side failures on
-    a gateway that holds no route for the model, observed under load while
-    filters reload, and equally proof that no serve happened. Any other
-    status (e.g. 429, 500) proves nothing about routing and fails.
+    refusal statuses pass: 401/403/404 (auth denial / no route). Any other
+    status proves nothing about routing and fails: a 5xx from an unrelated
+    outage must not pass as a refusal, and callers that can observe
+    transient statuses retry through ``wait_until``.
     """
-    assert response.status_code in (401, 403, 404, 502, 503), (
-        f"expected a documented refusal (401/403/404, or 502/503 from the gateway), got {response.status_code}"
+    assert response.status_code in (401, 403, 404), (
+        f"expected a documented refusal (401/403/404), got {response.status_code}"
     )
-    if response.status_code in (502, 503):
-        assert (
-            not (response.text or "").strip()
-            or "Internal Server Error" in response.text
-            or "Service Unavailable" in response.text
-        ), "5xx carries a provider-shaped body, expected a gateway-generated refusal/failure"
 
 
 def provision_and_serve_in_tenant(
