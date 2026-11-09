@@ -28,16 +28,20 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     EXTERNAL_ENDPOINT,
     admitted_user_namespace,
     deploy_aitenant_best_effort,
+    external_model_stack,
     extmod_tenant_test_params,
+    gateway_ref,
     namespace_name,
     per_tenant_processing_uses_praxis,
     provision_and_serve_in_tenant,
     record_tenant_external_model_evidence,
     require_maas_route,
     require_tenant_external_model_support,
+    serve_in_tenant_and_cleanup,
     serve_shared_model_in_tenant,
     tenant_case,
     two_gateway_model,
+    unadmitted_user_namespace,
     usage_provider,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
@@ -455,4 +459,235 @@ def quota_model(
                 window="1m",
             ),
             "usage": usage,
+        }
+
+
+@pytest.fixture(scope="module")
+def attachment_env(
+    admin_client: DynamicClient,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """User namespaces (admitted + deliberately unadmitted) on the shared tenants."""
+    tenant_a = tenant_external_model_tenants["tenant_a"]
+    tenant_b = tenant_external_model_tenants["tenant_b"]
+    with ExitStack() as stack:
+        user_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-att-user",
+                tenant_a["gateway_name"],
+                tenant_b["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        unadmitted_ns = stack.enter_context(
+            cm=unadmitted_user_namespace(
+                admin_client,
+                "e2e-extmod-att-noaccess",
+                teardown=teardown_resources,
+            )
+        )
+        yield {
+            "tenant_a": tenant_a,
+            "tenant_b": tenant_b,
+            "user_ns": user_ns.name,
+            "unadmitted_ns": unadmitted_ns.name,
+        }
+
+
+@pytest.fixture(scope="class")
+def attached_model(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """One model attached to (and served through) tenant B's gateway."""
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with ExitStack() as stack:
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-att-serve-{uuid.uuid4().hex[:6]}",
+                namespace=env["user_ns"],
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        access = stack.enter_context(
+            cm=serve_in_tenant_and_cleanup(
+                admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
+            )
+        )
+        yield {"model": model, "access": access}
+
+
+@pytest.fixture(scope="class")
+def unrelated_model(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """A bystander model on tenant B's gateway that must survive cleanup."""
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with ExitStack() as stack:
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-att-unrel-{uuid.uuid4().hex[:6]}",
+                namespace=env["user_ns"],
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        access = stack.enter_context(
+            cm=serve_in_tenant_and_cleanup(
+                admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
+            )
+        )
+        yield {"model": model, "access": access}
+
+
+@pytest.fixture(scope="class")
+def refused_model(
+    admin_client: DynamicClient,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """One model attached to tenant B's gateway from an unadmitted namespace."""
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with external_model_stack(
+        admin_client,
+        name=f"e2e-att-noaccess-{uuid.uuid4().hex[:6]}",
+        namespace=env["unadmitted_ns"],
+        gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+        teardown=teardown_resources,
+    ) as model:
+        yield model
+
+
+@pytest.fixture(scope="class")
+def recovery_env(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """A refused model and a healthy control model, each in its own namespace.
+
+    The namespace context managers start (and own teardown of) the
+    namespaces right after creation: pytest runs no teardown after a
+    failed setup, so provisioning or serving failures must still delete
+    the namespaces.
+    """
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with ExitStack() as stack:
+        refused_ns = stack.enter_context(
+            cm=unadmitted_user_namespace(
+                admin_client,
+                "e2e-extmod-rec-noaccess",
+                teardown=teardown_resources,
+            )
+        )
+        control_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-rec-user",
+                tenant_b["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        recovering_model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-rec-recover-{uuid.uuid4().hex[:6]}",
+                namespace=namespace_name(refused_ns),
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        control_model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-rec-ctrl-{uuid.uuid4().hex[:6]}",
+                namespace=namespace_name(control_ns),
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        control_access = stack.enter_context(
+            cm=serve_in_tenant_and_cleanup(
+                admin_client,
+                request_session_http,
+                ocp_token_for_actor,
+                tenant_b,
+                control_model,
+                teardown=teardown_resources,
+            )
+        )
+        yield {
+            "tenant_b": tenant_b,
+            "refused_ns": refused_ns.name,
+            "control_ns": control_ns.name,
+            "recovering_model": recovering_model,
+            "control_model": control_model,
+            "control_access": control_access,
+        }
+
+
+@pytest.fixture(scope="class")
+def rotation_model(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    attachment_env: dict[str, Any],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """One serving model whose source credential Secret will be rotated.
+
+    Its own namespace: the rotation rewrites this Secret in place, and
+    the module's shared user namespace hosts other classes' models. The
+    namespace context manager owns its teardown right after creation:
+    pytest runs no teardown after a failed setup, so provisioning or
+    serving failures must still delete the namespace.
+    """
+    env = attachment_env
+    tenant_b = env["tenant_b"]
+    with ExitStack() as stack:
+        user_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-rot-user",
+                tenant_b["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        model = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-rot-{uuid.uuid4().hex[:6]}",
+                namespace=namespace_name(user_ns),
+                gateway_refs=[gateway_ref(tenant_b["gateway_name"])],
+                teardown=teardown_resources,
+            )
+        )
+        access = stack.enter_context(
+            cm=serve_in_tenant_and_cleanup(
+                admin_client, request_session_http, ocp_token_for_actor, tenant_b, model, teardown=teardown_resources
+            )
+        )
+        yield {
+            "tenant_b": tenant_b,
+            "user_ns": user_ns.name,
+            "model": model,
+            "access": access,
         }
