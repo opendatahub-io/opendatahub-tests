@@ -11,6 +11,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.mlflow import MLflow
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
@@ -31,6 +32,7 @@ from tests.ai_safety.evalhub.utils import (
     validate_evalhub_job_completed,
     wait_for_evalhub_job,
 )
+from utilities.constants import SeaweedFs
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -65,6 +67,14 @@ def evalcard_mlflow_instance(
         )
         mlflow_deployment.wait_for_replicas(timeout=300)
         yield mlflow
+
+
+@pytest.fixture(scope="class")
+def evalcard_mlflow_url(evalcard_mlflow_instance: MLflow) -> str:
+    """External MLflow URL (via the gateway) used to read eval card artifacts."""
+    url = evalcard_mlflow_instance.instance.status.url
+    assert url, f"MLflow {evalcard_mlflow_instance.name} has no status.url"
+    return url.rstrip("/")
 
 
 @pytest.fixture(scope="class")
@@ -274,27 +284,48 @@ def evalcard_complete_job(
 
 
 @pytest.fixture(scope="class")
+def s3_config(seaweedfs_service: Service) -> dict[str, str | Service]:  # noqa: UFN001
+    """SeaweedFS storage backing the test OCI registry (consumed by oci_registry_pod_with_s3)."""
+    return {
+        "service": seaweedfs_service,
+        "port": str(SeaweedFs.Metadata.DEFAULT_PORT),
+        "access_key": SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+        "secret_key": SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        "bucket": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+    }
+
+
+@pytest.fixture(scope="class")
+def evalcard_oci_internal_host(oci_registry_service: Service) -> str:
+    """In-cluster registry host that the EvalHub pod pushes the eval card to."""
+    port = oci_registry_service.instance.spec.ports[0].port
+    return f"{oci_registry_service.name}.{oci_registry_service.namespace}.svc.cluster.local:{port}"
+
+
+@pytest.fixture(scope="class")
 def evalcard_oci_credentials_secret(
     admin_client: DynamicClient,
-    oci_registry_host: str,
+    evalcard_oci_internal_host: str,
     tenant_a_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
-    """Create OCI registry credentials secret for eval card export."""
+    """Create the OCI connection secret EvalHub reads from the tenant namespace.
+
+    EvalHub requires a username/password entry for the target registry host. The test
+    registry has no auth configured, so placeholder credentials are sufficient.
+    """
     import json
     from base64 import b64encode
 
     dockerconfig = {
         "auths": {
-            oci_registry_host: {
-                "auth": "",
-                "email": "user@example.com",
+            evalcard_oci_internal_host: {
+                "auth": b64encode(b"evalhub:evalhub").decode(),
             }
         }
     }
 
     data_dict = {
         ".dockerconfigjson": b64encode(json.dumps(dockerconfig).encode()).decode(),
-        "OCI_HOST": b64encode(oci_registry_host.encode()).decode(),
     }
 
     with Secret(
@@ -315,7 +346,8 @@ def evalcard_oci_job(
     evalhub_mt_route: Route,
     evalhub_vllm_emulator_service: Service,
     evalcard_oci_credentials_secret: Secret,
-    oci_registry_pod_with_minio,
+    evalcard_oci_internal_host: str,
+    oci_registry_pod_with_s3: Pod,
 ) -> tuple[str, dict]:
     """Submit a job configured to export evalcard to an OCI registry."""
     payload = build_evalhub_job_payload(
@@ -324,19 +356,15 @@ def evalcard_oci_job(
         job_name="evalcard-oci-export",
     )
     payload["experiment"] = {"name": "evalcard-oci-experiment"}
-    payload["evalcard_export"] = {
+    payload["exports"] = {
         "oci": {
-            "registry": {
-                "name": evalcard_oci_credentials_secret.name,
-                "key": "OCI_HOST",
+            "coordinates": {
+                # Explicit http:// tells EvalHub the registry serves plain HTTP
+                "oci_host": f"http://{evalcard_oci_internal_host}",
+                "oci_repository": EVALCARD_OCI_REPO,
+                "oci_tag": EVALCARD_OCI_TAG,
             },
-            "repository": EVALCARD_OCI_REPO,
-            "tag": EVALCARD_OCI_TAG,
-            "dockerConfigJson": {
-                "name": evalcard_oci_credentials_secret.name,
-                "key": ".dockerconfigjson",
-            },
-            "verifySSL": False,
+            "k8s": {"connection": evalcard_oci_credentials_secret.name},
         },
     }
 
