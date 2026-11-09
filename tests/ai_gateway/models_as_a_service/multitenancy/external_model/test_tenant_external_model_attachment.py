@@ -811,10 +811,14 @@ class TestCredentialRotationFollowsSource:
         stale_credential = base64.b64encode(model["credential"].encode()).decode()
 
         def _no_stale_copy() -> bool:
+            def _carries_stale(secret: dict[str, Any]) -> bool:
+                carried = (secret.get("data") or {}).get(CREDENTIAL_DATA_KEY) or ""
+                return hmac.compare_digest(a=carried, b=stale_credential)
+
             stale = [
                 secret["metadata"]["name"]
                 for secret in list_json(admin_client, "secret", tenant_b["tenant_ns"])
-                if (secret.get("data") or {}).get(CREDENTIAL_DATA_KEY) == stale_credential
+                if _carries_stale(secret=secret)
             ]
             assert not stale, f"stale credential copies still present in tenant namespace: {stale}"
             return True
@@ -860,14 +864,12 @@ class TestCredentialRotationFollowsSource:
                 else:
                     pytest.fail(
                         "serving returned 200 with neither the rotated nor the "
-                        f"original credential after rotation; Authorization header: "
-                        f"{redact_sensitive(authorization)}"
+                        "original credential after rotation (unexpected Authorization "
+                        "header content)"
                     )
             else:
                 serving_state["error_observed"] = True
-                serving_state["last_error_excerpt"] = (
-                    f"{response.status_code}: {redact_sensitive(value=response.text)[:300]}"
-                )
+                serving_state["last_error_excerpt"] = f"{response.status_code}"
                 assert response.status_code == 200, (
                     f"serving returned {response.status_code} while the rotation "
                     f"propagates: {serving_state['last_error_excerpt']}"

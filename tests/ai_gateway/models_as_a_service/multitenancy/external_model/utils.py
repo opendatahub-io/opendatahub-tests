@@ -1301,7 +1301,8 @@ def _find_credential_copy(
         metadata = secret.get("metadata") or {}
         if metadata.get("uid") == exclude_uid:
             continue
-        if (secret.get("data") or {}).get(CREDENTIAL_DATA_KEY) == expected:
+        carried = (secret.get("data") or {}).get(CREDENTIAL_DATA_KEY) or ""
+        if hmac.compare_digest(carried, expected):
             return secret
     return None
 
@@ -1854,14 +1855,13 @@ def mint_tenant_api_key(
         subscription=subscription_name,
     )
     assert response.status_code in (200, 201), (
-        f"failed to mint API key on tenant maas-api {tenant['maas_api_url']}: "
-        f"{response.status_code} {redact_sensitive(response.text)}"
+        f"failed to mint API key on tenant maas-api {tenant['maas_api_url']}: {response.status_code}"
     )
     try:
         api_key = body["key"]
         key_id = body["id"]
     except KeyError as exc:
-        raise AssertionError(f"API key response missing field {exc}: {redact_sensitive(body)}") from exc
+        raise AssertionError(f"API key response missing field {exc}") from exc
     return api_key, key_id
 
 
@@ -1883,7 +1883,7 @@ def revoke_tenant_api_key(
             f"failed to revoke API key {key_id} on tenant maas-api {tenant['maas_api_url']}: {response.status_code}"
         )
     except Exception as exc:  # noqa: BLE001 - teardown must not mask test failures
-        LOGGER.warning(f"best-effort API key revocation failed for key {key_id}: {exc}")
+        LOGGER.warning(f"best-effort API key revocation failed for key {key_id}", error_type=type(exc).__name__)
 
 
 @contextmanager
@@ -2033,12 +2033,12 @@ def serve_in_tenant_and_cleanup(
 def assert_not_served(response: requests.Response) -> None:
     """Assert a response proves the model was not served.
 
-    A successful serve is a 200 from the echo provider, so any other status
-    is a non-serving verdict. 401/403/404 are the expected refusals (auth
-    denial / no route); 502/503 with a gateway-generated (non-provider)
-    body are envoy-side failures on a gateway that holds no route for the
-    model — observed under load while filters reload, and equally proof
-    that no serve happened.
+    A successful serve is a 200 from the echo provider. Only the documented
+    refusal statuses pass: 401/403/404 (auth denial / no route) and, with a
+    gateway-generated (non-provider) body, 502/503 — envoy-side failures on
+    a gateway that holds no route for the model, observed under load while
+    filters reload, and equally proof that no serve happened. Any other
+    status (e.g. 429, 500) proves nothing about routing and fails.
     """
     assert response.status_code in (401, 403, 404, 502, 503), (
         f"expected a documented refusal (401/403/404, or 502/503 from the gateway), "
