@@ -813,7 +813,8 @@ class TestCredentialRotationFollowsSource:
         def _no_stale_copy() -> bool:
             def _carries_stale(secret: dict[str, Any]) -> bool:
                 carried = (secret.get("data") or {}).get(CREDENTIAL_DATA_KEY) or ""
-                return hmac.compare_digest(a=carried, b=stale_credential)
+                # hmac.compare_digest takes no keyword arguments
+                return hmac.compare_digest(carried, stale_credential)  # noqa: FCN001
 
             stale = [
                 secret["metadata"]["name"]
