@@ -1678,7 +1678,10 @@ def echo_headers(response: requests.Response) -> dict[str, str]:
     except ValueError as exc:
         raise AssertionError(f"non-JSON response body: {redact_sensitive(response.text)}") from exc
     headers = body.get("headers") or {}
-    return {str(key): str(value) for key, value in headers.items()}
+    # The echo endpoint returns each header as a JSON array (headers are
+    # multi-valued); join the values so single-valued headers such as
+    # Authorization compare exactly against "Bearer <credential>".
+    return {str(key): ", ".join(value) if isinstance(value, list) else str(value) for key, value in headers.items()}
 
 
 def assert_served_by_provider(
