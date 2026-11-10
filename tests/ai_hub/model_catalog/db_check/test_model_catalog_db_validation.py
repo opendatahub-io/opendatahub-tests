@@ -221,9 +221,9 @@ class TestModelCatalogDBNetworkPolicy:
                     "podSelector": {"matchLabels": {"deployment": "model-registry-ui"}},
                 },
             ],
-            key=json.dumps,
+            key=lambda peer: json.dumps(peer, sort_keys=True),
         )
-        assert sorted(ingress_rules[0]["from"], key=json.dumps) == expected_peers, (
+        assert sorted(ingress_rules[0]["from"], key=lambda peer: json.dumps(peer, sort_keys=True)) == expected_peers, (
             "NetworkPolicy should allow traffic only from the OpenShift router/gateway namespaces and "
             "Model Registry UI BFF pods in the applications namespace, "
             f"not the whole applications namespace: {ingress_rules[0]['from']}"
