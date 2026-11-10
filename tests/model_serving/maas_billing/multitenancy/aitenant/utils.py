@@ -9,6 +9,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import NamespacedResource
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -714,6 +715,52 @@ def aitenant_has_status(
     if ready_reason is None:
         return True
     return get_aitenant_ready_reason(aitenant=aitenant) == ready_reason
+
+
+def refresh_maas_namespaced_resource(resource: NamespacedResource) -> NamespacedResource:
+    """Return a new handle with an up-to-date instance from the API."""
+    return type(resource)(
+        client=resource.client,
+        name=resource.name,
+        namespace=resource.namespace,
+        wait_for_resource=False,
+    )
+
+
+def read_maas_resource_status_phase(resource: NamespacedResource) -> str | None:
+    """Return status.phase when set on a MaaS namespaced resource."""
+    refreshed_resource = refresh_maas_namespaced_resource(resource=resource)
+    status = refreshed_resource.instance.status
+    if status is None:
+        return None
+    phase = getattr(status, "phase", None)
+    if phase is None:
+        return None
+    return str(phase)
+
+
+def wait_for_maas_resource_phase(
+    resource: NamespacedResource,
+    expected_phases: tuple[str, ...],
+    timeout: int = 180,
+) -> str:
+    """Wait until status.phase is one of expected_phases."""
+    resource_label = f"{resource.kind}/{resource.namespace}/{resource.name}"
+
+    def phase_matches() -> bool:
+        phase = read_maas_resource_status_phase(resource=resource)
+        return phase is not None and phase in expected_phases
+
+    try:
+        for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=phase_matches):
+            if ready:
+                phase = read_maas_resource_status_phase(resource=resource)
+                assert phase is not None
+                LOGGER.info(f"{resource_label} reached phase {phase!r}")
+                return phase
+    except TimeoutExpiredError:
+        phase = read_maas_resource_status_phase(resource=resource)
+        pytest.fail(f"{resource_label} phase not in {expected_phases!r} after {timeout}s; last phase={phase!r}")
 
 
 def wait_until_aitenant_status(

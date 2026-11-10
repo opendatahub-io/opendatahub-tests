@@ -34,6 +34,7 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
     create_maas_subscription,
     patch_llmisvc_with_maas_router_and_tiers,
 )
+from tests.model_serving.maas_billing.multitenancy.aitenant.utils import AITENANT_INFRA_NAMESPACE
 from tests.model_serving.maas_billing.utils import (
     build_maas_headers,
     capture_maas_dsc_components_patch,
@@ -778,6 +779,16 @@ def maas_tier_mapping_cm(
     )
 
     return config_map
+
+
+@pytest.fixture(scope="session")
+def aitenant_infra_namespace(admin_client: DynamicClient) -> str:
+    """Return the infra namespace where AITenant objects are created."""
+    infra_namespace = Namespace(client=admin_client, name=AITENANT_INFRA_NAMESPACE)
+    assert infra_namespace.exists, (
+        f"Infra namespace '{AITENANT_INFRA_NAMESPACE}' not found — required for AITenant multitenancy tests"
+    )
+    return AITENANT_INFRA_NAMESPACE
 
 
 @pytest.fixture(scope="session")
