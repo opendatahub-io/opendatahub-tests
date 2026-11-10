@@ -1,9 +1,9 @@
-"""Unit tests for the Gen AI Studio Playground configuration builders (RHAIENG-7804).
+"""Unit tests for the Gen AI Studio Playground configuration builders.
 
 Pure config-level tests — no cluster required. They lock down the properties the
 Playground deployment depends on, most importantly the ``genai-bff-proxy``
-``remote::passthrough`` provider whose upstream removal (OGX 1.3.0,
-RHAIENG-7281) broke the Playground configuration without any downstream test
+``remote::passthrough`` provider whose upstream removal in OGX 1.3.0
+broke the Playground configuration without any downstream test
 failing.
 """
 

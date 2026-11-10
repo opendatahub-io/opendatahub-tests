@@ -1,4 +1,4 @@
-"""Fixtures for Gen AI Studio Playground configuration tests (RHAIENG-7804).
+"""Fixtures for Gen AI Studio Playground configuration tests.
 
 The ``ogx_server`` fixture defined here *shadows* the one in
 ``tests/ogx/conftest.py`` for tests under ``tests/ogx/genaistudio/``. The shared
@@ -52,9 +52,10 @@ def ogx_server(  # noqa: UFN001 — intentionally shadows the parent conftest fi
     odh-dashboard BFF's ``InstallOGXServer`` (tag v3.6.0) creates for a
     Playground:
 
-    1. ConfigMap ``llama-stack-config`` (key ``config.yaml``) holding the
-       generated OGX config, labeled ``ogx.io/watch: "true"`` (required by the
-       operator for ConfigMaps referenced via ``spec.overrideConfig``).
+    1. ConfigMap (``GENAI_PLAYGROUND_CONFIGMAP_NAME``, key ``config.yaml``)
+       holding the generated OGX config, labeled ``ogx.io/watch: "true"``
+       (required by the operator for ConfigMaps referenced via
+       ``spec.overrideConfig``).
     2. OGXServer ``lsd-genai-playground`` with ``spec.distribution.name: rh``
        and ``spec.overrideConfig`` pointing at the ConfigMap. The ConfigMap is
        created first to avoid a reconcile failure on a missing reference.

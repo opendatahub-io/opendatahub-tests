@@ -1,4 +1,4 @@
-"""Gen AI Studio Playground configuration test (RHAIENG-7804).
+"""Gen AI Studio Playground configuration test.
 
 Starts OGX with the configuration the odh-dashboard generates for a Gen AI
 Studio Playground (full config.yaml override whose LLM inference path is the
@@ -6,11 +6,11 @@ Studio Playground (full config.yaml override whose LLM inference path is the
 comes up with that provider registered.
 
 Regression guard: upstream OGX 1.3.0 removed ``remote::passthrough``, which
-broke the Playground configuration without any downstream test failing
-(RHAIENG-7281). A config containing ``remote::passthrough`` fails to start on
+broke the Playground configuration without any downstream test failing.
+A config containing ``remote::passthrough`` fails to start on
 such an image, so this test fails before release.
 
-Marker requirements (RHAIENG-7804 acceptance criteria): ``tier1`` and
+Marker requirements: ``tier1`` and
 ``install``, plus ``pre_upgrade`` and ``post_upgrade`` — the single-test /
 all-lanes pattern used by ``tests/spark/test_spark.py``: the test runs once in
 install runs and in both legs of upgrade runs.
@@ -59,12 +59,12 @@ def test_ogx_genai_playground_config_ready(ogx_client: OgxClient) -> None:
     """Verify OGX starts with the Gen AI Studio Playground configuration.
 
     Given: An OGXServer deployed the way the odh-dashboard deploys it for a
-        Playground (llama-stack-config ConfigMap + spec.overrideConfig, with the
+        Playground (config ConfigMap + spec.overrideConfig, with the
         genai-bff-proxy remote::passthrough inference provider).
     When: The server is queried for health, version and registered providers.
     Then: The server responds and the genai-bff-proxy remote::passthrough
         provider is registered — i.e. the exact configuration class that broke
-        in OGX 1.3.0 (RHAIENG-7281) still starts.
+        in OGX 1.3.0 still starts.
     """
     # GET /v1/health — raises on an unhealthy/unresponsive server.
     ogx_client.inspect.health()
