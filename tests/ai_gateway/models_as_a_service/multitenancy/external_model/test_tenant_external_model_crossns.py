@@ -304,10 +304,7 @@ class TestGrantRevocation:
                 api_key=access["api_key"],
                 retries=1,
             )
-            assert denied.status_code != 200, (
-                f"inference must stop after the grant is revoked, "
-                f"got {denied.status_code}: {redact_sensitive(denied.text)}"
-            )
+            assert_not_served(response=denied)
 
     @pytest.mark.tier2
     @pytest.mark.skip(reason=LAST_PROVIDER_DRAIN_DEFECT)
