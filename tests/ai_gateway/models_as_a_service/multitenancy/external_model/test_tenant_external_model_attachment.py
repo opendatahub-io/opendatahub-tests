@@ -350,6 +350,15 @@ class TestAttachmentLifecycleCleanup:
                         "post-detach inference rate-limited while the remaining "
                         f"gateway's limits settle: {redact_sensitive(response.text)}"
                     )
+                    # Transient 5xx and empty-body 403 responses surface while
+                    # the remaining gateway reloads its filters; neither is a
+                    # steady state, so keep polling within the settle window.
+                    assert not (
+                        response.status_code >= 500 or (response.status_code == 403 and not response.text.strip())
+                    ), (
+                        "post-detach inference failed while the remaining gateway "
+                        f"settles: {response.status_code}: {redact_sensitive(response.text)}"
+                    )
                     # The reduced overlay takes time to reach the remaining
                     # gateway's extproc; until then requests land on the
                     # provider-selection sink (empty-body 404). Neither 429 nor
@@ -858,7 +867,9 @@ class TestCredentialRotationFollowsSource:
                     return response
                 if _carries(model["credential"]):
                     serving_state["stale_observed"] = True
-                    assert _carries(rotated_credential), (
+                    # raise (not assert): pytest's assertion rewriting would
+                    # interpolate the credential value into the failure detail
+                    raise AssertionError(
                         "serving still carries the pre-rotation credential while the "
                         "rotation propagates (stale data-plane injection)"
                     )

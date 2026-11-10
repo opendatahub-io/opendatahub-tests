@@ -111,10 +111,12 @@ def evalhub_cr(
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[EvalHub, Any, Any]:
     """Create an EvalHub custom resource and wait for it to be ready.
 
     Accepts an optional indirect param dict with an ``otel`` key to set spec.otel.
+    The CR is kept for --pre-upgrade runs unless --delete-pre-upgrade-resources is set.
     """
     with EvalHub(
         client=admin_client,
@@ -123,6 +125,7 @@ def evalhub_cr(
         database={"type": "sqlite"},
         otel=getattr(request, "param", {}).get("otel"),
         wait_for_resource=True,
+        teardown=teardown_resources,
     ) as evalhub:
         yield evalhub
 
