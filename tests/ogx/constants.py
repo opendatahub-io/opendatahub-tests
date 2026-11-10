@@ -80,15 +80,17 @@ OGX_SERVER_SECRET_DATA = {
 
 UPGRADE_DISTRIBUTION_NAME = "ogx-server-upgrade"
 
-# Gen AI Studio Playground configuration (RHAIENG-7804).
+# Gen AI Studio Playground configuration.
 # When a user creates a Playground, the odh-dashboard BFF deploys OGX with a full
 # config.yaml override (spec.overrideConfig) whose only LLM inference path is the
 # genai-bff-proxy remote::passthrough provider. Upstream removal of
-# remote::passthrough (OGX 1.3.0, RHAIENG-7281) broke that configuration without
+# remote::passthrough (OGX 1.3.0) broke that configuration without
 # any downstream test failing; these constants drive the replica of the
 # dashboard-generated configuration (see tests/ogx/genaistudio/config.py).
 # Names mirror the odh-dashboard BFF (tag v3.6.0, InstallOGXServer).
 GENAI_PLAYGROUND_SERVER_NAME: str = "lsd-genai-playground"
+# Legacy identifier: the odh-dashboard still names this ConfigMap
+# "llama-stack-config" (v3.6.0); the value must match the dashboard exactly.
 GENAI_PLAYGROUND_CONFIGMAP_NAME: str = "llama-stack-config"
 GENAI_PLAYGROUND_CONFIGMAP_KEY: str = "config.yaml"
 # Labels the dashboard sets on the config ConfigMap; ogx.io/watch: "true" is
@@ -112,7 +114,7 @@ GENAI_PLAYGROUND_FORWARD_HEADERS: dict[str, str] = {
 }
 # Stub base_url for the passthrough provider. OGX connects to remote providers
 # lazily, so a non-routable stub is enough to verify server start and provider
-# registration (the RHAIENG-7281 regression class).
+# registration (the regression class this test guards).
 GENAI_PLAYGROUND_PASSTHROUGH_STUB_BASE_URL: str = "http://127.0.0.1:9999/gen-ai/api/v1/genai-proxy/ns"
 # Namespace for the Gen AI Studio Playground test (fixed name so the pre-upgrade
 # and post-upgrade legs of upgrade runs find the same resources).

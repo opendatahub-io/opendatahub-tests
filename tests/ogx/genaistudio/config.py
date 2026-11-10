@@ -1,19 +1,21 @@
-"""Gen AI Studio Playground OGX configuration (RHAIENG-7804).
+"""Gen AI Studio Playground OGX configuration.
 
 Replicates the configuration the odh-dashboard BFF generates when a user creates
 a Gen AI Studio Playground, so tests can start OGX exactly the way the Playground
 does and catch upstream breakage of that configuration (e.g. the removal of
-``remote::passthrough`` in OGX 1.3.0, RHAIENG-7281, which no downstream test
+``remote::passthrough`` in OGX 1.3.0, which no downstream test
 caught at the time).
 
-Source of truth — keep in sync when re-generating (odh-dashboard tag ``v3.6.0``):
+Source of truth — keep in sync when re-generating (odh-dashboard tag ``v3.6.0``,
+package ``packages/gen-ai/bff``):
 
-- ``packages/gen-ai/bff/internal/integrations/kubernetes/token_k8s_client.go``
-  (``InstallOGXServer``: creates the ``llama-stack-config`` ConfigMap and the
+- ``internal/integrations/kubernetes/token_k8s_client.go``
+  (``InstallOGXServer``: creates the config ConfigMap —
+  ``GENAI_PLAYGROUND_CONFIGMAP_NAME`` — and the
   ``lsd-genai-playground`` OGXServer CR with ``spec.overrideConfig``)
-- ``packages/gen-ai/bff/internal/integrations/kubernetes/llamastack_config.go``
-  (``NewDefaultLlamaStackConfig`` base config + ``NewPassthroughProvider``)
-- ``packages/gen-ai/bff/internal/constants/llamastack.go``
+- ``internal/integrations/kubernetes`` config builders
+  (default Playground config + ``NewPassthroughProvider``)
+- ``internal/constants`` (ConfigMap name/key and other BFF constants)
 
 The generated config was validated to start on the RHOAI 3.6 GA image
 (``rhoai/odh-ogx-core-rhel9:rhoai-3.6``, ogx 1.4.2+rhaiv.0) with the
@@ -33,8 +35,10 @@ from tests.ogx.constants import (
     GENAI_PLAYGROUND_SERVER_NAME,
 )
 
-# In-cluster paths used by the dashboard config (SQLite storage, .llama dirs).
-_LLM_PATH_PREFIX = "/opt/app-root/src/.llama/distributions/rh"
+# Legacy in-cluster paths still emitted by the dashboard config (v3.6.0 keeps
+# its state under .llama dirs); values must match the dashboard output exactly.
+_PLAYGROUND_STATE_PATH_PREFIX = "/opt/app-root/src/.llama/distributions/rh"
+_PLAYGROUND_EXTERNAL_PROVIDERS_DIR = "/opt/app-root/.llama/providers.d"
 
 
 def build_genai_playground_config(
@@ -43,7 +47,7 @@ def build_genai_playground_config(
 ) -> dict[str, Any]:
     """Build the Gen AI Studio Playground config.yaml (full dashboard fidelity).
 
-    Mirrors ``NewDefaultLlamaStackConfig`` (v3.6.0) plus the install-time
+    Mirrors the dashboard's default config builder (v3.6.0) plus the install-time
     additions: the ``genai-bff-proxy`` ``remote::passthrough`` inference provider
     and the default embedding model registration. Inference (LLM) models are
     intentionally NOT registered — the dashboard resolves them per-request
@@ -58,8 +62,9 @@ def build_genai_playground_config(
             stub is enough to verify start and provider registration.
 
     Returns:
-        The full OGX config.yaml as a dict, for the ``llama-stack-config``
-        ConfigMap referenced by ``spec.overrideConfig``.
+        The full OGX config.yaml as a dict, for the config ConfigMap
+        (``GENAI_PLAYGROUND_CONFIGMAP_NAME``) referenced by
+        ``spec.overrideConfig``.
     """
     base_url = passthrough_base_url or f"{GENAI_PLAYGROUND_PASSTHROUGH_STUB_BASE_URL}/{namespace}"
 
@@ -122,7 +127,7 @@ def build_genai_playground_config(
                     "provider_id": "localfs-files",
                     "provider_type": "inline::localfs",
                     "config": {
-                        "storage_dir": f"{_LLM_PATH_PREFIX}/files",
+                        "storage_dir": f"{_PLAYGROUND_STATE_PATH_PREFIX}/files",
                         "metadata_store": {
                             "table_name": "files_metadata",
                             "backend": "sql_default",
@@ -157,12 +162,12 @@ def build_genai_playground_config(
         },
         "metadata_store": {
             "type": "sqlite",
-            "db_path": f"{_LLM_PATH_PREFIX}/inference_store.db",
+            "db_path": f"{_PLAYGROUND_STATE_PATH_PREFIX}/inference_store.db",
         },
         "storage": {
             "backends": {
-                "kv_default": {"type": "kv_sqlite", "db_path": f"{_LLM_PATH_PREFIX}/kvstore.db"},
-                "sql_default": {"type": "sql_sqlite", "db_path": f"{_LLM_PATH_PREFIX}/sql_store.db"},
+                "kv_default": {"type": "kv_sqlite", "db_path": f"{_PLAYGROUND_STATE_PATH_PREFIX}/kvstore.db"},
+                "sql_default": {"type": "sql_sqlite", "db_path": f"{_PLAYGROUND_STATE_PATH_PREFIX}/sql_store.db"},
             },
             "stores": {
                 "metadata": {"namespace": "registry", "backend": "kv_default"},
@@ -204,7 +209,7 @@ def build_genai_playground_config(
                 "cleanup_interval_seconds": 86400,
             },
         },
-        "external_providers_dir": "/opt/app-root/.llama/providers.d",
+        "external_providers_dir": _PLAYGROUND_EXTERNAL_PROVIDERS_DIR,
         "server": {"port": 8321},
     }
 
@@ -214,7 +219,7 @@ def build_genai_playground_server_config() -> dict[str, Any]:
 
     Mirrors what the dashboard's ``InstallOGXServer`` creates for the
     ``lsd-genai-playground`` OGXServer CR — ``spec.distribution.name: rh`` plus
-    ``spec.overrideConfig`` pointing at the ``llama-stack-config`` ConfigMap —
+    ``spec.overrideConfig`` pointing at the config ConfigMap —
     with the workload resources and route-ingress network policy the shared test
     fixtures need (the dashboard relies on default namespace network policy).
 
@@ -259,7 +264,7 @@ def build_genai_playground_server_config() -> dict[str, Any]:
 
 
 def get_genai_playground_configmap_spec(namespace: str) -> dict[str, Any]:
-    """Return the dashboard-equivalent ``llama-stack-config`` ConfigMap spec.
+    """Return the dashboard-equivalent config ConfigMap spec.
 
     Args:
         namespace: Namespace for the passthrough provider ``base_url``.
