@@ -1,16 +1,21 @@
-"""Tests for NeMo Guardrails admin route auth segregation."""
+"""Tests for NeMo Guardrails admin service auth segregation."""
 
 import http
+from collections.abc import Generator
+from contextlib import ExitStack
+from typing import Any
 
 import pytest
 import requests
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.namespace import Namespace
+from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
 from tests.ai_safety.nemo_guardrails.utils import get_nemo_guardrails_pod
+from utilities.general import generate_random_name
 from utilities.guardrails import get_auth_headers
 from utilities.resources.nemo_guardrails import NemoGuardrails
 
@@ -19,6 +24,106 @@ _ADMIN_CONTAINER_NAME = "kube-rbac-proxy-admin"
 _USER_CONTAINER_NAME = "kube-rbac-proxy"
 _ADMIN_DOWNSTREAM_PORT = 8444
 _ADMIN_HEALTH_PORT = 9445
+_ADMIN_SERVICE_PORT = 444
+
+
+@pytest.fixture
+def nemo_admin_caller_pod(
+    request: pytest.FixtureRequest,
+    caller_type: str,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+) -> Generator[Pod, Any, Any]:
+    """Create a curl caller pod in the target or the configured external namespace."""
+    caller_namespace = model_namespace
+    service_account_name = None
+    if caller_type == "cross_namespace":
+        caller_namespace = request.getfixturevalue(argname="nemo_guardrails_external_caller_namespace")
+        service_account = request.getfixturevalue(argname="nemo_guardrails_external_caller_service_account")
+        request.getfixturevalue(argname="nemo_guardrails_external_caller_admin_role_binding")
+        service_account_name = service_account.name
+
+    namespace_name = caller_namespace.name
+    assert namespace_name is not None, "Caller namespace must have a name"
+    with ExitStack() as stack:
+        pod_name = generate_random_name(prefix="nemo-admin-caller")
+        pod = stack.enter_context(
+            cm=Pod(
+                client=admin_client,
+                name=pod_name,
+                namespace=namespace_name,
+                service_account_name=service_account_name,
+                label={"app": "external-namespace-caller-pod"},
+                containers=[
+                    {
+                        "name": pod_name,
+                        "image": "image-registry.openshift-image-registry.svc:5000/openshift/tools:latest",
+                        "imagePullPolicy": "Always",
+                        "args": ["sleep", "infinity"],
+                        "securityContext": {
+                            "allowPrivilegeEscalation": False,
+                            "seccompProfile": {"type": "RuntimeDefault"},
+                            "capabilities": {"drop": ["ALL"]},
+                        },
+                    }
+                ],
+            )
+        )
+        pod.wait_for_condition(condition="Ready", status="True")
+        yield pod
+
+
+@pytest.fixture
+def nemo_guardrails_admin_access_cr(request: pytest.FixtureRequest, caller_type: str) -> NemoGuardrails:
+    """Return the auth-enabled CR configured for the selected caller namespace."""
+    fixture_name = (
+        "nemo_guardrails_presidio_auth_cross_namespace"
+        if caller_type == "cross_namespace"
+        else "nemo_guardrails_presidio_auth"
+    )
+    return request.getfixturevalue(argname=fixture_name)
+
+
+def _namespace_name(namespace: Namespace) -> str:
+    """Return a Kubernetes namespace name, asserting it is populated."""
+    name = namespace.name
+    assert name is not None, "Namespace must have a name"
+    return name
+
+
+def _admin_health_status(
+    pod: Pod,
+    service_url: str,
+    token: str | None = None,
+    use_service_account_token: bool = False,
+) -> str:
+    """Return the HTTP status from a pod calling the NeMo Guardrails admin health endpoint."""
+    curl_command = (
+        "curl --insecure --silent --show-error --connect-timeout 10 --max-time 30 "
+        "--output /dev/null --write-out '%{http_code}'"
+    )
+    if use_service_account_token:
+        curl_command += ' --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"'
+        command = ["sh", "-c", f'{curl_command} "$1"', "sh", service_url]
+    else:
+        command = [
+            "curl",
+            "--insecure",
+            "--silent",
+            "--show-error",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "30",
+            "--output",
+            "/dev/null",
+            "--write-out",
+            "%{http_code}",
+        ]
+        if token:
+            command.extend(["--header", f"Authorization: Bearer {token}"])
+        command.append(service_url)
+    return pod.execute(command=command, ignore_rc=True).strip()
 
 
 @pytest.mark.tier1
@@ -30,17 +135,16 @@ _ADMIN_HEALTH_PORT = 9445
     indirect=True,
 )
 @pytest.mark.usefixtures("patched_dsc_kserve_headed")
-class TestNemoAdminRouteWithAuth:
+class TestNemoAdminServiceWithAuth:
     """
-    Tests for NeMo Guardrails admin route auth segregation when auth is enabled.
+    Tests for NeMo Guardrails admin service auth segregation when auth is enabled.
 
     This test class validates:
     1. Admin kube-rbac-proxy sidecar is present and correctly configured
     2. Admin RBAC ConfigMap is created
     3. Service exposes the admin port
-    4. Route targets the correct port for authenticated traffic
-    5. User proxy restricts /admin/* paths
-    6. Admin proxy passes authenticated requests and blocks unauthenticated ones
+    4. User proxy restricts /admin/* paths
+    5. In-cluster callers can and cannot access the admin endpoint as expected
     """
 
     def test_admin_rbac_proxy_sidecar_present(
@@ -59,7 +163,7 @@ class TestNemoAdminRouteWithAuth:
         pod = get_nemo_guardrails_pod(
             client=admin_client,
             label_selector=f"app={nemo_guardrails_presidio_auth.name}",
-            namespace=model_namespace.name,
+            namespace=_namespace_name(model_namespace),
         )
 
         container_names = [c.name for c in pod.instance.spec.containers]
@@ -83,7 +187,7 @@ class TestNemoAdminRouteWithAuth:
         pod = get_nemo_guardrails_pod(
             client=admin_client,
             label_selector=f"app={nemo_guardrails_presidio_auth.name}",
-            namespace=model_namespace.name,
+            namespace=_namespace_name(model_namespace),
         )
 
         admin_container = next(
@@ -116,7 +220,7 @@ class TestNemoAdminRouteWithAuth:
         pod = get_nemo_guardrails_pod(
             client=admin_client,
             label_selector=f"app={nemo_guardrails_presidio_auth.name}",
-            namespace=model_namespace.name,
+            namespace=_namespace_name(model_namespace),
         )
 
         user_container = next(
@@ -210,55 +314,60 @@ class TestNemoAdminRouteWithAuth:
             f"Expected 404 from proxy path filter on user route, got {response.status_code}"
         )
 
-    def test_admin_route_authenticated_not_blocked(
+    @pytest.mark.parametrize(
+        "caller_type",
+        [pytest.param("same_namespace", id="same_namespace"), pytest.param("cross_namespace", id="cross_namespace")],
+    )
+    def test_admin_service_authenticated_not_blocked(
         self,
-        openshift_ca_bundle_file: str,
+        caller_type: str,
         current_client_token: str,
-        nemo_guardrails_presidio_auth: NemoGuardrails,
-        nemo_guardrails_presidio_admin_route: Route,
-        nemo_guardrails_presidio_admin_route_healthcheck: None,
+        nemo_guardrails_admin_access_cr: NemoGuardrails,
+        nemo_admin_caller_pod: Pod,
     ) -> None:
         """
-        Test that authenticated admin users can access the admin health endpoint.
+        Test that authenticated callers in this or another namespace can access the admin health endpoint.
 
-        Given: NemoGuardrails with auth enabled and a token with create permission
-        When: A request to an admin-only ednpoint is made via the admin route
-        Then: The health endpoint returns 200 OK
+        Given: NemoGuardrails with auth enabled and a caller pod in the same or a different namespace
+        When: The caller requests the admin-only health endpoint with a token
+        Then: The admin proxy returns 200 OK
         """
-        url = f"https://{nemo_guardrails_presidio_admin_route.instance.spec.host}{_ADMIN_TEST_PATH}"
-        response = requests.get(
-            url=url,
-            headers=get_auth_headers(token=current_client_token),
-            verify=openshift_ca_bundle_file,
-            timeout=30,
-        )
-        assert response.status_code == http.HTTPStatus.OK, (
-            f"Expected 200 OK from admin /healthz endpoint, got {response.status_code}"
+        url = (
+            f"https://{nemo_guardrails_admin_access_cr.name}.{nemo_guardrails_admin_access_cr.namespace}"
+            f".svc.cluster.local:{_ADMIN_SERVICE_PORT}{_ADMIN_TEST_PATH}"
         )
 
-    def test_admin_route_unauthenticated_blocked(
+        status = _admin_health_status(
+            pod=nemo_admin_caller_pod,
+            service_url=url,
+            token=current_client_token if caller_type == "same_namespace" else None,
+            use_service_account_token=caller_type == "cross_namespace",
+        )
+        assert status == str(http.HTTPStatus.OK.value), f"Expected 200 OK from admin service, got {status}"
+
+    @pytest.mark.parametrize(
+        "caller_type",
+        [pytest.param("same_namespace", id="same_namespace"), pytest.param("cross_namespace", id="cross_namespace")],
+    )
+    def test_admin_service_unauthenticated_blocked(
         self,
-        openshift_ca_bundle_file: str,
-        nemo_guardrails_presidio_auth: NemoGuardrails,
-        nemo_guardrails_presidio_admin_route: Route,
-        nemo_guardrails_presidio_admin_route_healthcheck: None,
+        caller_type: str,
+        nemo_guardrails_admin_access_cr: NemoGuardrails,
+        nemo_admin_caller_pod: Pod,
     ) -> None:
         """
-        Test that unauthenticated requests are blocked at the admin proxy.
+        Test that unauthenticated callers in this or another namespace are blocked by the admin proxy.
 
-        Given: NemoGuardrails with auth enabled and no auth token
-        When: A request to an admin-only ednpoint is made via the admin route without a token
+        Given: NemoGuardrails with auth enabled and a caller pod in the same or a different namespace
+        When: The caller requests the admin-only health endpoint without a token
         Then: The admin proxy returns 401 Unauthorized
         """
-        url = f"https://{nemo_guardrails_presidio_admin_route.instance.spec.host}{_ADMIN_TEST_PATH}"
-        response = requests.get(
-            url=url,
-            verify=openshift_ca_bundle_file,
-            timeout=30,
+        url = (
+            f"https://{nemo_guardrails_admin_access_cr.name}.{nemo_guardrails_admin_access_cr.namespace}"
+            f".svc.cluster.local:{_ADMIN_SERVICE_PORT}{_ADMIN_TEST_PATH}"
         )
-        assert response.status_code == http.HTTPStatus.UNAUTHORIZED, (
-            f"Expected 401 Unauthorized from admin proxy, got {response.status_code}"
-        )
+        status = _admin_health_status(pod=nemo_admin_caller_pod, service_url=url)
+        assert status == str(http.HTTPStatus.UNAUTHORIZED.value), f"Expected 401 from admin service, got {status}"
 
 
 @pytest.mark.tier2
@@ -278,7 +387,6 @@ class TestNemoAdminRouteWithoutAuth:
     1. Admin sidecar is not injected without auth
     2. Admin RBAC ConfigMap is not created without auth
     3. Service does not expose the admin port without auth
-    4. Route targets the plain HTTP port without auth
     """
 
     def test_admin_sidecar_absent_without_auth(
@@ -297,7 +405,7 @@ class TestNemoAdminRouteWithoutAuth:
         pod = get_nemo_guardrails_pod(
             client=admin_client,
             label_selector=f"app={nemo_guardrails_presidio.name}",
-            namespace=model_namespace.name,
+            namespace=_namespace_name(model_namespace),
         )
 
         container_names = [c.name for c in pod.instance.spec.containers]
