@@ -3,10 +3,11 @@ from __future__ import annotations
 import pytest
 import requests
 import structlog
+from ocp_resources.maas_subscription import MaaSSubscription
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.maas_billing.maas_api_key.utils import get_auth_policy_callback_url
-from tests.model_serving.maas_billing.utils import get_maas_models_response
+from tests.model_serving.maas_billing.maas_subscription.utils import poll_models_for_subscription
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -49,6 +50,7 @@ class TestAuthPolicyApiKeyValidation:
     @pytest.mark.usefixtures(
         "maas_model_tinyllama_free",
         "maas_auth_policy_tinyllama_free",
+        "maas_subscription_tinyllama_free",
     )
     @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "free"}], indirect=True)
     def test_api_key_can_list_models(
@@ -56,17 +58,14 @@ class TestAuthPolicyApiKeyValidation:
         request_session_http: requests.Session,
         base_url: str,
         api_key_for_free_model_listing: str,
+        maas_subscription_tinyllama_free: MaaSSubscription,
     ) -> None:
-        """Verify an API key can list models via GET /v1/models without 403."""
-        models_response = get_maas_models_response(
+        """Given a subscription-bound API key, when GET /v1/models is called, then models are listed."""
+        models_list = poll_models_for_subscription(
             session=request_session_http,
-            base_url=base_url,
-            headers={
-                "Authorization": f"Bearer {api_key_for_free_model_listing}",
-                "Content-Type": "application/json",
-            },
+            models_url=f"{base_url}/v1/models",
+            token=api_key_for_free_model_listing,
+            expected_subscription_name=maas_subscription_tinyllama_free.name,
         )
-        models_list: list[dict] = models_response.json().get("data", [])
-        assert models_list, "Expected at least one model from /v1/models"
 
         LOGGER.info(f"API key successfully listed {len(models_list)} model(s) via /v1/models")
