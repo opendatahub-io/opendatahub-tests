@@ -34,6 +34,7 @@ alone.
 from __future__ import annotations
 
 import re
+import time
 from contextlib import ExitStack
 from typing import Any
 
@@ -337,15 +338,21 @@ class TestImplicitAttachmentLifecycle:
             # status history so a failure shows whether the degradation was a
             # blip or a sustained outage.
             probe_history: list[str] = []
-            probes = REFS_TRANSITION_PROBE_DURATION // REFS_TRANSITION_PROBE_INTERVAL
-            for probe_index in range(probes):
+            # Single-shot requests: the loop owns the cadence, so a failed
+            # probe must surface here rather than be retried inside the
+            # request helper.
+            probe_started = time.monotonic()
+            while (probe_elapsed := time.monotonic() - probe_started) < REFS_TRANSITION_PROBE_DURATION:
                 response = infer_chat_completion(
                     request_session_http=request_session_http,
                     gateway_url=default_gateway_url,
                     model=model_b,
                     api_key=api_key_b,
+                    retries=0,
                 )
-                probe_history.append(f"{probe_index * REFS_TRANSITION_PROBE_INTERVAL}s:{response.status_code}")
+                # Monotonic elapsed labels include request and scheduling time.
+                probe_history.append(f"{probe_elapsed:.0f}s:{response.status_code}")
+                time.sleep(REFS_TRANSITION_PROBE_INTERVAL)
                 assert response.status_code == 200, (
                     f"{model_b['name']} degraded while {model_a['name']} transitioned "
                     f"gatewayRefs; probe history [{', '.join(probe_history)}]: "
