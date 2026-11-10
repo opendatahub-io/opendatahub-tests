@@ -183,3 +183,5 @@ QWEN.md
 must-gather-collected/
 oc.tar
 .code-graph/
+.claude/
+reports/
