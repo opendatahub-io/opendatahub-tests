@@ -7,6 +7,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import FixtureRequest
 
@@ -22,17 +23,15 @@ def ci_bucket_downloaded_model_data(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
     model_pvc: PersistentVolumeClaim,
-    aws_secret_access_key: str,
-    aws_access_key_id: str,
+    ci_endpoint_s3_secret: Secret,
     ci_s3_bucket_name: str,
     ci_s3_bucket_endpoint: str,
     ci_s3_bucket_region: str,
 ) -> str:
     return download_model_data(
         client=admin_client,
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
         model_namespace=unprivileged_model_namespace.name,
+        credentials_secret_name=ci_endpoint_s3_secret.name,
         model_pvc_name=model_pvc.name,
         bucket_name=ci_s3_bucket_name,
         aws_endpoint_url=ci_s3_bucket_endpoint,

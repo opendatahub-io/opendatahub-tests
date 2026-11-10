@@ -1,4 +1,5 @@
 import base64
+import os
 import re
 from typing import List, Tuple, Any
 import uuid
@@ -21,6 +22,14 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
 
 LOGGER = get_logger(name=__name__)
+
+# ANSI stripping functionality
+_ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[?!>]?[0-9;:]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[()][A-B0-2]|[=>NODMHc78])")
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from a string."""
+    return _ANSI_ESCAPE_RE.sub(repl="", string=text)
 
 
 def get_s3_secret_dict(
@@ -74,9 +83,8 @@ def b64_encoded_string(string_to_encode: str) -> str:
 
 def download_model_data(
     client: DynamicClient,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
     model_namespace: str,
+    credentials_secret_name: str,
     model_pvc_name: str,
     bucket_name: str,
     aws_endpoint_url: str,
@@ -89,9 +97,9 @@ def download_model_data(
 
     Args:
         client (DynamicClient): Admin client
-        aws_access_key_id (str): AWS access key
-        aws_secret_access_key (str): AWS secret key
         model_namespace (str): Namespace of the model
+        credentials_secret_name (str): Name of the Secret in model_namespace containing
+            AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
         model_pvc_name (str): Name of the PVC
         bucket_name (str): Name of the bucket
         aws_endpoint_url (str): AWS endpoint URL
@@ -126,8 +134,18 @@ def download_model_data(
                 pvc_model_path,
             ],
             "env": [
-                {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
-                {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
+                {
+                    "name": "AWS_ACCESS_KEY_ID",
+                    "valueFrom": {
+                        "secretKeyRef": {"name": credentials_secret_name, "key": "AWS_ACCESS_KEY_ID"},
+                    },
+                },
+                {
+                    "name": "AWS_SECRET_ACCESS_KEY",
+                    "valueFrom": {
+                        "secretKeyRef": {"name": credentials_secret_name, "key": "AWS_SECRET_ACCESS_KEY"},
+                    },
+                },
                 {"name": "S3_USE_HTTPS", "value": "1"},
                 {"name": "AWS_ENDPOINT_URL", "value": aws_endpoint_url},
                 {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
@@ -175,6 +193,8 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
     if deployment_mode in (
         KServeDeploymentType.SERVERLESS,
         KServeDeploymentType.RAW_DEPLOYMENT,
+        KServeDeploymentType.STANDARD,
+        KServeDeploymentType.KNATIVE,
     ):
         return f"{isvc.ApiGroup.SERVING_KSERVE_IO}/inferenceservice={isvc.name}"
 
@@ -453,3 +473,24 @@ def wait_for_pods_running(
             )
             raise
     return None
+
+
+def collect_pod_information(pod: Pod) -> None:
+    # Import here to avoid circular import (must_gather_collector -> infra -> general)
+    from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
+
+    try:
+        base_dir_name = get_must_gather_collector_dir() or get_base_dir()
+        LOGGER.info(f"Collecting pod information for {pod.name}: {base_dir_name}")
+        os.makedirs(base_dir_name, exist_ok=True)
+        yaml_file_path = os.path.join(base_dir_name, f"{pod.name}.yaml")
+        with open(yaml_file_path, "w") as fd:
+            fd.write(pod.instance.to_str())
+
+        containers = [container["name"] for container in pod.instance.status.containerStatuses]
+        for container in containers:
+            file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
+            with open(file_path, "w") as fd:
+                fd.write(pod.log(**{"container": container}))
+    except Exception:
+        LOGGER.warning(f"For pod: {pod.name} information gathering failed.")

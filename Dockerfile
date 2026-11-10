@@ -7,8 +7,11 @@ ENV UV_PYTHON=python3.13
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_NO_SYNC=1
 ENV UV_NO_CACHE=1
+ENV HOME="$HOME"
+ENV PYTHONPYCACHEPREFIX=/tmp/pycache
+ENV PYTEST_ADDOPTS="-p no:cacheprovider"
 
-ENV BIN_DIR="$HOME_DIR/.local/bin"
+ENV BIN_DIR="$HOME/.local/bin"
 ENV PATH="$PATH:$BIN_DIR"
 
 # Install Python 3.13 and other dependencies using dnf
@@ -22,9 +25,16 @@ RUN curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v1.9.2/
     && tar xvf /tmp/grpcurl_1.2.tar.gz --no-same-owner \
     && mv grpcurl /usr/bin/grpcurl
 
+# Install must-gather-clean
+RUN wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4/must-gather-clean-linux-amd64.tar.gz -q \
+    && tar xzf must-gather-clean-linux-amd64.tar.gz \
+    && mv must-gather-clean /usr/bin/must-gather-clean \
+    && chmod +x /usr/bin/must-gather-clean \
+    && rm -f must-gather-clean-linux-amd64.tar.gz
+
 RUN useradd -ms /bin/bash $USER
 USER $USER
-WORKDIR $HOME_DIR
+WORKDIR $HOME
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx ${BIN_DIR}/
 
 WORKDIR $TESTS_DIR

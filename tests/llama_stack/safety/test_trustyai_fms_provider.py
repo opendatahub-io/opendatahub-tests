@@ -38,7 +38,7 @@ SECURE_SHIELD_ID: str = "secure_shield"
 )
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures("orchestrator_config", "guardrails_orchestrator")
-@pytest.mark.model_explainability
+@pytest.mark.ai_safety
 class TestLlamaStackFMSGuardrailsProvider:
     """
     Adds basic tests for the LlamaStack FMS Guardrails provider.

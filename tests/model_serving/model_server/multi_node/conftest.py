@@ -46,16 +46,14 @@ def models_bucket_downloaded_model_data(
     unprivileged_model_namespace: Namespace,
     models_s3_bucket_name: str,
     model_pvc: PersistentVolumeClaim,
-    aws_secret_access_key: str,
-    aws_access_key_id: str,
+    models_endpoint_s3_secret: Secret,
     models_s3_bucket_endpoint: str,
     models_s3_bucket_region: str,
 ) -> str:
     return download_model_data(
         client=admin_client,
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
         model_namespace=unprivileged_model_namespace.name,
+        credentials_secret_name=models_endpoint_s3_secret.name,
         model_pvc_name=model_pvc.name,
         bucket_name=models_s3_bucket_name,
         aws_endpoint_url=models_s3_bucket_endpoint,
