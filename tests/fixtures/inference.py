@@ -1,8 +1,10 @@
+import json
 from typing import Generator, Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
@@ -270,6 +272,16 @@ def patched_dsc_kserve_headed(
     def _wait_for_kserve_upgrade(dsc_resource: DataScienceCluster):
         return not _kserve_status(dsc_resource) == "True"
 
+    @retry(wait_timeout=120, sleep=2)
+    def _wait_for_headless_services():
+        isvc_config = ConfigMap(
+            client=admin_client,
+            name="inferenceservice-config",
+            namespace=py_config["applications_namespace"],
+            ensure_exists=True,
+        )
+        return json.loads(isvc_config.instance.data["service"]).get("serviceClusterIPNone", False)
+
     dsc = get_data_science_cluster(client=admin_client)
     if not dsc.instance.spec.components.kserve.rawDeploymentServiceConfig == "Headed":
         with ResourceEditor(
@@ -279,6 +291,9 @@ def patched_dsc_kserve_headed(
             kserve_controller_manager_deployment.wait_for_replicas()
             wait_for_dsc_status_ready(dsc_resource=dsc)
             yield dsc
+        kserve_controller_manager_deployment.wait_for_replicas()
+        wait_for_dsc_status_ready(dsc_resource=dsc)
+        _wait_for_headless_services()
     else:
         LOGGER.info("DSC already configured for Headed mode")
         yield dsc

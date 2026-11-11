@@ -21,7 +21,8 @@ def validate_tai_component_images(
     Raises:
         AssertionError: If validation fails.
     """
-    tai_configmap_values = tai_operator_configmap.instance.data.values()
+    # Clusters may rewrite the registry host of pod images (e.g. registry.redhat.io -> quay.io) while keeping the digest
+    tai_configmap_values = {value.split("/", 1)[-1] for value in tai_operator_configmap.instance.data.values()}
     containers = list(pod.instance.spec.containers)
     if include_init_containers:
         containers.extend(pod.instance.spec.initContainers)
@@ -29,6 +30,6 @@ def validate_tai_component_images(
         assert re.search(SHA256_DIGEST_PATTERN, container.image), (
             f"{container.name} : {container.image} does not have a valid SHA256 digest."
         )
-        assert container.image in tai_configmap_values, (
+        assert container.image.split("/", 1)[-1] in tai_configmap_values, (
             f"{container.name} : {container.image} not present in TrustyAI operator configmap."
         )
