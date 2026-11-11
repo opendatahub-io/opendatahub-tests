@@ -13,6 +13,19 @@ The folder structure is based on the upstream OGX integration tests, available a
 - **`operator/`** - Tests for the ogx-operator and Red Hat OGX Distribution image
 - **`responses/`** - Response handling and validation tests
 - **`vector_io/`** - Vector store and I/O tests
+- **`maaspassthrough/`** - MaaS token passthrough via the genai-bff-proxy remote::passthrough provider
+- **`mcp/`** - MCP tool runtime: connector registration and server-side tool invocation
+- **`otel/`** - Telemetry: Prometheus metrics endpoint and OTLP export
+
+### Mock upstreams (`mockupstream/`)
+
+The `maaspassthrough/`, `mcp/` and `otel/` suites deploy in-cluster mock upstreams from
+`tests/ogx/mockupstream/` (a support package, not a test suite): a mock MaaS server standing
+in for the Gen AI BFF's genai-proxy (records every received request for header-passthrough
+assertions and doubles as a deterministic tool-calling model and passive OTLP receiver), and
+a mock MCP server exposing a `get_weather` tool. Both run stdlib-only on
+`registry.access.redhat.com/ubi9/python-312` (override via `OGX_MOCK_SERVER_IMAGE`, e.g. to
+pin a digest or point at a mirrored image on disconnected clusters).
 
 ## Test Markers
 
