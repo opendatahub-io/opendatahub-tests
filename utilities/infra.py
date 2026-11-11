@@ -769,16 +769,16 @@ def verify_no_failed_pods(
         failed_pods: dict[str, Any] = {}
 
         container_wait_base_errors = ["InvalidImageName"]
-        container_terminated_base_errors: list[str] = []
+        container_terminated_base_errors = [Resource.Status.ERROR]
 
+        deployment_mode = isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
         # For Model Mesh, runtime containers (e.g. ovms) may exit on first start before the adapter writes their config,
-        # then recover after a container restart. Tolerate CrashLoopBackOff and Error states to allow recovery.
+        # then recover after a container restart. Tolerate Error state to allow recovery.
         # For non-Model Mesh deployments, treat these states as immediate failures.
-        if (
-            deployment_mode := isvc.instance.metadata.annotations.get("serving.kserve.io/deploymentMode")
-        ) and deployment_mode != KServeDeploymentType.MODEL_MESH:
+        if deployment_mode == KServeDeploymentType.MODEL_MESH:
+            container_terminated_base_errors.remove(Resource.Status.ERROR)
+        elif deployment_mode:
             container_wait_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
-            container_terminated_base_errors.append(Resource.Status.ERROR)
             container_terminated_base_errors.append(Resource.Status.CRASH_LOOPBACK_OFF)
 
         if pods:
