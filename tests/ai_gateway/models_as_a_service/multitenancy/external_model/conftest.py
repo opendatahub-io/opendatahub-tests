@@ -41,6 +41,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     per_tenant_processing_uses_praxis,
     provision_and_serve_in_tenant,
     record_tenant_external_model_evidence,
+    require_crossns_provider_support,
     require_maas_route,
     require_tenant_external_model_support,
     serve_in_default_tenant,
@@ -815,3 +816,41 @@ def implicit_model(
             )
         )
         yield {"model": model, "api_key": api_key, **attachment}
+
+
+@pytest.fixture(scope="module")
+def crossns_env(
+    admin_client: DynamicClient,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """One tenant's case plus admitted model/provider namespaces for the crossns module."""
+    require_crossns_provider_support(admin_client=admin_client)
+    case = tenant_external_model_tenants["tenant_a"]
+    with ExitStack() as stack:
+        model_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-crossns-model",
+                case["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        provider_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-crossns-prov",
+                case["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        LOGGER.info(
+            f"[crossns] model namespace {model_ns.name}, provider namespace {provider_ns.name} "
+            f"on gateway {case['gateway_name']}"
+        )
+        yield {
+            "tenant": case,
+            "model_ns": namespace_name(model_ns),
+            "provider_ns": namespace_name(provider_ns),
+            "teardown": teardown_resources,
+        }
