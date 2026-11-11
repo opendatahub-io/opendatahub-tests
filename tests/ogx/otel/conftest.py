@@ -4,9 +4,9 @@ The ``ogx_server`` fixture defined here shadows the one in
 ``tests/ogx/conftest.py`` for tests under ``tests/ogx/otel/``. The server is
 deployed with:
 
-- ``spec.monitoring`` enabled (metrics port 9464) — the operator then creates
-  the ServiceMonitor and restricts the metrics port to monitoring namespaces,
-  matching the shipped telemetry design (RHAIENG-5155/5156): an auth-exempt
+- ``spec.monitoring`` enabled (metrics port from ``OGX_METRICS_PORT``) — the
+  operator then creates the ServiceMonitor and restricts the metrics port to
+  monitoring namespaces, matching the shipped telemetry design: an auth-exempt
   pull endpoint for cluster-monitoring Prometheus, never exposed via Route.
 - OTEL env pointing the existing OTLP push export at the mock MaaS upstream,
   which doubles as a passive OTLP receiver so the export path is observable.
@@ -19,7 +19,6 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-import structlog
 import yaml
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
@@ -28,18 +27,13 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 
 from tests.ogx.constants import OGX_METRICS_PORT
-from tests.ogx.mockupstream.constants import (
-    MOCK_MAAS_MODEL_ID,
-    PASSTHROUGH_FORWARD_HEADERS,
-    PASSTHROUGH_PROVIDER_ID,
-    PASSTHROUGH_PROVIDER_TYPE,
-)
 from tests.ogx.mockupstream.deployments import MockUpstream
-from tests.ogx.mockupstream.ogx_config import build_override_config_server_spec
+from tests.ogx.mockupstream.ogx_config import (
+    build_mock_run_config,
+    build_override_config_server_spec,
+)
 from tests.ogx.utils import create_ogx_server
 from utilities.resources.ogx_server import OgxServer
-
-LOGGER = structlog.get_logger(name=__name__)
 
 OTEL_SERVER_NAME = "ogx-otel-test"
 OTEL_CONFIGMAP_NAME = "ogx-otel-config"
@@ -48,51 +42,6 @@ OTEL_CONFIGMAP_KEY = "run.yaml"
 # The passthrough provider needs a non-empty api_key for OGX's internal
 # OpenAI-compatible client; the credential flow is not under test here.
 _MOCK_INFERENCE_API_KEY = "mock-inference-key"  # pragma: allowlist secret
-
-
-def build_otel_run_config(mock_maas_url: str) -> dict[str, Any]:
-    """Build the run.yaml for the telemetry test server.
-
-    Same minimal inference-only shape as the MaaS passthrough suite; the
-    telemetry-specific parts (OTEL env, metrics port) live on the OGXServer
-    spec, not in the run config.
-    """
-    return {
-        "version": 2,
-        "distro_name": OTEL_SERVER_NAME,
-        "apis": ["inference"],
-        "providers": {
-            "inference": [
-                {
-                    "provider_id": PASSTHROUGH_PROVIDER_ID,
-                    "provider_type": PASSTHROUGH_PROVIDER_TYPE,
-                    "config": {
-                        "base_url": mock_maas_url,
-                        "api_key": _MOCK_INFERENCE_API_KEY,
-                        "forward_headers": dict(PASSTHROUGH_FORWARD_HEADERS),
-                    },
-                },
-            ],
-        },
-        "storage": {
-            "backends": {
-                "kv_default": {"type": "kv_sqlite", "db_path": "/tmp/otel-test-kvstore.db"},
-                "sql_default": {"type": "sql_sqlite", "db_path": "/tmp/otel-test-sqlstore.db"},
-            },
-            "stores": {"metadata": {"backend": "kv_default", "namespace": "registry"}},
-        },
-        "registered_resources": {
-            "models": [
-                {
-                    "provider_id": PASSTHROUGH_PROVIDER_ID,
-                    "model_id": MOCK_MAAS_MODEL_ID,
-                    "provider_model_id": MOCK_MAAS_MODEL_ID,
-                    "model_type": "llm",
-                    "metadata": {"provider_resource_id": MOCK_MAAS_MODEL_ID},
-                }
-            ]
-        },
-    }
 
 
 @pytest.fixture(scope="class")
@@ -107,16 +56,15 @@ def ogx_server(  # noqa: UFN001 — intentionally shadows the parent conftest fi
 ) -> Generator[OgxServer, Any, Any]:
     """OGXServer with the Prometheus metrics endpoint and OTLP export enabled."""
     namespace = unprivileged_model_namespace.name
-    config_yaml = yaml.dump(build_otel_run_config(mock_maas_url=mock_maas_upstream.service_url))
+    config_yaml = yaml.dump(
+        build_mock_run_config(
+            distro_name=OTEL_SERVER_NAME,
+            mock_service_url=mock_maas_upstream.service_url,
+            api_key=_MOCK_INFERENCE_API_KEY,
+        )
+    )
 
     if pytestconfig.option.post_upgrade:
-        configmap = ConfigMap(
-            client=unprivileged_client,
-            name=OTEL_CONFIGMAP_NAME,
-            namespace=namespace,
-            ensure_exists=True,
-        )
-        configmap.wait(timeout=60)
         ogx_srv = OgxServer(
             client=unprivileged_client,
             name=OTEL_SERVER_NAME,

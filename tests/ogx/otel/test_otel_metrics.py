@@ -1,10 +1,10 @@
 """OGX telemetry: Prometheus metrics endpoint and OTLP export.
 
-Covers the shipped telemetry design (RHAIENG-5155 / RHAIENG-5156): OGX exposes
-its OpenTelemetry metrics on an auth-exempt pull endpoint on a dedicated port
-(never routed), the operator creates the ServiceMonitor for it, and cluster
-monitoring can scrape it. The pre-existing OTLP push export is verified by
-pointing it at the mock upstream, which records the exports it receives.
+Covers the shipped telemetry design: OGX exposes its OpenTelemetry metrics on
+an auth-exempt pull endpoint on a dedicated port (never routed), the operator
+creates the ServiceMonitor for it, and cluster monitoring can scrape it. The
+pre-existing OTLP push export is verified by pointing it at the mock upstream,
+which records the exports it receives.
 
 The Prometheus-integration test additionally requires user workload monitoring
 (a cluster-scoped, cluster-admin setting the test cannot and should not flip)
