@@ -1,21 +1,25 @@
 import pytest
 import requests
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.route import Route
 from ocp_resources.service import Service
 
 from tests.ai_safety.evalhub.constants import (
     EVALHUB_HEALTH_PATH,
-    EVALHUB_METRICS_PATH,
-    EVALHUB_METRICS_PORT,
+    EVALHUB_HTTP_METRICS,
+    EVALHUB_OTEL_METRICS_STDOUT_CONFIG,
 )
+from tests.ai_safety.evalhub.utils import assert_evalhub_otel_metrics_enabled, fetch_evalhub_metrics
 from utilities.guardrails import get_auth_headers
 
 
 @pytest.mark.parametrize(
-    "model_namespace",
+    "model_namespace, evalhub_cr",
     [
         pytest.param(
             {"name": "test-evalhub-metrics"},
+            {"otel": EVALHUB_OTEL_METRICS_STDOUT_CONFIG},
         ),
     ],
     indirect=True,
@@ -29,26 +33,22 @@ class TestEvalHubMetrics:
         self,
         current_client_token: str,
         evalhub_ca_bundle_file: str,
+        admin_client: DynamicClient,
+        evalhub_deployment: Deployment,
         evalhub_metrics_service: Service,
     ) -> None:
-        """Verify /metrics returns 200 and includes expected Prometheus metrics.
+        """Verify /metrics returns 200 and includes the OTEL HTTP server metrics.
 
         The metrics endpoint is on the cluster-internal port 8081 with no Route,
-        so it is accessed via the service DNS name rather than the API Route.
+        so it is scraped via the service DNS name from inside the EvalHub pod.
+        HTTP metrics are only emitted with OTEL metrics enabled on the EvalHub CR.
         """
-        url = (
-            f"http://{evalhub_metrics_service.name}"
-            f".{evalhub_metrics_service.namespace}"
-            f".svc.cluster.local:{EVALHUB_METRICS_PORT}{EVALHUB_METRICS_PATH}"
+        assert_evalhub_otel_metrics_enabled(evalhub_deployment=evalhub_deployment)
+        body = fetch_evalhub_metrics(
+            client=admin_client,
+            evalhub_metrics_service=evalhub_metrics_service,
         )
-        response = requests.get(url=url, timeout=10)
-        assert response.status_code == 200, f"Expected 200 from /metrics, got {response.status_code}"
-        body = response.text
-        for metric in (
-            "http_requests_total",
-            "http_request_duration_seconds",
-            "http_requests_in_flight",
-        ):
+        for metric in EVALHUB_HTTP_METRICS:
             assert metric in body, f"Expected metric '{metric}' not found in /metrics response"
 
     def test_evalhub_metrics_recorded_for_requests(
@@ -56,12 +56,15 @@ class TestEvalHubMetrics:
         current_client_token: str,
         evalhub_ca_bundle_file: str,
         evalhub_route: Route,
+        admin_client: DynamicClient,
+        evalhub_deployment: Deployment,
         evalhub_metrics_service: Service,
     ) -> None:
         """Given: a running EvalHub instance with metrics service.
         When: GET /api/v1/health is called, then /metrics is scraped.
         Then: /metrics contains a request count for the health path.
         """
+        assert_evalhub_otel_metrics_enabled(evalhub_deployment=evalhub_deployment)
         headers = get_auth_headers(token=current_client_token)
 
         # Hit the health endpoint through the Route to generate a metric entry
@@ -75,13 +78,8 @@ class TestEvalHubMetrics:
         assert health_resp.status_code == 200
 
         # Scrape metrics from the internal service and verify the health path appears
-        metrics_url = (
-            f"http://{evalhub_metrics_service.name}"
-            f".{evalhub_metrics_service.namespace}"
-            f".svc.cluster.local:{EVALHUB_METRICS_PORT}{EVALHUB_METRICS_PATH}"
+        metrics = fetch_evalhub_metrics(
+            client=admin_client,
+            evalhub_metrics_service=evalhub_metrics_service,
         )
-        metrics_resp = requests.get(url=metrics_url, timeout=10)
-        assert metrics_resp.status_code == 200
-        assert EVALHUB_HEALTH_PATH in metrics_resp.text, (
-            f"Expected request count for '{EVALHUB_HEALTH_PATH}' in /metrics output"
-        )
+        assert EVALHUB_HEALTH_PATH in metrics, f"Expected request count for '{EVALHUB_HEALTH_PATH}' in /metrics output"
