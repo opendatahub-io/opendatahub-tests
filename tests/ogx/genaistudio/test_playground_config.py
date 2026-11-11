@@ -20,6 +20,7 @@ import pytest
 from ogx_client import OgxClient
 
 from tests.ogx.constants import (
+    GENAI_PLAYGROUND_NAMESPACE_NAME,
     GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_ID,
     GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE,
 )
@@ -50,7 +51,7 @@ def _assert_playground_passthrough_provider(ogx_client: OgxClient) -> None:
     "unprivileged_model_namespace",
     [
         pytest.param(
-            {"name": "test-ogx-genai-playground"},
+            {"name": GENAI_PLAYGROUND_NAMESPACE_NAME},
         ),
     ],
     indirect=True,

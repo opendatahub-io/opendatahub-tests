@@ -26,7 +26,6 @@ from typing import Any
 
 from tests.ogx.constants import (
     GENAI_PLAYGROUND_CONFIGMAP_KEY,
-    GENAI_PLAYGROUND_CONFIGMAP_LABELS,
     GENAI_PLAYGROUND_CONFIGMAP_NAME,
     GENAI_PLAYGROUND_FORWARD_HEADERS,
     GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_ID,
@@ -263,28 +262,8 @@ def build_genai_playground_server_config() -> dict[str, Any]:
     }
 
 
-def get_genai_playground_configmap_spec(namespace: str) -> dict[str, Any]:
-    """Return the dashboard-equivalent config ConfigMap spec.
-
-    Args:
-        namespace: Namespace for the passthrough provider ``base_url``.
-
-    Returns:
-        Dict with ``name``, ``labels`` and ``data`` keys for the ConfigMap
-        holding the Playground config.yaml.
-    """
-    return {
-        "name": GENAI_PLAYGROUND_CONFIGMAP_NAME,
-        "labels": dict(GENAI_PLAYGROUND_CONFIGMAP_LABELS),
-        "data": {
-            GENAI_PLAYGROUND_CONFIGMAP_KEY: build_genai_playground_config(namespace=namespace),
-        },
-    }
-
-
 __all__ = [
     "GENAI_PLAYGROUND_SERVER_NAME",
     "build_genai_playground_config",
     "build_genai_playground_server_config",
-    "get_genai_playground_configmap_spec",
 ]
