@@ -23,6 +23,11 @@ OGX_CLIENT_VERIFY_SSL = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "
 OGX_CORE_POD_FILTER: str = "app=ogx"
 OGX_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
+# Metrics port exposed by the OGX operator when spec.monitoring is enabled
+# (auth-exempt, separate from the API port, never routed — per the telemetry
+# design, only network-isolated scrapers may reach it).
+OGX_METRICS_PORT = 9464
+
 POSTGRES_IMAGE = os.getenv("OGX_VECTOR_IO_POSTGRES_IMAGE", SharedImages.POSTGRESQL_15)
 POSTGRESQL_USER = os.getenv("OGX_VECTOR_IO_POSTGRESQL_USER", "ps_user")
 POSTGRESQL_PASSWORD = os.getenv("OGX_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")

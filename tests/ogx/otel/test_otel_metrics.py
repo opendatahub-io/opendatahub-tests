@@ -18,9 +18,8 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ogx_client import OgxClient
 
-from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL
+from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL, OGX_METRICS_PORT
 from tests.ogx.mockupstream.constants import MOCK_MAAS_MODEL_ID
-from tests.ogx.otel.conftest import OGX_METRICS_PORT
 from tests.ogx.utils import wait_for_unique_ogx_pod
 
 LOGGER = structlog.get_logger(name=__name__)

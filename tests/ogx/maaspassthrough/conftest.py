@@ -28,7 +28,7 @@ from tests.ogx.mockupstream.constants import (
     PASSTHROUGH_PROVIDER_ID,
     PASSTHROUGH_PROVIDER_TYPE,
 )
-from tests.ogx.mockupstream.deployments import MockUpstream, deploy_mock_maas_server
+from tests.ogx.mockupstream.deployments import MockUpstream
 from tests.ogx.mockupstream.ogx_config import build_override_config_server_spec
 from tests.ogx.utils import create_ogx_server
 from utilities.resources.ogx_server import OgxServer
@@ -88,21 +88,6 @@ def build_maas_passthrough_run_config(mock_service_url: str) -> dict[str, Any]:
             ]
         },
     }
-
-
-@pytest.fixture(scope="class")
-def mock_maas_upstream(
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    teardown_resources: bool,
-) -> Generator[MockUpstream, Any, Any]:
-    """Deploy the mock MaaS upstream in the test namespace (with a debug route)."""
-    with deploy_mock_maas_server(
-        client=unprivileged_client,
-        namespace=unprivileged_model_namespace,
-        teardown=teardown_resources,
-    ) as upstream:
-        yield upstream
 
 
 @pytest.fixture(scope="class")

@@ -36,11 +36,7 @@ from tests.ogx.mockupstream.constants import (
     PASSTHROUGH_PROVIDER_ID,
     PASSTHROUGH_PROVIDER_TYPE,
 )
-from tests.ogx.mockupstream.deployments import (
-    MockUpstream,
-    deploy_mock_maas_server,
-    deploy_mock_mcp_server,
-)
+from tests.ogx.mockupstream.deployments import MockUpstream, deploy_mock_mcp_server
 from tests.ogx.mockupstream.ogx_config import build_override_config_server_spec
 from tests.ogx.utils import create_ogx_server
 from utilities.resources.ogx_server import OgxServer
@@ -55,7 +51,7 @@ MCP_CONFIGMAP_KEY = "run.yaml"
 # OpenAI-compatible client (the builtin responses provider calls the inference
 # provider through it). Unlike the MaaS passthrough suite, the credential flow
 # is not under test here.
-_MOCK_INFERENCE_API_KEY = "mock-inference-key"
+_MOCK_INFERENCE_API_KEY = "mock-inference-key"  # pragma: allowlist secret
 
 
 def build_mcp_run_config(mock_maas_url: str, mock_mcp_url: str) -> dict[str, Any]:
@@ -167,22 +163,6 @@ def mock_mcp_upstream(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace,
         teardown=teardown_resources,
-    ) as upstream:
-        yield upstream
-
-
-@pytest.fixture(scope="class")
-def mock_maas_upstream(
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    teardown_resources: bool,
-) -> Generator[MockUpstream, Any, Any]:
-    """Deploy the mock MaaS model upstream in the test namespace (no route needed)."""
-    with deploy_mock_maas_server(
-        client=unprivileged_client,
-        namespace=unprivileged_model_namespace,
-        teardown=teardown_resources,
-        routed=False,
     ) as upstream:
         yield upstream
 

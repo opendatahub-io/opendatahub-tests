@@ -27,13 +27,14 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 
+from tests.ogx.constants import OGX_METRICS_PORT
 from tests.ogx.mockupstream.constants import (
     MOCK_MAAS_MODEL_ID,
     PASSTHROUGH_FORWARD_HEADERS,
     PASSTHROUGH_PROVIDER_ID,
     PASSTHROUGH_PROVIDER_TYPE,
 )
-from tests.ogx.mockupstream.deployments import MockUpstream, deploy_mock_maas_server
+from tests.ogx.mockupstream.deployments import MockUpstream
 from tests.ogx.mockupstream.ogx_config import build_override_config_server_spec
 from tests.ogx.utils import create_ogx_server
 from utilities.resources.ogx_server import OgxServer
@@ -44,14 +45,9 @@ OTEL_SERVER_NAME = "ogx-otel-test"
 OTEL_CONFIGMAP_NAME = "ogx-otel-config"
 OTEL_CONFIGMAP_KEY = "run.yaml"
 
-# Metrics endpoint exposed by the OGX operator when spec.monitoring is enabled
-# (auth-exempt, separate from the API port, not routed — per the telemetry
-# design, only network-isolated scrapers may reach it).
-OGX_METRICS_PORT = 9464
-
 # The passthrough provider needs a non-empty api_key for OGX's internal
 # OpenAI-compatible client; the credential flow is not under test here.
-_MOCK_INFERENCE_API_KEY = "mock-inference-key"
+_MOCK_INFERENCE_API_KEY = "mock-inference-key"  # pragma: allowlist secret
 
 
 def build_otel_run_config(mock_maas_url: str) -> dict[str, Any]:
@@ -97,21 +93,6 @@ def build_otel_run_config(mock_maas_url: str) -> dict[str, Any]:
             ]
         },
     }
-
-
-@pytest.fixture(scope="class")
-def mock_maas_upstream(
-    unprivileged_client: DynamicClient,
-    unprivileged_model_namespace: Namespace,
-    teardown_resources: bool,
-) -> Generator[MockUpstream, Any, Any]:
-    """Deploy the mock MaaS upstream; it also receives OGX's OTLP exports."""
-    with deploy_mock_maas_server(
-        client=unprivileged_client,
-        namespace=unprivileged_model_namespace,
-        teardown=teardown_resources,
-    ) as upstream:
-        yield upstream
 
 
 @pytest.fixture(scope="class")
