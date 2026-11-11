@@ -52,6 +52,7 @@ LOGGER = structlog.get_logger(name=__name__)
 
 UPGRADE_BASELINE_CM_NAME = "upgrade-test-baseline"
 UPGRADE_AUTH_TOKEN_SECRET_NAME = "upgrade-test-auth-token"  # pragma: allowlist secret
+UPGRADE_AUTH_TOKEN_EXPIRATION_SECONDS: int = 7 * 24 * 60 * 60
 UPGRADE_KUEUE_DSC_STATE_CM_NAME = "upgrade-kueue-dsc-state"
 
 

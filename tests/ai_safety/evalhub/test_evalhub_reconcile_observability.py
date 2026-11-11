@@ -1284,7 +1284,7 @@ class TestEvalHubReconcileE2E:
         assert job_failure_samples or failure_spans, "No job failure events detected in metrics or traces"
 
 
-# TC-UPG: Upgrade (3 tests)
+# TC-UPG: Upgrade (2 tests)
 
 
 @pytest.mark.parametrize(
@@ -1296,7 +1296,12 @@ class TestEvalHubReconcileE2E:
 @pytest.mark.tier1
 @pytest.mark.slow
 class TestEvalHubReconcileUpgrade:
-    """TC-UPG-001 through TC-UPG-003: Upgrade testing."""
+    """TC-UPG-001 and TC-UPG-002: Upgrade testing.
+
+    TC-UPG-003 (rollback removes new metrics) is not implemented: this suite only
+    distinguishes pre_upgrade/post_upgrade phases and has no rollback phase or
+    fixture, so the behavior cannot be verified here. Tracked under RHAI-241.
+    """
 
     @pytest.mark.post_upgrade
     def test_new_metrics_appear_after_upgrade(
@@ -1357,37 +1362,3 @@ class TestEvalHubReconcileUpgrade:
         assert "workqueue_depth" in raw_metrics or "controller_runtime_active_workers" in raw_metrics, (
             "Standard controller-runtime work metrics missing after upgrade"
         )
-
-    @pytest.mark.skip(
-        reason=(
-            "TC-UPG-003 requires observing state after an operator rollback, but this suite's "
-            "upgrade model only supports pre_upgrade/post_upgrade phases (no rollback phase or "
-            "fixture exists). As written (marked pre_upgrade), this test runs before the initial "
-            "upgrade and never exercises a real rollback, so it cannot validate the described "
-            "behavior. Skipping until rollback CI orchestration exists."
-        )
-    )
-    @pytest.mark.pre_upgrade
-    def test_rollback_removes_new_metrics(
-        self,
-        operator_metrics_route: Route,
-        admin_client: DynamicClient,
-        model_namespace: Namespace,
-        operator_metrics_token: str,
-    ) -> None:
-        """Given a rollback to the prior version, new metrics are cleanly removed.
-
-        TC-UPG-003: Verify rolling back the operator removes the new
-        evalhub_controller_* metrics without affecting existing ones.
-        """
-        raw_metrics = fetch_operator_metrics(
-            operator_metrics_route_host=operator_metrics_route.host,
-            operator_metrics_token=operator_metrics_token,
-        )
-        assert "controller_runtime_reconcile_total" in raw_metrics, (
-            "Base controller-runtime metrics should exist after rollback"
-        )
-        for metric_name in EVALHUB_RECONCILE_METRICS:
-            assert metric_name not in raw_metrics, (
-                f"Metric {metric_name} still present after rollback — expected clean removal"
-            )

@@ -14,9 +14,16 @@ model-car:
     model_output_type: audio
     # Encoder-decoder (speech) architecture is unsupported by the vllm_gaudi plugin:
     # get_kv_cache_spec() raises NotImplementedError on HPU (engine core dies at init).
+    # On AMD/ROCm (verified on MI300X/gfx942, RHAIIS vLLM 0.31.0): the encoder-decoder
+    # path selects ROCM_AITER_UNIFIED_ATTN -> aiter flash_attn_varlen, and aiter's JIT
+    # build of the mha_varlen_fwd_bf16 kernel yields no importable module (hipcc rejects
+    # -amdgpu-coerce-illegal-types=1), so engine core init fails with
+    # "ModuleNotFoundError: aiter.jit.mha_varlen_fwd_bf16_..." (kserve-container exit 1).
+    # Product bug in the RHAIIS ROCm image; re-enable on AMD once it ships a fixed aiter.
     unsupported_accelerators:
       - gaudi
       - spyre
+      - amd
     # Default 16Gi limit OOM-kills the vLLM engine while loading the whisper weights.
     resources:
       requests:
