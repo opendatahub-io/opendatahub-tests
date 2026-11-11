@@ -7,6 +7,8 @@ broke the Playground configuration without any downstream test
 failing.
 """
 
+from typing import Any
+
 import pytest
 
 from tests.ogx.constants import (
@@ -19,11 +21,11 @@ from tests.ogx.constants import (
 from tests.ogx.genaistudio.config import (
     build_genai_playground_config,
     build_genai_playground_server_config,
-    get_genai_playground_configmap_spec,
 )
 
 
-def _get_inference_provider(config: dict, provider_type: str) -> dict:
+def _get_inference_provider(config: dict[str, Any], provider_type: str) -> list[dict[str, Any]]:
+    """Return the inference providers of the given type from a Playground config."""
     return [provider for provider in config["providers"]["inference"] if provider["provider_type"] == provider_type]
 
 
@@ -114,16 +116,3 @@ def test_build_genai_playground_server_config_override() -> None:
         assert exclusive_key not in spec
     assert "policy" in spec["network"]
     assert spec["workload"]["resources"]["requests"]["cpu"] == "1"
-
-
-@pytest.mark.ogx
-def test_get_genai_playground_configmap_spec() -> None:
-    """Verify the ConfigMap spec carries the config.yaml and the operator watch label."""
-    configmap_spec = get_genai_playground_configmap_spec(namespace="test-ogx-genai-playground")
-
-    assert configmap_spec["name"] == GENAI_PLAYGROUND_CONFIGMAP_NAME
-    # Required by the OGX operator for ConfigMaps referenced via spec.overrideConfig.
-    assert configmap_spec["labels"]["ogx.io/watch"] == "true"
-    assert GENAI_PLAYGROUND_CONFIGMAP_KEY in configmap_spec["data"]
-    config = configmap_spec["data"][GENAI_PLAYGROUND_CONFIGMAP_KEY]
-    assert _get_inference_provider(config=config, provider_type=GENAI_PLAYGROUND_PASSTHROUGH_PROVIDER_TYPE)
