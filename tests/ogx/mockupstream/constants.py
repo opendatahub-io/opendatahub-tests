@@ -14,7 +14,9 @@ MOCK_MAAS_PORT = 9999
 MOCK_MAAS_ROUTE_NAME = "mock-maas"
 # In-cluster URL for the passthrough provider's base_url (OGX appends /v1).
 MOCK_MAAS_SERVICE_URL = f"http://{MOCK_MAAS_NAME}:{MOCK_MAAS_PORT}"
-# Model served by the mock (registered in the OGX run config).
+# Model served by the mock (registered in the OGX run config). OGX reports
+# registered models with the provider prefix; API calls must use the
+# qualified id.
 MOCK_MAAS_MODEL_ID = "test-maas-model"
 
 # --- genai-bff-proxy remote::passthrough provider ---------------------------
@@ -22,6 +24,9 @@ MOCK_MAAS_MODEL_ID = "test-maas-model"
 # match the odh-dashboard BFF).
 PASSTHROUGH_PROVIDER_ID = "genai-bff-proxy"
 PASSTHROUGH_PROVIDER_TYPE = "remote::passthrough"
+# Model id as OGX reports it (registered models carry the provider prefix);
+# API calls must use the qualified form.
+MOCK_MAAS_QUALIFIED_MODEL_ID = f"{PASSTHROUGH_PROVIDER_ID}/{MOCK_MAAS_MODEL_ID}"
 # X-OGX-Provider-Data JSON keys mapped to outbound HTTP headers so per-request
 # credentials (e.g. MaaS tokens) flow through OGX without OGX understanding them.
 PASSTHROUGH_FORWARD_HEADERS = {

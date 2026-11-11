@@ -10,19 +10,24 @@ The model is a mock that deterministically requests the mock MCP server's
 ``get_weather`` tool, so no external model or credentials are involved.
 """
 
+import time
+
 import httpx
 import pytest
+import structlog
 from ogx_client import OgxClient
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL
 from tests.ogx.mockupstream.constants import (
-    MOCK_MAAS_MODEL_ID,
+    MOCK_MAAS_QUALIFIED_MODEL_ID,
     MOCK_MCP_CONNECTOR_ID,
     MOCK_MCP_SERVER_LABEL,
     MOCK_MCP_TOOL_NAME,
     MOCK_MCP_TOOL_RESULT_TEXT,
 )
 from tests.ogx.mockupstream.deployments import MockUpstream
+
+LOGGER = structlog.get_logger(name=__name__)
 
 MCP_NAMESPACE = {"name": "test-ogx-mcp", "randomize_name": True}
 
@@ -32,8 +37,19 @@ MCP_TOOL_PROMPT = "What is the weather in Boston?"
 
 
 def _admin_get(ogx_admin_api_url: str, path: str) -> dict:
+    """GET an admin API path, retrying transient failures (route warm-up)."""
     with httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=120) as client:
-        response = client.get(f"{ogx_admin_api_url}{path}")
+        for attempt in range(3):
+            response = client.get(f"{ogx_admin_api_url}{path}")
+            if response.status_code < 500:
+                break
+            LOGGER.warning(
+                "Transient server error from admin API, retrying",
+                path=path,
+                status=response.status_code,
+                attempt=attempt + 1,
+            )
+            time.sleep(5)
         response.raise_for_status()
         return response.json()
 
@@ -94,7 +110,7 @@ class TestMcpToolRuntime:
             the MCP server, and the tool output appears in the response.
         """
         response = ogx_client.responses.create(
-            model=MOCK_MAAS_MODEL_ID,
+            model=MOCK_MAAS_QUALIFIED_MODEL_ID,
             input=MCP_TOOL_PROMPT,
             tools=[
                 {

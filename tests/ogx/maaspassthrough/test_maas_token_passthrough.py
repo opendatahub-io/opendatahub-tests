@@ -18,7 +18,7 @@ import pytest
 from ogx_client import APIError, OgxClient
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL
-from tests.ogx.mockupstream.constants import MOCK_MAAS_MODEL_ID
+from tests.ogx.mockupstream.constants import MOCK_MAAS_QUALIFIED_MODEL_ID
 
 USER_TOKEN = "test-user-token-maas-passthrough"
 
@@ -38,7 +38,7 @@ def _chat_completion(ogx_client: OgxClient, content: str, provider_data: dict | 
     if provider_data is not None:
         headers["X-OGX-Provider-Data"] = json.dumps(provider_data)
     response = ogx_client.chat.completions.create(
-        model=MOCK_MAAS_MODEL_ID,
+        model=MOCK_MAAS_QUALIFIED_MODEL_ID,
         messages=[{"role": "user", "content": content}],
         extra_headers=headers or None,
     )

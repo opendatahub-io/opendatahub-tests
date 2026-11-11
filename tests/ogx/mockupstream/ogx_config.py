@@ -58,13 +58,10 @@ def build_mock_run_config(
             arrives via ``X-OGX-Provider-Data``); a dummy value when a
             non-empty key is required for OGX's internal OpenAI-compatible
             client (e.g. the responses API's model calls).
-        mcp_endpoint: When set, additionally enable the API set the
-            ``inline::builtin`` responses provider requires (responses,
-            vector_io, files, file_processors) plus tool_runtime, register the
-            mock MCP server as a connector, and persist connectors. This is
-            what the MCP tool-runtime tests use.
+        mcp_endpoint: When set, register the mock MCP server as a connector
+            and persist connectors (used by the MCP tool-runtime tests).
     """
-    apis = ["inference"]
+    apis = ["inference", "responses", "file_processors", "files", "tool_runtime", "vector_io"]
     providers: dict[str, list[dict[str, Any]]] = {
         "inference": [
             {
@@ -104,51 +101,55 @@ def build_mock_run_config(
         },
     }
 
-    if mcp_endpoint:
-        apis.extend(["responses", "file_processors", "files", "tool_runtime", "vector_io"])
-        providers.update({
-            "responses": [
-                {
-                    "provider_id": "builtin",
-                    "provider_type": "inline::builtin",
-                    "config": {
-                        "persistence": {
-                            "responses": {
-                                "table_name": "responses",
-                                "backend": "sql_default",
-                                "max_write_queue_size": 10000,
-                                "num_writers": 4,
-                            }
+    # The API set the inline::builtin responses provider requires, plus
+    # tool_runtime and vector_io. The shared ogx_client fixture's readiness
+    # check (and the dashboard's Playground configuration) expect a full
+    # server, so every mock-backed suite deploys this set.
+    providers.update({
+        "responses": [
+            {
+                "provider_id": "builtin",
+                "provider_type": "inline::builtin",
+                "config": {
+                    "persistence": {
+                        "responses": {
+                            "table_name": "responses",
+                            "backend": "sql_default",
+                            "max_write_queue_size": 10000,
+                            "num_writers": 4,
                         }
-                    },
-                }
-            ],
-            "file_processors": [{"provider_id": "auto", "provider_type": "inline::auto", "config": {}}],
-            "files": [
-                {
-                    "provider_id": "localfs-files",
-                    "provider_type": "inline::localfs",
-                    "config": {
-                        "storage_dir": f"/tmp/{distro_name}-files",
-                        "metadata_store": {"table_name": "files_metadata", "backend": "sql_default"},
-                    },
-                }
-            ],
-            "tool_runtime": [
-                {
-                    "provider_id": "model-context-protocol",
-                    "provider_type": "remote::model-context-protocol",
-                    "config": {},
-                }
-            ],
-            "vector_io": [
-                {
-                    "provider_id": "faiss",
-                    "provider_type": "inline::faiss",
-                    "config": {"persistence": {"namespace": "faiss", "backend": "kv_default"}},
-                }
-            ],
-        })
+                    }
+                },
+            }
+        ],
+        "file_processors": [{"provider_id": "auto", "provider_type": "inline::auto", "config": {}}],
+        "files": [
+            {
+                "provider_id": "localfs-files",
+                "provider_type": "inline::localfs",
+                "config": {
+                    "storage_dir": f"/tmp/{distro_name}-files",
+                    "metadata_store": {"table_name": "files_metadata", "backend": "sql_default"},
+                },
+            }
+        ],
+        "tool_runtime": [
+            {
+                "provider_id": "model-context-protocol",
+                "provider_type": "remote::model-context-protocol",
+                "config": {},
+            }
+        ],
+        "vector_io": [
+            {
+                "provider_id": "faiss",
+                "provider_type": "inline::faiss",
+                "config": {"persistence": {"namespace": "faiss", "backend": "kv_default"}},
+            }
+        ],
+    })
+
+    if mcp_endpoint:
         stores["connectors"] = {"table_name": "connectors", "backend": "sql_default"}
         config["connectors"] = [
             {

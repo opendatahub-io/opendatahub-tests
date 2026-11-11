@@ -19,7 +19,7 @@ from ocp_resources.pod import Pod
 from ogx_client import OgxClient
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL, OGX_METRICS_PORT
-from tests.ogx.mockupstream.constants import MOCK_MAAS_MODEL_ID
+from tests.ogx.mockupstream.constants import MOCK_MAAS_QUALIFIED_MODEL_ID
 from tests.ogx.utils import wait_for_unique_ogx_pod
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -39,7 +39,7 @@ OTLP_METRICS_PATH = "/v1/metrics"
 
 def _send_chat_completion(ogx_client: OgxClient) -> None:
     response = ogx_client.chat.completions.create(
-        model=MOCK_MAAS_MODEL_ID,
+        model=MOCK_MAAS_QUALIFIED_MODEL_ID,
         messages=[{"role": "user", "content": "otel metrics traffic"}],
     )
     assert response.choices[0].message.content, "Empty completion from mock model"
