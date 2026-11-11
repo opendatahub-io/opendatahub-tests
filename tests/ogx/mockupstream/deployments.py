@@ -25,12 +25,10 @@ from tests.ogx.mockupstream.constants import (
     MOCK_MAAS_NAME,
     MOCK_MAAS_PORT,
     MOCK_MAAS_SCRIPT_CONFIGMAP_NAME,
-    MOCK_MAAS_SCRIPT_KEY,
     MOCK_MAAS_SERVICE_URL,
     MOCK_MCP_NAME,
     MOCK_MCP_PORT,
     MOCK_MCP_SCRIPT_CONFIGMAP_NAME,
-    MOCK_MCP_SCRIPT_KEY,
     MOCK_MCP_SERVICE_URL,
     MOCK_SERVER_IMAGE,
 )
@@ -93,7 +91,6 @@ def deploy_mock_upstream(
     port: int,
     script_filename: str,
     script_configmap_name: str,
-    script_key: str,
     service_url: str,
     teardown: bool = True,
     routed: bool = True,
@@ -105,9 +102,10 @@ def deploy_mock_upstream(
         namespace: Namespace to deploy into.
         name: Name for the Deployment/Service.
         port: Container/service port.
-        script_filename: Filename of the server script under ``scripts/``.
+        script_filename: Filename of the server script under ``scripts/``;
+            also used as the ConfigMap key (files mount under their key) and
+            in the container command, so the three cannot diverge.
         script_configmap_name: ConfigMap name carrying the server script.
-        script_key: ConfigMap key holding the script content.
         service_url: In-cluster URL returned to the caller.
         teardown: Whether to delete the resources on exit.
         routed: Whether to create an edge-terminated Route to the mock, so
@@ -120,7 +118,7 @@ def deploy_mock_upstream(
             client=client,
             namespace=namespace.name,
             name=script_configmap_name,
-            data={script_key: script_path.read_text()},
+            data={script_filename: script_path.read_text()},
             wait_for_resource=True,
             teardown=teardown,
         ),
@@ -193,7 +191,6 @@ def deploy_mock_maas_server(
         port=MOCK_MAAS_PORT,
         script_filename="mock_maas_server.py",
         script_configmap_name=MOCK_MAAS_SCRIPT_CONFIGMAP_NAME,
-        script_key=MOCK_MAAS_SCRIPT_KEY,
         service_url=MOCK_MAAS_SERVICE_URL,
         teardown=teardown,
         routed=routed,
@@ -216,7 +213,6 @@ def deploy_mock_mcp_server(
         port=MOCK_MCP_PORT,
         script_filename="mock_mcp_server.py",
         script_configmap_name=MOCK_MCP_SCRIPT_CONFIGMAP_NAME,
-        script_key=MOCK_MCP_SCRIPT_KEY,
         service_url=MOCK_MCP_SERVICE_URL,
         teardown=teardown,
         routed=routed,

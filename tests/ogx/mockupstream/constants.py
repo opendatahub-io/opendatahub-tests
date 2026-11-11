@@ -10,7 +10,6 @@ MOCK_SERVER_IMAGE = os.getenv("OGX_MOCK_SERVER_IMAGE", "registry.access.redhat.c
 # --- mock MaaS / genai-proxy upstream -------------------------------------
 MOCK_MAAS_NAME = "mock-maas-server"
 MOCK_MAAS_SCRIPT_CONFIGMAP_NAME = "mock-maas-script"
-MOCK_MAAS_SCRIPT_KEY = "server.py"
 MOCK_MAAS_PORT = 9999
 MOCK_MAAS_ROUTE_NAME = "mock-maas"
 # In-cluster URL for the passthrough provider's base_url (OGX appends /v1).
@@ -36,7 +35,6 @@ PASSTHROUGH_FORWARD_HEADERS = {
 # --- mock MCP server -------------------------------------------------------
 MOCK_MCP_NAME = "mock-mcp-server"
 MOCK_MCP_SCRIPT_CONFIGMAP_NAME = "mock-mcp-script"
-MOCK_MCP_SCRIPT_KEY = "server.py"
 MOCK_MCP_PORT = 9000
 MOCK_MCP_ENDPOINT_PATH = "/mcp"
 MOCK_MCP_SERVICE_URL = f"http://{MOCK_MCP_NAME}:{MOCK_MCP_PORT}{MOCK_MCP_ENDPOINT_PATH}"
