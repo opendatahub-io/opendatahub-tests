@@ -1,14 +1,18 @@
 import base64
+import os
 import time
 from collections.abc import Generator
 from typing import Any
+from uuid import uuid4
 
 import portforward
 import pytest
 import structlog
+import yaml
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
@@ -23,10 +27,12 @@ from tests.ai_hub.constants import (
     MR_ISVC_VOLUME_MOUNTS,
     MR_ISVC_VOLUMES,
 )
-from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE, HF_LAST_SYNCED_SOURCE_ID
-from tests.ai_hub.model_catalog.huggingface.utils import get_huggingface_model_from_api
+from tests.ai_hub.model_catalog.constants import HF_CUSTOM_MODE, HF_LAST_SYNCED_SOURCE_ID, MODEL_CATALOG_DEPLOYMENT_NAME
+from tests.ai_hub.model_catalog.huggingface.utils import (
+    get_huggingface_model_from_api,
+    wait_for_huggingface_token_rollout,
+)
 from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api, wait_for_model_catalog_api
-from tests.ai_hub.utils import wait_for_model_catalog_pod_ready_after_deletion
 from utilities.infra import create_ns
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -355,16 +361,41 @@ def private_hf_catalog_config(
     model_catalog_rest_url: list[str],
     model_registry_rest_headers: dict[str, str],
 ) -> Generator[ConfigMap]:
-    """Temporarily configure the private HF source using existing catalog credentials."""
+    """Configure a private HF source using operator-managed Secret injection."""
+    api_key = os.environ.get("HF_AI_HUB_TOKEN")
+    assert api_key, "HF_AI_HUB_TOKEN must be set in the test environment"
+
+    catalog_config = yaml.safe_load(request.param["sources_yaml"])
+    source = catalog_config["catalogs"][0]
+    source_label = source["id"].upper()
+    api_key_env_var = f"HF_API_KEY_{source_label}"
+    deployment = Deployment(
+        client=admin_client,
+        name=MODEL_CATALOG_DEPLOYMENT_NAME,
+        namespace=model_registry_namespace,
+        ensure_exists=True,
+    )
     try:
-        with ResourceEditor(patches={catalog_config_map: {"data": {"sources.yaml": request.param["sources_yaml"]}}}):
-            wait_for_model_catalog_pod_ready_after_deletion(
-                client=admin_client, model_registry_namespace=model_registry_namespace
-            )
-            wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
-            yield catalog_config_map
+        with Secret(
+            client=admin_client,
+            name=f"hf-ai-hub-token-{uuid4().hex[:8]}",
+            namespace=model_registry_namespace,
+            label={
+                "app.kubernetes.io/component": "model-catalog",
+                "hub.kubeflow.org/hf-source": source_label,
+            },
+            string_data={"apiKey": api_key},
+            wait_for_resource=True,
+        ) as api_key_secret:
+            source.setdefault("properties", {})["apiKey"] = api_key_secret.name
+            with ResourceEditor(
+                patches={catalog_config_map: {"data": {"sources.yaml": yaml.safe_dump(catalog_config)}}}
+            ):
+                wait_for_huggingface_token_rollout(
+                    deployment=deployment, api_key_env_var=api_key_env_var, secret_name=api_key_secret.name
+                )
+                wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+                yield catalog_config_map
     finally:
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
-        )
+        wait_for_huggingface_token_rollout(deployment=deployment, api_key_env_var=api_key_env_var, secret_name=None)
         wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
