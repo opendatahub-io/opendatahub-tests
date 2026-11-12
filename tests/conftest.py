@@ -1435,6 +1435,7 @@ def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None
     # GPU accelerators supported for vLLM GPU-specific testing
     supported_gpu_accelerators = {
         AcceleratorType.NVIDIA,
+        AcceleratorType.NVIDIA_ARM,
         AcceleratorType.AMD,
         AcceleratorType.GAUDI,
         AcceleratorType.SPYRE,
