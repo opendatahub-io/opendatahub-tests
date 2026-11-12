@@ -39,6 +39,8 @@ from tests.model_serving.maas_billing.upgrade.utils import (
     LegacyMigrationBaseline,
     MaaSBaseline,
     MultitenantUpgradeTenantRecord,
+    assert_multitenant_upgrade_api_key_secrets_absent,
+    assert_multitenant_upgrade_api_key_secrets_present,
     capture_maas_baseline,
     capture_multitenant_upgrade_baseline,
     cluster_has_inference_external_model_crd,
