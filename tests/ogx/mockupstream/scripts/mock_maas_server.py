@@ -19,11 +19,16 @@ Endpoints:
   body). Headers are normalized to lowercase (HTTP headers are
   case-insensitive).
 - ``GET /v1/debug/requests`` — the last ``MAX_RECORDED_REQUESTS`` requests.
+  Both debug endpoints require the ``X-Mock-Debug-Token`` header when the
+  server was deployed with ``MOCK_DEBUG_TOKEN`` (the recordings include the
+  request headers the mock received).
 - any other ``POST`` — recorded and answered with 200 (lets the mock act as a
   passive receiver, e.g. for OGX's OTLP metrics export).
 """
 
+import hmac
 import json
+import os
 import re
 import uuid
 from collections import deque
@@ -31,9 +36,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 9999
 MAX_RECORDED_REQUESTS = 100
-# Reject bodies larger than this before reading them, so a client cannot
-# exhaust the pod's memory (128 MiB limit) with a single large POST.
+# Reject request bodies larger than this before reading them, so a client
+# cannot exhaust the pod's memory (128 MiB limit) with a single large POST.
 MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024
+# Bodies larger than this are recorded by length only (not parsed and kept),
+# bounding the retained recordings to ~100 x 64 KiB.
+MAX_RECORDED_BODY_BYTES = 64 * 1024
+# When set, the debug endpoints (which expose recorded request headers and
+# bodies) require this token via the X-Mock-Debug-Token header.
+DEBUG_TOKEN = os.environ.get("MOCK_DEBUG_TOKEN")
 # Bounded buffer: the oldest recorded request is discarded automatically.
 RECORDED_REQUESTS: deque[dict] = deque(maxlen=MAX_RECORDED_REQUESTS)
 
@@ -46,15 +57,11 @@ def _record(path: str, headers, body: dict | None) -> None:
     })
 
 
-def _reject_oversized_body(handler: MockMaaSHandler, length: int) -> None:
-    handler.send_response(413)
-    handler.send_header("Content-Length", "0")
-    handler.close_connection = True
-    handler.end_headers()
-
-
 class MockMaaSHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # Socket timeout: a client that opens a request but never finishes sending
+    # the body must not hold the handler thread forever.
+    timeout = 60
 
     def _send_json(self, payload: dict, status: int = 200) -> None:
         body = json.dumps(payload).encode()
@@ -169,10 +176,19 @@ class MockMaaSHandler(BaseHTTPRequestHandler):
     # --- HTTP methods --------------------------------------------------------
 
     def do_GET(self) -> None:
-        if self.path == "/v1/debug/last-headers":
-            self._send_json(RECORDED_REQUESTS[-1] if RECORDED_REQUESTS else {})
-        elif self.path == "/v1/debug/requests":
-            self._send_json({"data": list(RECORDED_REQUESTS)})
+        if self.path in ("/v1/debug/last-headers", "/v1/debug/requests"):
+            # The debug endpoints expose recorded request headers and bodies:
+            # require the deployment's debug token when one is configured.
+            provided = self.headers.get("X-Mock-Debug-Token", "")
+            if not DEBUG_TOKEN or not hmac.compare_digest(provided, DEBUG_TOKEN):
+                self.send_response(401)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if self.path == "/v1/debug/last-headers":
+                self._send_json(RECORDED_REQUESTS[-1] if RECORDED_REQUESTS else {})
+            else:
+                self._send_json({"data": list(RECORDED_REQUESTS)})
         elif self.path == "/v1/models":
             self._send_json({
                 "object": "list",
@@ -194,7 +210,19 @@ class MockMaaSHandler(BaseHTTPRequestHandler):
         except ValueError:
             length = -1
         if length < 0 or length > MAX_REQUEST_BODY_BYTES:
-            _reject_oversized_body(handler=self, length=length)
+            self.send_response(413)
+            self.send_header("Content-Length", "0")
+            self.close_connection = True
+            self.end_headers()
+            return
+        if length > MAX_RECORDED_BODY_BYTES:
+            # Large (but accepted) bodies are read and discarded, recorded by
+            # length only so the retained recordings stay small.
+            self.rfile.read(length)
+            _record(path=self.path, headers=self.headers, body={"_raw_length": length})
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
             return
         raw = self.rfile.read(length) if length else b""
         try:

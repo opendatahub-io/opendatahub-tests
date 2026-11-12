@@ -19,6 +19,7 @@ import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
+from ocp_resources.service_monitor import ServiceMonitor
 from ogx_client import OgxClient
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL, OGX_METRICS_PORT
@@ -115,24 +116,22 @@ class TestOtelMetrics:
         Then: a ServiceMonitor named after the server exists in the namespace,
             targeting the metrics port so cluster monitoring can scrape it.
         """
-        service_monitors = admin_client.resources.get(
-            api_version="monitoring.coreos.com/v1",
-            kind="ServiceMonitor",
-        )
-        service_monitor = service_monitors.get(
-            namespace=ogx_server.namespace,
+        service_monitor = ServiceMonitor(
+            client=admin_client,
             name=f"{ogx_server.name}-service-monitor",
+            namespace=ogx_server.namespace,
         )
+        assert service_monitor.exists, f"ServiceMonitor '{service_monitor.name}' not found in {ogx_server.namespace}"
         ports = [
             port
-            for endpoint in service_monitor.spec.endpoints
+            for endpoint in service_monitor.instance.spec.endpoints
             for port in [endpoint.get("port", endpoint.get("targetPort"))]
         ]
-        assert ports, f"ServiceMonitor has no endpoints: {service_monitor.spec}"
+        assert ports, f"ServiceMonitor has no endpoints: {service_monitor.instance.spec}"
         # The operator targets the service port named "metrics", which maps to
         # the metrics port configured in spec.monitoring (9464).
         assert "metrics" in ports, f"ServiceMonitor does not target the metrics port (expected 'metrics', got: {ports})"
-        LOGGER.info("ServiceMonitor endpoints", name=service_monitor.metadata.name, ports=ports)
+        LOGGER.info("ServiceMonitor endpoints", name=service_monitor.name, ports=ports)
 
     @pytest.mark.tier2
     def test_otlp_export_reaches_configured_endpoint(
@@ -154,7 +153,11 @@ class TestOtelMetrics:
         otlp_posts: list = []
         recorded_paths: list = []
         while True:
-            with httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=60) as client:
+            with httpx.Client(
+                verify=OGX_CLIENT_VERIFY_SSL,
+                timeout=60,
+                headers=mock_maas_upstream.debug_headers(),
+            ) as client:
                 response = client.get(f"{mock_maas_upstream.route_url}/v1/debug/requests")
                 response.raise_for_status()
                 recorded = response.json()["data"]

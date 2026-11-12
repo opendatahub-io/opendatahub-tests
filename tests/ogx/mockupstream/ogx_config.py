@@ -11,6 +11,7 @@ and ``build_override_config_server_spec`` assembles the OGXServer spec.
 
 from typing import Any
 
+from tests.ogx.constants import OGX_METRICS_PORT
 from tests.ogx.mockupstream.constants import (
     MOCK_MAAS_MODEL_ID,
     MOCK_MCP_CONNECTOR_ID,
@@ -37,7 +38,7 @@ _INGRESS_NETWORK_POLICY = {
                 ],
             },
             {
-                "ports": [{"port": 9464, "protocol": "TCP"}],
+                "ports": [{"port": OGX_METRICS_PORT, "protocol": "TCP"}],
                 "from": [
                     {"namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "monitoring"}}},
                 ],

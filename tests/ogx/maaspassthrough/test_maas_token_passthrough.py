@@ -20,6 +20,7 @@ from ogx_client import APIStatusError, OgxClient
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL
 from tests.ogx.mockupstream.constants import MOCK_MAAS_QUALIFIED_MODEL_ID
+from tests.ogx.mockupstream.deployments import MockUpstream
 
 USER_TOKEN = "test-user-token-maas-passthrough"
 
@@ -46,10 +47,14 @@ def _chat_completion(ogx_client: OgxClient, content: str, provider_data: dict | 
     return response.choices[0].message.content
 
 
-def _get_last_request(mock_maas_debug_url: str) -> dict:
+def _get_last_request(mock_maas_upstream: MockUpstream) -> dict:
     """Return the last request the mock MaaS upstream received."""
-    with httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=60) as client:
-        response = client.get(f"{mock_maas_debug_url}/v1/debug/last-headers")
+    with httpx.Client(
+        verify=OGX_CLIENT_VERIFY_SSL,
+        timeout=60,
+        headers=mock_maas_upstream.debug_headers(),
+    ) as client:
+        response = client.get(f"{mock_maas_upstream.route_url}/v1/debug/last-headers")
         response.raise_for_status()
         return response.json()
 
@@ -64,7 +69,9 @@ class TestMaasTokenPassthrough:
     """Per-request MaaS credential flow through remote::passthrough."""
 
     @pytest.mark.tier1
-    def test_user_token_forwarded_as_authorization(self, ogx_client: OgxClient, mock_maas_debug_url: str) -> None:
+    def test_user_token_forwarded_as_authorization(
+        self, ogx_client: OgxClient, mock_maas_upstream: MockUpstream
+    ) -> None:
         """Verify the per-request token reaches the upstream as a Bearer credential.
 
         Given: an OGX server whose only inference provider is the
@@ -81,13 +88,15 @@ class TestMaasTokenPassthrough:
         )
         assert content == "mock-maas echo: hello from token passthrough test", f"unexpected completion: {content}"
 
-        last_request = _get_last_request(mock_maas_debug_url=mock_maas_debug_url)
+        last_request = _get_last_request(mock_maas_upstream=mock_maas_upstream)
         authorization = last_request["headers"].get("authorization") or ""
         assert authorization, "No Authorization header forwarded to upstream"
-        assert hmac.compare_digest(authorization, f"Bearer {USER_TOKEN}"), f"Authorization mismatch: {authorization!r}"
+        # The failure message intentionally omits the received value: it could
+        # hold a credential that must not end up in the test report.
+        assert hmac.compare_digest(authorization, f"Bearer {USER_TOKEN}"), "Authorization mismatch"
 
     @pytest.mark.tier1
-    def test_forward_headers_reach_upstream(self, ogx_client: OgxClient, mock_maas_debug_url: str) -> None:
+    def test_forward_headers_reach_upstream(self, ogx_client: OgxClient, mock_maas_upstream: MockUpstream) -> None:
         """Verify X-OGX-Provider-Data keys are mapped to upstream headers.
 
         Given: the provider's forward_headers mapping (maas_subscription,
@@ -103,7 +112,7 @@ class TestMaasTokenPassthrough:
             provider_data=PROVIDER_DATA_WITH_TOKEN,
         )
 
-        headers = _get_last_request(mock_maas_debug_url=mock_maas_debug_url)["headers"]
+        headers = _get_last_request(mock_maas_upstream=mock_maas_upstream)["headers"]
         assert headers.get("x-maas-subscription") == "sub-42", (
             f"X-MaaS-Subscription: {headers.get('x-maas-subscription')!r}"
         )
@@ -116,7 +125,9 @@ class TestMaasTokenPassthrough:
         assert hmac.compare_digest(authorization, f"Bearer {USER_TOKEN}")
 
     @pytest.mark.tier3
-    def test_no_token_forwarded_without_provider_data(self, ogx_client: OgxClient, mock_maas_debug_url: str) -> None:
+    def test_no_token_forwarded_without_provider_data(
+        self, ogx_client: OgxClient, mock_maas_upstream: MockUpstream
+    ) -> None:
         """Verify no user credential leaks upstream when none was supplied.
 
         Given: the passthrough provider has an empty api_key.
@@ -138,7 +149,7 @@ class TestMaasTokenPassthrough:
             )
             return
 
-        headers = _get_last_request(mock_maas_debug_url=mock_maas_debug_url)["headers"]
-        assert "authorization" not in headers, (
-            f"Authorization forwarded without provider data: {headers['authorization']!r}"
-        )
+        headers = _get_last_request(mock_maas_upstream=mock_maas_upstream)["headers"]
+        # The failure message intentionally omits the received value: it could
+        # hold a credential that must not end up in the test report.
+        assert "authorization" not in headers, "Authorization forwarded without provider data"

@@ -16,8 +16,10 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 9000
+# The streamable-http endpoint this server is deployed under (must match
+# MOCK_MCP_ENDPOINT_PATH in tests/ogx/mockupstream/constants.py).
+ENDPOINT_PATH = "/mcp"
 TOOL_NAME = "get_weather"
-TOOL_RESULT_TEXT = "Weather in Boston: sunny, 21C"
 # Reject bodies larger than this before reading them, so a client cannot
 # exhaust the pod's memory (128 MiB limit) with a single large POST.
 MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024
@@ -44,6 +46,14 @@ class MockMCPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # Only the configured endpoint speaks MCP; anything else is a client
+        # bug (e.g. a dropped path in the connector URL) and must fail the
+        # tests rather than silently succeed.
+        if self.path != ENDPOINT_PATH:
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
         except ValueError:
@@ -95,11 +105,21 @@ class MockMCPHandler(BaseHTTPRequestHandler):
             params = message.get("params", {})
             name = params.get("name")
             if name == TOOL_NAME:
+                # Validate the required argument and echo it in the result, so
+                # the tests can detect OGX sending wrong tool arguments.
+                city = (params.get("arguments") or {}).get("city")
+                if not isinstance(city, str) or not city:
+                    self._json_response({
+                        "jsonrpc": "2.0",
+                        "id": message_id,
+                        "error": {"code": -32602, "message": "Missing required argument: city"},
+                    })
+                    return
                 self._json_response({
                     "jsonrpc": "2.0",
                     "id": message_id,
                     "result": {
-                        "content": [{"type": "text", "text": TOOL_RESULT_TEXT}],
+                        "content": [{"type": "text", "text": f"Weather in {city}: sunny, 21C"}],
                         "isError": False,
                     },
                 })

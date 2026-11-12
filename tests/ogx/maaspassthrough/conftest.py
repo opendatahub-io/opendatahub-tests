@@ -99,9 +99,3 @@ def ogx_server(  # noqa: UFN001 — intentionally shadows the parent conftest fi
     ):
         ogx_srv.wait_for_status(status=OgxServer.Status.READY, timeout=600)
         yield ogx_srv
-
-
-@pytest.fixture(scope="class")
-def mock_maas_debug_url(mock_maas_upstream: MockUpstream) -> str:
-    """External URL of the mock MaaS debug endpoints (last-headers/requests)."""
-    return mock_maas_upstream.route_url
