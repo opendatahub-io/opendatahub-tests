@@ -365,7 +365,7 @@ def resolve_legacy_maas_networking_resource_name(
 ) -> str | None:
     """Return the legacy networking resource name present in the namespace, if any."""
     for candidate in legacy_external_model_resource_name_candidates(model_name=model_name):
-        if legacy_maas_networking_present(client=client, resource_name=candidate, namespace=namespace):
+        if legacy_maas_networking_present(client=client, model_name=model_name, namespace=namespace):
             return candidate
     return None
 
