@@ -112,6 +112,12 @@ LOGGER = structlog.get_logger(name=__name__)
 
 TENANT_EXTERNAL_MODEL_READY_TIMEOUT = int(os.environ.get("E2E_TENANT_EXTERNAL_MODEL_READY_TIMEOUT", "300"))
 TENANT_EXTERNAL_MODEL_POLL_INTERVAL = 5
+# Settle window for legacy-controller non-interference checks: how long a
+# legacy IPP controller has to (wrongly) react to a new-shaped model. Shared
+# by the compat module's checks and the coexistence fixture so an extended
+# window applies to both.
+RECONCILE_WAIT = int(os.environ.get("E2E_RECONCILE_WAIT", "8"))
+SETTLE_POLL_INTERVAL = 5
 
 EXTERNAL_ENDPOINT = os.environ.get("E2E_EXTERNAL_ENDPOINT", "httpbingo.org")
 
@@ -123,6 +129,8 @@ EXTERNAL_API_FORMAT = "openai-chat"
 DEFAULT_TENANT_NAMESPACE = MAAS_SUBSCRIPTION_NAMESPACE
 TENANT_CONFIG_NAME = "default-tenant"
 ANNOTATION_PAYLOAD_PROCESSING_TYPE = "maas.opendatahub.io/payload-processing-type"
+PAYLOAD_PROCESSING_TYPE_PRAXIS = "praxis"
+PAYLOAD_PROCESSING_TYPE_IPP = "ipp"
 
 DEFAULT_BACKEND_SWITCH_TIMEOUT = int(os.environ.get("E2E_TENANT_BACKEND_SWITCH_TIMEOUT", "420"))
 READY_TIMEOUT = int(os.environ.get("E2E_TENANT_EXTERNAL_MODEL_READY_TIMEOUT", "300"))
@@ -617,6 +625,27 @@ def require_crossns_provider_support(admin_client: DynamicClient) -> None:
         pytest.fail(f"ReferenceGrant CRD {REFERENCE_GRANT_CRD_NAME} is not installed")
 
 
+def require_legacy_ipp_coexistence_support() -> None:
+    """Gate the legacy IPP coexistence scenario (RHOAIENG-99761 image pin).
+
+    The scenario flips the default tenant's payload-processing backend, so it
+    must not race default-tenant tests on parallel xdist workers: fail loudly
+    when the gate is on but the run is parallel.
+    """
+    if not env_bool("TENANT_EXTERNAL_MODEL_LEGACY_IPP_E2E"):
+        pytest.skip(
+            "legacy IPP coexistence E2E requires the MaaS IPP image pin containing "
+            "the legacy-controller exclusion guard; set "
+            "TENANT_EXTERNAL_MODEL_LEGACY_IPP_E2E=true to enable"
+        )
+    if os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") not in ("", "1"):
+        pytest.fail(
+            "legacy IPP coexistence E2E must run serially: it flips the default "
+            "tenant's payload-processing backend and would race default-tenant tests "
+            "on parallel xdist workers; rerun without -n/xdist"
+        )
+
+
 _WITHDRAWAL_ISSUE_FLAGS = {
     "#106": "TENANT_EXTERNAL_MODEL_LAST_PROVIDER_WITHDRAWAL_E2E",
     "#108": "TENANT_EXTERNAL_MODEL_PARTIAL_WITHDRAWAL_E2E",
@@ -955,6 +984,41 @@ def patch_external_model_gateway_refs(
 ) -> None:
     """Set (or remove, with None) an ExternalModel's ``spec.gatewayRefs``."""
     patch_external_model(admin_client=admin_client, name=name, namespace=namespace, fields={"gatewayRefs": refs})
+
+
+def wait_for_model_generation_observed(
+    admin_client: DynamicClient,
+    name: str,
+    namespace: str,
+    timeout: int = TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+) -> None:
+    """Wait until the controller has observed the model's current generation.
+
+    Readiness waits can return on the first poll while the status still
+    reflects the previous (already Ready) generation; a recreation a few
+    seconds later would slip through an immediate comparison.
+    """
+
+    def _check() -> bool:
+        assert _generation_observed(get_json_or_none(admin_client, "externalmodel", name, namespace)), (
+            f"observedGeneration of {namespace}/{name} not caught up"
+        )
+        return True
+
+    wait_until(
+        check=_check,
+        timeout=timeout,
+        what=f"observedGeneration of {namespace}/{name}",
+    )
+
+
+def _generation_observed(external_model: dict[str, Any] | None) -> bool:
+    if not external_model:
+        return False
+    metadata = external_model.get("metadata") or {}
+    status = external_model.get("status") or {}
+    observed = status.get("observedGeneration") or 0
+    return observed >= (metadata.get("generation") or 1)
 
 
 def gateway_status_entry(
@@ -2119,6 +2183,184 @@ def assert_not_served(response: requests.Response) -> None:
     """
     assert response.status_code in (401, 403, 404), (
         f"expected a documented refusal (401/403/404), got {response.status_code}"
+    )
+
+
+def default_payload_processing_is_praxis(admin_client: DynamicClient) -> bool:
+    """Whether the default tenant's payload-processing deployment runs praxis-extproc."""
+    deployment = get_json_or_none(
+        client=admin_client, kind="deployment", name="payload-processing", namespace=MAAS_GATEWAY_NAMESPACE
+    )
+    return PRAXIS_IMAGE_MARKER in deployment_image(deployment)
+
+
+def wait_default_backend(
+    admin_client: DynamicClient,
+    *,
+    praxis: bool,
+    timeout: int = DEFAULT_BACKEND_SWITCH_TIMEOUT,
+) -> None:
+    """Wait for the default tenant's payload-processing backend selection."""
+
+    def _check() -> bool:
+        deployment = get_json_or_none(
+            client=admin_client, kind="deployment", name="payload-processing", namespace=MAAS_GATEWAY_NAMESPACE
+        )
+        assert deployment is not None, "default payload-processing deployment not found"
+        current = default_payload_processing_is_praxis(admin_client=admin_client)
+        assert current == praxis, f"default payload-processing praxis={current}, expected {praxis}"
+        status = deployment.get("status") or {}
+        generation = (deployment.get("metadata") or {}).get("generation", 0)
+        assert status.get("observedGeneration", 0) >= generation, (
+            "default payload-processing deployment has not observed the current generation"
+        )
+        assert status.get("availableReplicas", 0) >= 1, (
+            "default payload-processing deployment has no available replicas"
+        )
+        progressing = [
+            condition
+            for condition in status.get("conditions") or []
+            if condition.get("type") == "Progressing" and condition.get("status") == "True"
+        ]
+        assert progressing and progressing[0].get("reason") == "NewReplicaSetAvailable", (
+            "default payload-processing rollout has not completed "
+            f"(Progressing: {progressing[0].get('reason') if progressing else 'absent'})"
+        )
+        return True
+
+    wait_until(
+        check=_check,
+        timeout=timeout,
+        what=f"default payload-processing backend to become {'praxis' if praxis else 'legacy IPP'}",
+    )
+
+
+def payload_processing_annotation(
+    admin_client: DynamicClient,
+    tenant_namespace: str,
+) -> str | None:
+    """Read the tenant config's payload-processing annotation.
+
+    Returns None when the annotation is absent (backend selected by cluster
+    default rather than an explicit override).
+    """
+    tenant_config = MaasTenantConfig(
+        client=admin_client,
+        name=TENANT_CONFIG_NAME,
+        namespace=tenant_namespace,
+        ensure_exists=True,
+    )
+    if not tenant_config.exists:
+        return None
+    metadata = tenant_config.instance.to_dict().get("metadata") or {}
+    annotations = metadata.get("annotations") or {}
+    return annotations.get(ANNOTATION_PAYLOAD_PROCESSING_TYPE)
+
+
+def patch_payload_processing_annotation(
+    admin_client: DynamicClient,
+    tenant_namespace: str,
+    value: str | None,
+) -> None:
+    """Merge-patch the payload-processing annotation (None removes the key)."""
+    tenant_config = MaasTenantConfig(
+        client=admin_client,
+        name=TENANT_CONFIG_NAME,
+        namespace=tenant_namespace,
+        ensure_exists=True,
+    )
+    tenant_config.update(
+        resource_dict={
+            "metadata": {"name": TENANT_CONFIG_NAME, "annotations": {ANNOTATION_PAYLOAD_PROCESSING_TYPE: value}}
+        },
+    )
+
+
+def ensure_payload_processing_type_on_tenant_config(
+    admin_client: DynamicClient,
+    tenant_namespace: str,
+    payload_type: str,
+) -> None:
+    """Patch MaasTenantConfig to select a payload backend (skip when already set)."""
+    if payload_processing_annotation(admin_client, tenant_namespace) == payload_type:
+        return
+    patch_payload_processing_annotation(
+        admin_client=admin_client, tenant_namespace=tenant_namespace, value=payload_type
+    )
+
+
+def restore_payload_processing_annotation(
+    admin_client: DynamicClient,
+    tenant_namespace: str,
+    original: str | None,
+) -> None:
+    """Restore the payload-processing annotation to a captured value.
+
+    ``original=None`` removes the annotation — a merge patch with a null
+    value deletes the key — restoring cluster-default backend selection.
+    """
+    patch_payload_processing_annotation(admin_client=admin_client, tenant_namespace=tenant_namespace, value=original)
+
+
+def attachment_status_snapshot(admin_client: DynamicClient, model: dict[str, Any]) -> dict[Any, Any]:
+    """Stable comparable snapshot of a model's attachment status.
+
+    Captures BOTH condition shapes on every call: the model's top-level
+    conditions and each per-gateway ``status.gateways`` entry. AGC builds
+    that report aggregate status only leave ``status.gateways`` empty, and
+    a legacy-controller write may touch either shape — including both in
+    one snapshot means a change to one cannot hide behind the other. Each
+    condition carries its ``observedGeneration`` and each gateway entry its
+    ``httpRouteRef``, so a write that only bumps those is detected too.
+    """
+    external_model = get_json_or_none(admin_client, "externalmodel", model["name"], model["namespace"]) or {}
+    status = external_model.get("status") or {}
+    snapshot: dict[Any, Any] = {
+        ("aggregate", ""): sorted(
+            (
+                condition.get("type"),
+                condition.get("status"),
+                condition.get("reason"),
+                condition.get("observedGeneration"),
+            )
+            for condition in status.get("conditions") or []
+        )
+    }
+    for entry in status.get("gateways") or []:
+        snapshot[(entry.get("name"), entry.get("namespace"))] = (
+            entry.get("httpRouteRef"),
+            sorted(
+                (
+                    condition.get("type"),
+                    condition.get("status"),
+                    condition.get("reason"),
+                    condition.get("observedGeneration"),
+                )
+                for condition in entry.get("conditions") or []
+            ),
+        )
+    return snapshot
+
+
+def serve_in_tenant_context(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token: str,
+    tenant: dict[str, str],
+    model: dict[str, Any],
+    teardown: bool = True,
+) -> Any:
+    """Serve one model through a tenant and yield the access dict (see serve_external_model_in_tenant)."""
+    return serve_external_model_in_tenant(
+        admin_client=admin_client,
+        request_session_http=request_session_http,
+        ocp_token=ocp_token,
+        tenant=tenant,
+        teardown=teardown,
+        model_name=model["name"],
+        model_namespace=model["namespace"],
+        policy_name=f"{model['name']}-access",
+        subscription_name=f"{model['name']}-sub",
     )
 
 
