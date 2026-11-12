@@ -76,7 +76,6 @@ from tests.ai_gateway.models_as_a_service.utils import (
     build_maas_headers,
     create_api_key,
     deploy_and_verify_aitenant_ready,
-    get_httproute,
     get_maas_models_response,
     verify_maas_tenant_config_ready,
     wait_for_external_model_http_route_name,
@@ -381,7 +380,7 @@ def get_legacy_maas_service(
         service = Service(client=client, name=resource_name, namespace=namespace)
         if service.exists:
             return service
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"Service {namespace}/{resource_name} not found")
     return None
 
@@ -396,7 +395,7 @@ def get_legacy_maas_service_entry(
         service_entry = ServiceEntry(client=client, name=resource_name, namespace=namespace)
         if service_entry.exists:
             return service_entry
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"ServiceEntry {namespace}/{resource_name} not found")
     return None
 
@@ -411,7 +410,7 @@ def get_legacy_maas_destination_rule(
         destination_rule = DestinationRule(client=client, name=resource_name, namespace=namespace)
         if destination_rule.exists:
             return destination_rule
-    except (NotFoundError, ResourceNotFoundError):
+    except NotFoundError, ResourceNotFoundError:
         LOGGER.debug(f"DestinationRule {namespace}/{resource_name} not found")
     return None
 
@@ -454,9 +453,7 @@ def legacy_maas_networking_present(
 ) -> bool:
     """Return True when every legacy networking child owned by the model exists."""
     return all(
-        legacy_owned_resources(
-            client=client, resource_class=resource_class, namespace=namespace, model_name=model_name
-        )
+        legacy_owned_resources(client=client, resource_class=resource_class, namespace=namespace, model_name=model_name)
         for resource_class in LEGACY_NETWORKING_KINDS
     )
 
@@ -468,9 +465,7 @@ def legacy_maas_networking_absent(
 ) -> bool:
     """Return True when no networking child is still owned by the legacy ExternalModel."""
     return not any(
-        legacy_owned_resources(
-            client=client, resource_class=resource_class, namespace=namespace, model_name=model_name
-        )
+        legacy_owned_resources(client=client, resource_class=resource_class, namespace=namespace, model_name=model_name)
         for resource_class in LEGACY_NETWORKING_KINDS
     )
 
@@ -482,6 +477,7 @@ def wait_for_legacy_maas_networking_present(
     timeout: int = 300,
 ) -> str:
     """Poll until legacy networking children exist and return the resolved resource name."""
+
     def networking_present() -> str | None:
         if legacy_maas_networking_present(client=client, model_name=model_name, namespace=namespace):
             return legacy_external_model_resource_name(model_name=model_name)
