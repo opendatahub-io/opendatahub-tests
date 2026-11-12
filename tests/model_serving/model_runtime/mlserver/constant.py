@@ -7,6 +7,8 @@ and input queries used across MLServer runtime tests for different frameworks.
 
 from typing import Any
 
+from semver import Version
+
 from utilities.constants import (
     AcceleratorType,
     KServeDeploymentType,
@@ -15,6 +17,8 @@ from utilities.constants import (
     ModelInferenceRuntime,
     RuntimeTemplates,
 )
+
+MLSERVER_MODELCAR_MIN_OCP_VERSION: Version = Version.parse("4.20.0")
 
 
 class OutputType:

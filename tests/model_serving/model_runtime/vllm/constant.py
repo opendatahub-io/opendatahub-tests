@@ -7,6 +7,7 @@ VLLM_SUPPORTED_QUANTIZATION: list[str] = ["marlin", "awq"]
 # Configurations
 ACCELERATOR_IDENTIFIER: dict[str, str] = {
     AcceleratorType.NVIDIA: Labels.Nvidia.NVIDIA_COM_GPU,
+    AcceleratorType.NVIDIA_ARM: Labels.Nvidia.NVIDIA_COM_GPU,
     AcceleratorType.AMD: "amd.com/gpu",
     AcceleratorType.GAUDI: "habana.ai/gaudi",
     AcceleratorType.SPYRE: Labels.Spyre.SPYRE_COM_GPU,
@@ -18,6 +19,7 @@ ACCELERATOR_IDENTIFIER: dict[str, str] = {
 
 TEMPLATE_MAP: dict[str, str] = {
     AcceleratorType.NVIDIA: RuntimeTemplates.VLLM_CUDA,
+    AcceleratorType.NVIDIA_ARM: RuntimeTemplates.VLLM_CUDA,
     AcceleratorType.AMD: RuntimeTemplates.VLLM_ROCM,
     AcceleratorType.GAUDI: RuntimeTemplates.VLLM_GAUDI,
     AcceleratorType.SPYRE: RuntimeTemplates.VLLM_SPYRE,

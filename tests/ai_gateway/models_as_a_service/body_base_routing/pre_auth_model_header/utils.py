@@ -14,6 +14,12 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.service import Service
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
+from tests.ai_gateway.models_as_a_service.praxis.constants import (
+    LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY,
+    LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY,
+    PRAXIS_EXTPROC_CONFIG_DATA_KEY,
+    PRAXIS_PRE_EXTPROC_CONFIG_DATA_KEY,
+)
 from tests.ai_gateway.models_as_a_service.utils import create_api_key, revoke_api_key
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.general import generate_random_name
@@ -37,8 +43,8 @@ ENVOY_FILTER_INSERT_BEFORE: str = "INSERT_BEFORE"
 ENVOY_FILTER_INSERT_AFTER: str = "INSERT_AFTER"
 ENVOY_FILTER_APPLY_TO_CLUSTER: str = "CLUSTER"
 BBR_PLUGINS_CONFIGMAP_NAME: str = "payload-processing-plugins"
-BBR_POST_AUTH_CONFIGMAP_KEY: str = "custom-ipp-config.yaml"
-BBR_PRE_AUTH_CONFIGMAP_KEY: str = "custom-pre-processing-ipp-config.yaml"
+BBR_POST_AUTH_CONFIGMAP_KEY: str = LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY
+BBR_PRE_AUTH_CONFIGMAP_KEY: str = LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY
 BBR_POST_AUTH_EXPECTED_PLUGIN_TYPES: list[str] = [
     "model-provider-resolver",
     "api-translation",
@@ -441,6 +447,25 @@ def verify_bbr_post_processing_destination_rule_exists(
     LOGGER.info(f"DestinationRule '{gateway_namespace}/{BBR_POST_PROCESSING_DESTINATION_RULE_NAME}' exists")
 
 
+def resolve_bbr_plugins_configmap_keys(config_map_data: dict[str, str]) -> tuple[str, str]:
+    """Return post-auth and pre-auth data keys for Praxis default or legacy IPP plugin configs."""
+    praxis_post_key = PRAXIS_EXTPROC_CONFIG_DATA_KEY
+    praxis_pre_key = PRAXIS_PRE_EXTPROC_CONFIG_DATA_KEY
+    legacy_post_key = LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY
+    legacy_pre_key = LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY
+
+    if config_map_data.get(praxis_post_key) and config_map_data.get(praxis_pre_key):
+        return praxis_post_key, praxis_pre_key
+    if config_map_data.get(legacy_post_key) and config_map_data.get(legacy_pre_key):
+        return legacy_post_key, legacy_pre_key
+
+    raise AssertionError(
+        f"Expected Praxis keys ({praxis_post_key!r}, {praxis_pre_key!r}) or legacy IPP keys "
+        f"({legacy_post_key!r}, {legacy_pre_key!r}) in ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'; "
+        f"found keys: {sorted(config_map_data)!r}"
+    )
+
+
 def _fetch_bbr_plugins_configmap_data_if_ready(
     admin_client: DynamicClient,
     gateway_namespace: str,
@@ -456,12 +481,7 @@ def _fetch_bbr_plugins_configmap_data_if_ready(
         "expected to be created by the controller after reconciliation"
     )
     config_map_data: dict[str, str] = config_map.instance.data or {}
-    assert config_map_data.get(BBR_POST_AUTH_CONFIGMAP_KEY), (
-        f"Key '{BBR_POST_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
-    )
-    assert config_map_data.get(BBR_PRE_AUTH_CONFIGMAP_KEY), (
-        f"Key '{BBR_PRE_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
-    )
+    resolve_bbr_plugins_configmap_keys(config_map_data=config_map_data)
     return config_map_data
 
 
@@ -500,48 +520,45 @@ def wait_for_bbr_plugins_configmap_data(
         pytest.fail(
             f"Timed out after {timeout}s waiting for plugin keys in "
             f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}'. "
-            f"Expected keys {BBR_POST_AUTH_CONFIGMAP_KEY!r} and {BBR_PRE_AUTH_CONFIGMAP_KEY!r}; "
+            f"Expected Praxis keys ({PRAXIS_EXTPROC_CONFIG_DATA_KEY!r}, "
+            f"{PRAXIS_PRE_EXTPROC_CONFIG_DATA_KEY!r}) or legacy IPP keys "
+            f"({LEGACY_IPP_CUSTOM_CONFIG_DATA_KEY!r}, {LEGACY_IPP_CUSTOM_PRE_CONFIG_DATA_KEY!r}); "
             f"found: {found_keys!r}"
         )
     raise AssertionError(f"ConfigMap '{gateway_namespace}/{BBR_PLUGINS_CONFIGMAP_NAME}' plugin keys were not populated")
 
 
-def verify_bbr_plugins_configmap_has_expected_plugins(
-    admin_client: DynamicClient,
-    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
-    timeout: int = 300,
-    sleep: int = 5,
+def _verify_bbr_legacy_ipp_plugins_configmap_plugin_specs(
+    config_map_data: dict[str, str],
+    post_auth_configmap_key: str,
+    pre_auth_configmap_key: str,
 ) -> None:
-    """Assert the payload-processing-plugins ConfigMap exists with expected post-auth and pre-auth plugin types."""
-    config_map_data = wait_for_bbr_plugins_configmap_data(
-        admin_client=admin_client,
-        gateway_namespace=gateway_namespace,
-        timeout=timeout,
-        sleep=sleep,
+    """Assert legacy PayloadProcessorConfig entries define expected BBR pre-auth and post-auth plugins."""
+    post_auth_config = yaml.safe_load(config_map_data[post_auth_configmap_key])
+    assert isinstance(post_auth_config, dict), (
+        f"Expected mapping in '{post_auth_configmap_key}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
     )
-
-    post_auth_config = yaml.safe_load(config_map_data[BBR_POST_AUTH_CONFIGMAP_KEY])
     assert "plugins" in post_auth_config, (
-        f"No 'plugins' key in '{BBR_POST_AUTH_CONFIGMAP_KEY}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+        f"No 'plugins' key in '{post_auth_configmap_key}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
     )
     post_auth_plugin_types = [plugin["type"] for plugin in post_auth_config["plugins"]]
     for expected_type in BBR_POST_AUTH_EXPECTED_PLUGIN_TYPES:
         assert expected_type in post_auth_plugin_types, (
-            f"Post-auth plugin '{expected_type}' not found in '{BBR_POST_AUTH_CONFIGMAP_KEY}' — "
+            f"Post-auth plugin '{expected_type}' not found in '{post_auth_configmap_key}' — "
             f"found: {post_auth_plugin_types!r}"
         )
     LOGGER.info(f"Post-auth plugins verified: {post_auth_plugin_types!r}")
 
-    assert config_map_data.get(BBR_PRE_AUTH_CONFIGMAP_KEY), (
-        f"Key '{BBR_PRE_AUTH_CONFIGMAP_KEY}' missing from ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    pre_auth_config = yaml.safe_load(config_map_data[pre_auth_configmap_key])
+    assert isinstance(pre_auth_config, dict), (
+        f"Expected mapping in '{pre_auth_configmap_key}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
     )
-    pre_auth_config = yaml.safe_load(config_map_data[BBR_PRE_AUTH_CONFIGMAP_KEY])
     assert "plugins" in pre_auth_config, (
-        f"No 'plugins' key in '{BBR_PRE_AUTH_CONFIGMAP_KEY}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+        f"No 'plugins' key in '{pre_auth_configmap_key}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
     )
     pre_auth_plugin_types = [plugin["type"] for plugin in pre_auth_config["plugins"]]
     assert BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE in pre_auth_plugin_types, (
-        f"Pre-auth plugin '{BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE}' not found in '{BBR_PRE_AUTH_CONFIGMAP_KEY}' — "
+        f"Pre-auth plugin '{BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE}' not found in '{pre_auth_configmap_key}' — "
         f"found: {pre_auth_plugin_types!r}"
     )
     pre_auth_plugin = next(
@@ -560,6 +577,117 @@ def verify_bbr_plugins_configmap_has_expected_plugins(
     LOGGER.info(
         f"Pre-auth plugin '{BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE}' correctly maps "
         f"'{BBR_PRE_AUTH_PLUGIN_FIELD_NAME}' → '{BBR_PRE_AUTH_PLUGIN_HEADER_NAME}'"
+    )
+
+
+def _praxis_pre_extproc_references_bbr_model_header(pre_auth_yaml: str) -> bool:
+    """Return True when pre-extproc YAML maps the JSON model field to the gateway model header."""
+    normalized = pre_auth_yaml.lower()
+    header_markers = (
+        BBR_PRE_AUTH_PLUGIN_HEADER_NAME.lower(),
+        "x-gateway-model-name",
+    )
+    if not any(marker in normalized for marker in header_markers):
+        return False
+    field_markers = (
+        f"fieldname: {BBR_PRE_AUTH_PLUGIN_FIELD_NAME}",
+        f"field_name: {BBR_PRE_AUTH_PLUGIN_FIELD_NAME}",
+        f"field: {BBR_PRE_AUTH_PLUGIN_FIELD_NAME}",
+        f'"{BBR_PRE_AUTH_PLUGIN_FIELD_NAME}"',
+        f"'{BBR_PRE_AUTH_PLUGIN_FIELD_NAME}'",
+    )
+    if any(marker in normalized for marker in field_markers):
+        return True
+    # Praxis filter chains often reference the JSON path field name without legacy IPP parameter keys.
+    if BBR_PRE_AUTH_PLUGIN_FIELD_NAME in normalized:
+        return True
+    # Legacy IPP plugin type name may still appear when AGC embeds a translated snippet.
+    return BBR_PRE_AUTH_EXPECTED_PLUGIN_TYPE in pre_auth_yaml
+
+
+def _verify_bbr_praxis_extproc_plugins_configmap_content(
+    config_map_data: dict[str, str],
+    post_auth_configmap_key: str,
+    pre_auth_configmap_key: str,
+) -> None:
+    """Assert Praxis extproc YAML is present and encodes BBR pre-auth model extraction.
+
+    Post-auth Praxis config uses ``server`` / ``filter_chains`` (ai-gateway-controller), not legacy
+    ``PayloadProcessorConfig`` plugin ``type`` strings such as ``model-provider-resolver``.
+    """
+    post_auth_yaml = config_map_data[post_auth_configmap_key]
+    pre_auth_yaml = config_map_data[pre_auth_configmap_key]
+    assert post_auth_yaml.strip(), f"Empty '{post_auth_configmap_key}' in ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    assert pre_auth_yaml.strip(), f"Empty '{pre_auth_configmap_key}' in ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    post_auth_config = yaml.safe_load(post_auth_yaml)
+    pre_auth_config = yaml.safe_load(pre_auth_yaml)
+    assert post_auth_config is not None, (
+        f"Could not parse YAML in '{post_auth_configmap_key}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+    assert pre_auth_config is not None, (
+        f"Could not parse YAML in '{pre_auth_configmap_key}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+    assert isinstance(post_auth_config, dict), (
+        f"Expected mapping in '{post_auth_configmap_key}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+    assert isinstance(pre_auth_config, dict), (
+        f"Expected mapping in '{pre_auth_configmap_key}' of ConfigMap '{BBR_PLUGINS_CONFIGMAP_NAME}'"
+    )
+
+    server = post_auth_config.get("server")
+    assert isinstance(server, dict), (
+        f"Praxis post-auth '{post_auth_configmap_key}' missing 'server' mapping — keys: {sorted(post_auth_config)!r}"
+    )
+    assert server.get("grpc_address"), f"Praxis post-auth '{post_auth_configmap_key}' server.grpc_address is empty"
+    filter_chains = post_auth_config.get("filter_chains")
+    if filter_chains is not None:
+        assert isinstance(filter_chains, list) and filter_chains, (
+            f"Praxis post-auth '{post_auth_configmap_key}' filter_chains must be a non-empty list"
+        )
+    LOGGER.info(
+        f"Praxis post-auth extproc server verified in '{post_auth_configmap_key}' "
+        f"(filter_chains={'present' if filter_chains else 'absent'})"
+    )
+
+    assert _praxis_pre_extproc_references_bbr_model_header(pre_auth_yaml=pre_auth_yaml), (
+        f"Pre-auth '{pre_auth_configmap_key}' does not map JSON field "
+        f"'{BBR_PRE_AUTH_PLUGIN_FIELD_NAME}' to header '{BBR_PRE_AUTH_PLUGIN_HEADER_NAME}'"
+    )
+    LOGGER.info(
+        f"Praxis pre-auth extproc config verified: '{BBR_PRE_AUTH_PLUGIN_FIELD_NAME}' → "
+        f"'{BBR_PRE_AUTH_PLUGIN_HEADER_NAME}'"
+    )
+
+
+def verify_bbr_plugins_configmap_has_expected_plugins(
+    admin_client: DynamicClient,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int = 300,
+    sleep: int = 5,
+) -> None:
+    """Assert the payload-processing-plugins ConfigMap exists with expected post-auth and pre-auth plugin types."""
+    config_map_data = wait_for_bbr_plugins_configmap_data(
+        admin_client=admin_client,
+        gateway_namespace=gateway_namespace,
+        timeout=timeout,
+        sleep=sleep,
+    )
+    post_auth_configmap_key, pre_auth_configmap_key = resolve_bbr_plugins_configmap_keys(
+        config_map_data=config_map_data,
+    )
+
+    if post_auth_configmap_key == PRAXIS_EXTPROC_CONFIG_DATA_KEY:
+        _verify_bbr_praxis_extproc_plugins_configmap_content(
+            config_map_data=config_map_data,
+            post_auth_configmap_key=post_auth_configmap_key,
+            pre_auth_configmap_key=pre_auth_configmap_key,
+        )
+        return
+
+    _verify_bbr_legacy_ipp_plugins_configmap_plugin_specs(
+        config_map_data=config_map_data,
+        post_auth_configmap_key=post_auth_configmap_key,
+        pre_auth_configmap_key=pre_auth_configmap_key,
     )
 
 
