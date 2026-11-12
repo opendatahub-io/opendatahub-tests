@@ -853,9 +853,16 @@ class TestCredentialRotationFollowsSource:
                 case=tenant_b,
                 model=model,
                 api_key=env["access"]["api_key"],
+                # Single shot: the outer wait_until owns the retry window, and
+                # the verdict logic needs error_observed to see every failed
+                # probe instead of letting inner retries absorb them.
+                retries=0,
             )
             if response.status_code == 200:
-                authorization = (echo_headers(response=response).get("Authorization") or "").strip()
+                headers = echo_headers(response=response)
+                # The echo may carry either header case; accept both, matching
+                # assert_served_by_provider.
+                authorization = (headers.get("Authorization") or headers.get("authorization") or "").strip()
 
                 def _carries(credential: str) -> bool:
                     return any(

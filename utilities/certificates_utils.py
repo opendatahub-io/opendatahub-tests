@@ -1,6 +1,7 @@
 import base64
 import os
 import tempfile
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from functools import cache
@@ -13,7 +14,6 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.ingress_controller import IngressController
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     OPENSHIFT_CA_BUNDLE_FILENAME,
@@ -179,8 +179,8 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
     against gateway Routes fails TLS verification. Honors an explicit
     TENANT_EXTERNAL_MODEL_CA_BUNDLE override; yields the bundle path, or ""
     when none is needed or available (managed clusters). Restores the previous
-    environment state on exit. Resolution is retried (3x5s): a transient API
-    error must not leave a session-scoped consumer without the router CA.
+    environment state on exit. Resolution is retried (3 attempts): a transient
+    API error must not leave a session-scoped consumer without the router CA.
 
     Setting REQUESTS_CA_BUNDLE replaces requests' whole trust store, so the
     exported file is the resolved/overridden bundle extended with the default
@@ -194,20 +194,27 @@ def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
         # would silently break every TLS verification in the session.
         raise FileNotFoundError(f"TENANT_EXTERNAL_MODEL_CA_BUNDLE={bundle!r} does not exist or is not a readable file")
     if not bundle:
-        try:
-            for bundle in TimeoutSampler(
-                wait_timeout=15,
-                sleep=5,
-                func=get_ca_bundle,
-                client=client,
-                exceptions_dict={Exception: []},
-            ):
+        # Fixed 3 attempts: a transient API error must not leave a
+        # session-scoped consumer without the router CA, and a deterministic
+        # attempt count keeps the retry budget independent of timing.
+        last_error: Exception | None = None
+        for _attempt in range(3):
+            try:
+                bundle = get_ca_bundle(client=client)
+                last_error = None
                 break
-        except TimeoutExpiredError as ex:
+            except Exception as error:  # noqa: BLE001 - resolution is best-effort
+                last_error = error
+                # Space the attempts out: fast API errors during a short
+                # outage would otherwise burn all three attempts before the
+                # API recovers. No delay after the final attempt.
+                if _attempt < 2:
+                    time.sleep(5)
+        if last_error is not None:
             LOGGER.warning(
                 "Failed to resolve the OpenShift router CA bundle after 3 attempts; "
                 "gateway inference falls back to the system trust store",
-                error=str(ex.last_exp or ex),
+                error=str(last_error),
             )
             bundle = ""
     exported: str | None = None
