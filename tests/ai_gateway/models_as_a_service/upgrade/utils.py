@@ -8,7 +8,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
