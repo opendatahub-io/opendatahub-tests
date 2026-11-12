@@ -370,51 +370,6 @@ def resolve_legacy_maas_networking_resource_name(
     return None
 
 
-def get_legacy_maas_service(
-    client: DynamicClient,
-    resource_name: str,
-    namespace: str,
-) -> Service | None:
-    """Look up the legacy maas-* Service, returning None when it is absent."""
-    try:
-        service = Service(client=client, name=resource_name, namespace=namespace)
-        if service.exists:
-            return service
-    except NotFoundError, ResourceNotFoundError:
-        LOGGER.debug(f"Service {namespace}/{resource_name} not found")
-    return None
-
-
-def get_legacy_maas_service_entry(
-    client: DynamicClient,
-    resource_name: str,
-    namespace: str,
-) -> ServiceEntry | None:
-    """Look up the legacy maas-* ServiceEntry, returning None when it is absent."""
-    try:
-        service_entry = ServiceEntry(client=client, name=resource_name, namespace=namespace)
-        if service_entry.exists:
-            return service_entry
-    except NotFoundError, ResourceNotFoundError:
-        LOGGER.debug(f"ServiceEntry {namespace}/{resource_name} not found")
-    return None
-
-
-def get_legacy_maas_destination_rule(
-    client: DynamicClient,
-    resource_name: str,
-    namespace: str,
-) -> DestinationRule | None:
-    """Look up the legacy maas-* DestinationRule, returning None when it is absent."""
-    try:
-        destination_rule = DestinationRule(client=client, name=resource_name, namespace=namespace)
-        if destination_rule.exists:
-            return destination_rule
-    except NotFoundError, ResourceNotFoundError:
-        LOGGER.debug(f"DestinationRule {namespace}/{resource_name} not found")
-    return None
-
-
 LEGACY_NETWORKING_KINDS: tuple[type[NamespacedResource], ...] = (
     HTTPRoute,
     Service,
