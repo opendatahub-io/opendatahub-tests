@@ -20,7 +20,7 @@ ai_safety/
 │   ├── constants.py
 │   ├── test_guardrails.py               # Built-in, HuggingFace, autoconfig tests
 │   ├── upgrade/
-│   │   └── test_guardrails_upgrade.py   # Post-upgrade tests
+│   │   └── test_guardrails_upgrade.py   # Pre/post-upgrade tests
 │   └── utils.py
 │
 ├── lm_eval/                             # Language Model Evaluation tests
@@ -157,27 +157,31 @@ Upgrade tests run in two phases:
 
 **Test Classes:**
 
+- `TestGuardrailsOrchestratorWithBuiltInDetectorsPreUpgrade`
 - `TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade`
-- `TestPostUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors`
 
 **Covered Upgrade Paths:**
 
 - Built-in detector persistence (regex, PII detection)
+  - Pre-upgrade: Deploy orchestrator with built-in regex detectors for email and SSN detection
   - Post-upgrade: Verify detectors continue to function, health endpoints remain responsive
   - Validated: Input detection, output detection, passthrough routing, health/info endpoints
-- HuggingFace detector persistence (prompt injection, HAP) and OpenTelemetry trace collection in Tempo
 
 **What's Validated:**
 
 - Orchestrator health and info endpoints remain responsive after upgrade
 - Built-in regex detectors continue detecting unsuitable input/output
 - Gateway routing and passthrough functionality persists
-- HuggingFace detectors and the standalone detection endpoint keep working after upgrade
-- Guardrails OpenTelemetry traces are still collected in Tempo after upgrade
+- Configuration and detector settings survive the upgrade
 
 **Example:**
 
 ```bash
+# Pre-upgrade
+uv run pytest -m pre_upgrade tests/ai_safety/guardrails/upgrade/
+
+# Perform platform upgrade
+
 # Post-upgrade
 uv run pytest -m post_upgrade tests/ai_safety/guardrails/upgrade/
 ```
