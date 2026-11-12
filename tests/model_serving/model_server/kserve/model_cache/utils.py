@@ -8,6 +8,7 @@ from typing import Any
 import portforward
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
@@ -43,6 +44,27 @@ class LocalModelNode(Resource):
     """`LocalModelNode` CR representing a node participating in model caching."""
 
     api_group: str = Resource.ApiGroup.SERVING_KSERVE_IO
+
+
+def model_cache_job_namespace(*, client: DynamicClient, applications_namespace: str) -> str:
+    """Read the reconciled namespace for node-local model cache jobs and resources.
+
+    Args:
+        client: Kubernetes client with access to the KServe ConfigMap.
+        applications_namespace: Namespace containing ``inferenceservice-config``.
+
+    Returns:
+        The configured model cache job namespace.
+
+    Raises:
+        ValueError: If the configured job namespace is missing or invalid.
+    """
+    config = ConfigMap(client=client, name="inferenceservice-config", namespace=applications_namespace)
+    local_model = json.loads(config.instance.data["localModel"])
+    namespace = local_model.get("jobNamespace") if isinstance(local_model, dict) else None
+    if not isinstance(namespace, str) or not namespace.strip():
+        raise ValueError("inferenceservice-config localModel.jobNamespace must be a non-empty string")
+    return namespace
 
 
 def resource_instance_to_dict(*, resource: Resource) -> dict[str, Any]:
