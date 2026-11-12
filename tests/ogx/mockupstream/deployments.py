@@ -42,7 +42,7 @@ LOGGER = structlog.get_logger(name=__name__)
 _SCRIPTS_DIR = Path(__file__).parent / "scripts"
 
 # Key of the debug-token Secret and the env variable the mock reads it from.
-_MOCK_DEBUG_TOKEN_SECRET_KEY = "token"
+_MOCK_DEBUG_TOKEN_SECRET_KEY = "token"  # pragma: allowlist secret
 _MOCK_DEBUG_TOKEN_ENV = "MOCK_DEBUG_TOKEN"
 
 
@@ -155,7 +155,7 @@ def deploy_mock_upstream(
 
     debug_token_secret_name = f"{name}-debug-token" if debug_token else None
     with ExitStack() as stack:
-        stack.enter_context(
+        stack.enter_context(  # noqa: FCN001
             ConfigMap(
                 client=client,
                 namespace=namespace.name,
@@ -166,7 +166,7 @@ def deploy_mock_upstream(
             )
         )
         if debug_token_secret_name:
-            stack.enter_context(
+            stack.enter_context(  # noqa: FCN001
                 Secret(
                     client=client,
                     namespace=namespace.name,
@@ -175,7 +175,7 @@ def deploy_mock_upstream(
                     teardown=teardown,
                 )
             )
-        deployment = stack.enter_context(
+        deployment = stack.enter_context(  # noqa: FCN001
             Deployment(
                 client=client,
                 namespace=namespace.name,
@@ -192,7 +192,7 @@ def deploy_mock_upstream(
             )
         )
         deployment.wait_for_replicas(deployed=True, timeout=300)
-        service = stack.enter_context(
+        service = stack.enter_context(  # noqa: FCN001
             Service(
                 client=client,
                 namespace=namespace.name,
@@ -208,7 +208,7 @@ def deploy_mock_upstream(
             yield MockUpstream(service_url=service_url)
             return
 
-        route = stack.enter_context(
+        route = stack.enter_context(  # noqa: FCN001
             Route(
                 client=client,
                 namespace=namespace.name,

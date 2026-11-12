@@ -153,6 +153,7 @@ class TestMaasTokenPassthrough:
             status code.
         """
         requests_before = _get_chat_completion_requests(mock_maas_upstream=mock_maas_upstream)
+        requests_before_count = len(requests_before)
 
         try:
             _chat_completion(ogx_client=ogx_client, content="anonymous request")
@@ -164,7 +165,7 @@ class TestMaasTokenPassthrough:
             pass
 
         requests_after = _get_chat_completion_requests(mock_maas_upstream=mock_maas_upstream)
-        for request in requests_after[len(requests_before) :]:
+        for request in requests_after[requests_before_count:]:
             # The failure message intentionally omits the received value: it
             # could hold a credential that must not end up in the test report.
             assert "authorization" not in request["headers"], "Authorization forwarded without provider data"
