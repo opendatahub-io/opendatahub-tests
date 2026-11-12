@@ -1,13 +1,19 @@
 import base64
 import os
+import tempfile
+from collections.abc import Generator
+from contextlib import contextmanager
 from functools import cache
+from typing import Any
 
+import certifi
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.ingress_controller import IngressController
 from ocp_resources.secret import Secret
 from pytest_testconfig import config as py_config
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     OPENSHIFT_CA_BUNDLE_FILENAME,
@@ -40,7 +46,10 @@ def create_ca_bundle_file(client: DynamicClient) -> str:
     Creates a ca bundle file from the router certificate secret.
 
     Queries the default IngressController to determine the correct secret name,
-    supporting both default and custom ingress certificates.
+    supporting both default and custom ingress certificates. Appends the system
+    trust store (certifi): REQUESTS_CA_BUNDLE replaces rather than extends
+    requests' default verification, so a router-only bundle would break public
+    HTTPS endpoints.
 
     Args:
         client (DynamicClient): DynamicClient object
@@ -64,6 +73,9 @@ def create_ca_bundle_file(client: DynamicClient) -> str:
 
     with open(filepath, "w") as fd:
         fd.write(bundle)
+
+    with open(certifi.where(), encoding="utf-8") as system_bundle, open(filepath, "a", encoding="utf-8") as fd:
+        fd.write("\n" + system_bundle.read())
 
     return filepath
 
@@ -156,3 +168,100 @@ def create_ca_bundle_with_router_cert(
         if router_ca_content not in bundle_content:
             with open(ca_bundle_path, "a", encoding="utf-8") as bundle_append:
                 bundle_append.write("\n" + router_ca_content)
+
+
+@contextmanager
+def router_ca_bundle_env(client: DynamicClient) -> Generator[str, Any]:
+    """Export the router CA bundle through REQUESTS_CA_BUNDLE for the suite.
+
+    Gateway Route certificates are signed by the cluster's router CA, which is
+    not in the runner's trust store; without this, requests-based inference
+    against gateway Routes fails TLS verification. Honors an explicit
+    TENANT_EXTERNAL_MODEL_CA_BUNDLE override; yields the bundle path, or ""
+    when none is needed or available (managed clusters). Restores the previous
+    environment state on exit. Resolution is retried (3x5s): a transient API
+    error must not leave a session-scoped consumer without the router CA.
+
+    Setting REQUESTS_CA_BUNDLE replaces requests' whole trust store, so the
+    exported file is the resolved/overridden bundle extended with the default
+    store (certifi): default-verify calls to public HTTPS endpoints in the
+    same session (e.g. catalog schema fetches) keep working.
+    """
+    previous = os.environ.get("REQUESTS_CA_BUNDLE")
+    bundle = os.environ.get("TENANT_EXTERNAL_MODEL_CA_BUNDLE", "")
+    if bundle and not os.path.isfile(bundle):
+        # Fail fast on a misconfigured override: exporting a nonexistent path
+        # would silently break every TLS verification in the session.
+        raise FileNotFoundError(f"TENANT_EXTERNAL_MODEL_CA_BUNDLE={bundle!r} does not exist or is not a readable file")
+    if not bundle:
+        try:
+            for bundle in TimeoutSampler(
+                wait_timeout=15,
+                sleep=5,
+                func=get_ca_bundle,
+                client=client,
+                exceptions_dict={Exception: []},
+            ):
+                break
+        except TimeoutExpiredError as ex:
+            LOGGER.warning(
+                "Failed to resolve the OpenShift router CA bundle after 3 attempts; "
+                "gateway inference falls back to the system trust store",
+                error=str(ex.last_exp or ex),
+            )
+            bundle = ""
+    exported: str | None = None
+    if bundle:
+        exported = combined_ca_bundle_path(bundle_path=bundle)
+        os.environ["REQUESTS_CA_BUNDLE"] = exported
+    else:
+        # An inherited REQUESTS_CA_BUNDLE would be picked up by per-request
+        # verify paths (e.g. infer_external_chat) and could verify against an
+        # unsuitable bundle; clear it so inference really does fall back to
+        # the system trust store, as the warning above states.
+        os.environ.pop("REQUESTS_CA_BUNDLE", None)
+    try:
+        yield bundle
+    finally:
+        try:
+            if exported is not None:
+                # The temp file may already be gone (e.g. a /tmp cleanup); a
+                # missing file is fine, but any other deletion error must not
+                # skip the environment restoration below.
+                try:
+                    os.unlink(exported)
+                except FileNotFoundError:
+                    pass
+        finally:
+            if previous is None:
+                os.environ.pop("REQUESTS_CA_BUNDLE", None)
+            else:
+                os.environ["REQUESTS_CA_BUNDLE"] = previous
+
+
+def combined_ca_bundle_path(*, bundle_path: str) -> str:
+    """Return a temp-file path to *bundle_path* extended with the default trust store.
+
+    requests replaces its entire trust store when REQUESTS_CA_BUNDLE points at
+    a file, so a cluster/router-only bundle would break default-verify calls to
+    public HTTPS endpoints; appending the default store's roots keeps both
+    usable. The caller owns the returned file's lifetime.
+    """
+    with tempfile.NamedTemporaryFile(mode="w", suffix="-combined-ca.pem", delete=False, encoding="utf-8") as combined:
+        try:
+            with open(file=bundle_path, encoding="utf-8") as cluster_bundle:
+                combined.write(cluster_bundle.read())
+            with open(file=certifi.where(), encoding="utf-8") as default_bundle:
+                combined.write("\n")
+                combined.write(default_bundle.read())
+        except BaseException:
+            # A partially written bundle must not linger on disk; it is only
+            # ever consumed through REQUESTS_CA_BUNDLE, so delete it and let
+            # the construction failure propagate.
+            combined.close()
+            try:
+                os.unlink(combined.name)
+            except OSError:
+                pass
+            raise
+    return combined.name
