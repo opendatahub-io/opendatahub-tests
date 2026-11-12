@@ -31,7 +31,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 9999
 MAX_RECORDED_REQUESTS = 100
-RECORDED_REQUESTS: deque[dict] = []
+# Reject bodies larger than this before reading them, so a client cannot
+# exhaust the pod's memory (128 MiB limit) with a single large POST.
+MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024
+# Bounded buffer: the oldest recorded request is discarded automatically.
+RECORDED_REQUESTS: deque[dict] = deque(maxlen=MAX_RECORDED_REQUESTS)
 
 
 def _record(path: str, headers, body: dict | None) -> None:
@@ -40,8 +44,13 @@ def _record(path: str, headers, body: dict | None) -> None:
         "headers": {k.lower(): v for k, v in headers.items()},
         "body": body,
     })
-    while len(RECORDED_REQUESTS) > MAX_RECORDED_REQUESTS:
-        RECORDED_REQUESTS.popleft()
+
+
+def _reject_oversized_body(handler: MockMaaSHandler, length: int) -> None:
+    handler.send_response(413)
+    handler.send_header("Content-Length", "0")
+    handler.close_connection = True
+    handler.end_headers()
 
 
 class MockMaaSHandler(BaseHTTPRequestHandler):
@@ -180,7 +189,13 @@ class MockMaaSHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self) -> None:
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = -1
+        if length < 0 or length > MAX_REQUEST_BODY_BYTES:
+            _reject_oversized_body(handler=self, length=length)
+            return
         raw = self.rfile.read(length) if length else b""
         try:
             body = json.loads(raw) if raw else {}
@@ -234,7 +249,9 @@ class MockMaaSHandler(BaseHTTPRequestHandler):
                 self._send_json(self._final_response(model, text))
 
     def log_message(self, fmt: str, *args) -> None:
-        print(f"mock-maas: {self.path}", flush=True)
+        # Log the method only — never the raw path or query parameters, which
+        # could carry request-derived values.
+        print(f"mock-maas: {self.command} request received", flush=True)
 
 
 if __name__ == "__main__":

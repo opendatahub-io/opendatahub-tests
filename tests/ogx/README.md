@@ -24,8 +24,9 @@ The `maaspassthrough/`, `mcp/` and `otel/` suites deploy in-cluster mock upstrea
 in for the Gen AI BFF's genai-proxy (records every received request for header-passthrough
 assertions and doubles as a deterministic tool-calling model and passive OTLP receiver), and
 a mock MCP server exposing a `get_weather` tool. Both run stdlib-only on
-`registry.access.redhat.com/ubi9/python-312` (override via `OGX_MOCK_SERVER_IMAGE`, e.g. to
-pin a digest or point at a mirrored image on disconnected clusters).
+`registry.access.redhat.com/ubi9/python-312` (digest-pinned in `tests/ogx/image_constants.py`;
+override via `OGX_MOCK_SERVER_IMAGE` to point at a mirrored image on disconnected clusters —
+the override must itself be digest-pinned, mutable tags are rejected).
 
 ## Test Markers
 

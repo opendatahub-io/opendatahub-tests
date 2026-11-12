@@ -38,9 +38,24 @@ MCP_TOOL_PROMPT = "What is the weather in Boston?"
 
 def _admin_get(ogx_admin_api_url: str, path: str) -> dict:
     """GET an admin API path, retrying transient failures (route warm-up)."""
+    last_exception: Exception | None = None
     with httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=120) as client:
+        response = None
         for attempt in range(3):
-            response = client.get(f"{ogx_admin_api_url}{path}")
+            try:
+                response = client.get(f"{ogx_admin_api_url}{path}")
+            except httpx.TransportError as transport_error:
+                # The route may not accept connections yet right after the
+                # server became ready.
+                last_exception = transport_error
+                LOGGER.warning(
+                    "Transient connection error from admin API, retrying",
+                    path=path,
+                    error=str(transport_error),
+                    attempt=attempt + 1,
+                )
+                time.sleep(5)
+                continue
             if response.status_code < 500:
                 break
             LOGGER.warning(
@@ -50,6 +65,8 @@ def _admin_get(ogx_admin_api_url: str, path: str) -> dict:
                 attempt=attempt + 1,
             )
             time.sleep(5)
+        if response is None:
+            raise last_exception
         response.raise_for_status()
         return response.json()
 

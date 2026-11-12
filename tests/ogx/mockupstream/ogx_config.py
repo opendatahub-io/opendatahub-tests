@@ -22,6 +22,10 @@ from tests.ogx.mockupstream.constants import (
 
 # Route-ingress network policy matching the shared ogx_test_route/ogx_client
 # fixtures (ingress to the OGX API port from the router and host network only).
+# A custom ``network`` spec replaces the operator's default ingress rules
+# entirely, so the default rule letting monitoring namespaces reach the metrics
+# port must be re-added here — otherwise user-workload Prometheus cannot scrape
+# 9464 and the UWM telemetry test cannot pass.
 _INGRESS_NETWORK_POLICY = {
     "policy": {
         "ingress": [
@@ -31,7 +35,13 @@ _INGRESS_NETWORK_POLICY = {
                     {"namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "ingress"}}},
                     {"namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "host-network"}}},
                 ],
-            }
+            },
+            {
+                "ports": [{"port": 9464, "protocol": "TCP"}],
+                "from": [
+                    {"namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "monitoring"}}},
+                ],
+            },
         ]
     }
 }

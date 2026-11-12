@@ -11,11 +11,12 @@ Assertions are made against the mock upstream's recorded headers
 credentials are observable.
 """
 
+import hmac
 import json
 
 import httpx
 import pytest
-from ogx_client import APIError, OgxClient
+from ogx_client import APIStatusError, OgxClient
 
 from tests.ogx.constants import OGX_CLIENT_VERIFY_SSL
 from tests.ogx.mockupstream.constants import MOCK_MAAS_QUALIFIED_MODEL_ID
@@ -81,8 +82,9 @@ class TestMaasTokenPassthrough:
         assert content == "mock-maas echo: hello from token passthrough test", f"unexpected completion: {content}"
 
         last_request = _get_last_request(mock_maas_debug_url=mock_maas_debug_url)
-        authorization = last_request["headers"].get("authorization")
-        assert authorization == f"Bearer {USER_TOKEN}", f"Authorization mismatch: {authorization!r}"
+        authorization = last_request["headers"].get("authorization") or ""
+        assert authorization, "No Authorization header forwarded to upstream"
+        assert hmac.compare_digest(authorization, f"Bearer {USER_TOKEN}"), f"Authorization mismatch: {authorization!r}"
 
     @pytest.mark.tier1
     def test_forward_headers_reach_upstream(self, ogx_client: OgxClient, mock_maas_debug_url: str) -> None:
@@ -109,7 +111,9 @@ class TestMaasTokenPassthrough:
             f"X-Inference-Model-Source-Type: {headers.get('x-inference-model-source-type')!r}"
         )
         assert headers.get("traceparent") == PROVIDER_DATA_WITH_TOKEN["traceparent"], "traceparent not forwarded"
-        assert headers.get("authorization") == f"Bearer {USER_TOKEN}"
+        authorization = headers.get("authorization") or ""
+        assert authorization, "No Authorization header forwarded to upstream"
+        assert hmac.compare_digest(authorization, f"Bearer {USER_TOKEN}")
 
     @pytest.mark.tier3
     def test_no_token_forwarded_without_provider_data(self, ogx_client: OgxClient, mock_maas_debug_url: str) -> None:
@@ -117,15 +121,21 @@ class TestMaasTokenPassthrough:
 
         Given: the passthrough provider has an empty api_key.
         When: a chat completion is sent without X-OGX-Provider-Data.
-        Then: either OGX refuses the request (empty provider credential) or,
+        Then: either OGX refuses the request with a client error (no
+            credential can be resolved for the passthrough provider) or,
             if the upstream accepts it, the recorded request carries no
             Authorization header — in no case is a credential invented.
         """
         try:
             _chat_completion(ogx_client=ogx_client, content="anonymous request")
-        except APIError:
+        except APIStatusError as error:
             # OGX refuses the request when no credential can be resolved for
-            # the passthrough provider — acceptable outcome.
+            # the passthrough provider — acceptable outcome, but only as a
+            # client error. Anything else (5xx, network failures) is an
+            # unrelated failure and must not silently pass the test.
+            assert error.status_code is not None and 400 <= error.status_code < 500, (
+                f"Anonymous request failed with an unrelated error (status={error.status_code}): {error.message}"
+            )
             return
 
         headers = _get_last_request(mock_maas_debug_url=mock_maas_debug_url)["headers"]

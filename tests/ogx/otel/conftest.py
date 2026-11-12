@@ -27,21 +27,19 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 
 from tests.ogx.constants import OGX_METRICS_PORT
+from tests.ogx.mockupstream.constants import MOCK_INFERENCE_API_KEY
 from tests.ogx.mockupstream.deployments import MockUpstream
 from tests.ogx.mockupstream.ogx_config import (
     build_mock_run_config,
     build_override_config_server_spec,
 )
+from tests.ogx.otel.constants import (
+    OTEL_CONFIGMAP_KEY,
+    OTEL_CONFIGMAP_NAME,
+    OTEL_SERVER_NAME,
+)
 from tests.ogx.utils import create_ogx_server
 from utilities.resources.ogx_server import OgxServer
-
-OTEL_SERVER_NAME = "ogx-otel-test"
-OTEL_CONFIGMAP_NAME = "ogx-otel-config"
-OTEL_CONFIGMAP_KEY = "run.yaml"
-
-# The passthrough provider needs a non-empty api_key for OGX's internal
-# OpenAI-compatible client; the credential flow is not under test here.
-_MOCK_INFERENCE_API_KEY = "mock-inference-key"  # pragma: allowlist secret
 
 
 @pytest.fixture(scope="class")
@@ -60,7 +58,7 @@ def ogx_server(  # noqa: UFN001 — intentionally shadows the parent conftest fi
         build_mock_run_config(
             distro_name=OTEL_SERVER_NAME,
             mock_service_url=mock_maas_upstream.service_url,
-            api_key=_MOCK_INFERENCE_API_KEY,
+            api_key=MOCK_INFERENCE_API_KEY,
         )
     )
 

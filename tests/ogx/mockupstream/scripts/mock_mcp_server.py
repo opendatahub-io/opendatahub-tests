@@ -18,10 +18,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = 9000
 TOOL_NAME = "get_weather"
 TOOL_RESULT_TEXT = "Weather in Boston: sunny, 21C"
+# Reject bodies larger than this before reading them, so a client cannot
+# exhaust the pod's memory (128 MiB limit) with a single large POST.
+MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024
 
 
 class MockMCPHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # Socket timeout: a client that opens a request but never finishes sending
+    # the body must not hold the handler thread forever.
+    timeout = 60
 
     def _json_response(self, payload: dict, status: int = 200) -> None:
         body = json.dumps(payload).encode()
@@ -38,7 +44,16 @@ class MockMCPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = -1
+        if length < 0 or length > MAX_REQUEST_BODY_BYTES:
+            self.send_response(413)
+            self.send_header("Content-Length", "0")
+            self.close_connection = True
+            self.end_headers()
+            return
         message = json.loads(self.rfile.read(length)) if length else {}
         method = message.get("method")
         message_id = message.get("id")
@@ -104,7 +119,9 @@ class MockMCPHandler(BaseHTTPRequestHandler):
             })
 
     def log_message(self, fmt: str, *args) -> None:
-        print(f"mock-mcp: {self.path}", flush=True)
+        # Log the method only — never the raw path or query parameters, which
+        # could carry request-derived values.
+        print(f"mock-mcp: {self.command} request received", flush=True)
 
 
 if __name__ == "__main__":

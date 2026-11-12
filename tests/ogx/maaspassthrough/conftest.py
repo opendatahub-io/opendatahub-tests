@@ -21,6 +21,11 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.namespace import Namespace
 
+from tests.ogx.maaspassthrough.constants import (
+    MAAS_PASSTHROUGH_CONFIGMAP_KEY,
+    MAAS_PASSTHROUGH_CONFIGMAP_NAME,
+    MAAS_PASSTHROUGH_SERVER_NAME,
+)
 from tests.ogx.mockupstream.deployments import MockUpstream
 from tests.ogx.mockupstream.ogx_config import (
     build_mock_run_config,
@@ -28,10 +33,6 @@ from tests.ogx.mockupstream.ogx_config import (
 )
 from tests.ogx.utils import create_ogx_server
 from utilities.resources.ogx_server import OgxServer
-
-MAAS_PASSTHROUGH_SERVER_NAME = "ogx-maas-passthrough-test"
-MAAS_PASSTHROUGH_CONFIGMAP_NAME = "ogx-maas-passthrough-config"
-MAAS_PASSTHROUGH_CONFIGMAP_KEY = "run.yaml"
 
 
 @pytest.fixture(scope="class")

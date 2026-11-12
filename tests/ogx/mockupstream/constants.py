@@ -2,10 +2,24 @@
 
 import os
 
-# Container image for both mock servers. Overridable so disconnected lanes can
-# point at a mirrored location (the image is already part of the disconnected
-# image set: registry.redhat.io/ubi9/python-312). A digest may be pinned.
-MOCK_SERVER_IMAGE = os.getenv("OGX_MOCK_SERVER_IMAGE", "registry.access.redhat.com/ubi9/python-312:latest")
+from tests.ogx.image_constants import OgxImages
+
+# Container image for both mock servers (digest-pinned in image_constants.py).
+# The OGX_MOCK_SERVER_IMAGE env var allows pointing at a mirrored location
+# (e.g. a disconnected registry); the override must itself be digest-pinned —
+# mutable tags are rejected per the image policy.
+MOCK_SERVER_IMAGE = os.getenv("OGX_MOCK_SERVER_IMAGE", OgxImages.MOCK_SERVER)
+if "@sha256:" not in MOCK_SERVER_IMAGE:
+    raise ValueError(
+        f"OGX_MOCK_SERVER_IMAGE must reference an image digest (registry/repo@sha256:...), "
+        f"mutable tags are not allowed, got: {MOCK_SERVER_IMAGE!r}"
+    )
+
+# Non-empty api_key for the passthrough provider in suites where the
+# per-request credential flow is NOT under test (MCP tool runtime, OTel):
+# OGX's internal OpenAI-compatible client requires one, while the MaaS
+# passthrough suite deploys with an empty key on purpose.
+MOCK_INFERENCE_API_KEY = "mock-inference-key"  # pragma: allowlist secret
 
 # --- mock MaaS / genai-proxy upstream -------------------------------------
 MOCK_MAAS_NAME = "mock-maas-server"
