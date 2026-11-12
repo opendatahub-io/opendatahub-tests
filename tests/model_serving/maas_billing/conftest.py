@@ -37,7 +37,6 @@ from tests.model_serving.maas_billing.maas_subscription.utils import (
 from tests.model_serving.maas_billing.multitenancy.aitenant.utils import AITENANT_INFRA_NAMESPACE
 from tests.model_serving.maas_billing.utils import (
     build_maas_headers,
-    capture_maas_dsc_components_patch,
     create_maas_group,
     detect_scheme_via_llmisvc,
     dsc_uses_aigateway_maas_schema,
@@ -46,15 +45,13 @@ from tests.model_serving.maas_billing.utils import (
     get_maas_models_response,
     get_total_tokens,
     host_from_ingress_domain,
-    maas_component_patch,
+    maas_dsc_session_enablement,
     maas_gateway_listeners,
     maas_gateway_rate_limits_patched,
     mint_token,
     patch_llmisvc_with_maas_router,
-    restore_maas_dsc_components_patch,
     revoke_token,
     verify_chat_completions,
-    wait_for_maas_controller_ready,
 )
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
@@ -62,7 +59,6 @@ from utilities.constants import (
     MAAS_RATE_LIMIT_POLICY_NAME,
     MAAS_TOKEN_RATE_LIMIT_POLICY_NAME,
     ContainerImages,
-    DscComponents,
     ModelStorage,
 )
 from utilities.general import generate_random_name, wait_for_oauth_openshift_deployment
@@ -739,27 +735,11 @@ def maas_controller_enabled_latest(
     Restore DSC to original state on teardown.
     """
     uses_aigateway_maas_schema = dsc_uses_aigateway_maas_schema(admin_client=dsc_resource.client)
-    original_components_patch = capture_maas_dsc_components_patch(
+    with maas_dsc_session_enablement(
         dsc_resource=dsc_resource,
         uses_aigateway_maas_schema=uses_aigateway_maas_schema,
-    )
-    component_patch = maas_component_patch(
-        admin_client=dsc_resource.client,
-        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
-        aigateway_state=DscComponents.ManagementState.MANAGED,
-    )
-
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-        wait_for_maas_controller_ready(
-            dsc_resource=dsc_resource,
-            uses_aigateway_maas_schema=uses_aigateway_maas_schema,
-        )
-        yield dsc_resource
-
-    restore_maas_dsc_components_patch(
-        dsc_resource=dsc_resource,
-        original_components_patch=original_components_patch,
-    )
+    ) as managed_dsc:
+        yield managed_dsc
 
 
 @pytest.fixture(scope="session")
@@ -1174,27 +1154,11 @@ def maas_subscription_controller_enabled_latest(
     Ensures subscription namespace exists before MaaS is switched to Managed.
     """
     uses_aigateway_maas_schema = dsc_uses_aigateway_maas_schema(admin_client=dsc_resource.client)
-    original_components_patch = capture_maas_dsc_components_patch(
+    with maas_dsc_session_enablement(
         dsc_resource=dsc_resource,
         uses_aigateway_maas_schema=uses_aigateway_maas_schema,
-    )
-    component_patch = maas_component_patch(
-        admin_client=dsc_resource.client,
-        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
-        aigateway_state=DscComponents.ManagementState.MANAGED,
-    )
-
-    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
-        wait_for_maas_controller_ready(
-            dsc_resource=dsc_resource,
-            uses_aigateway_maas_schema=uses_aigateway_maas_schema,
-        )
-        yield dsc_resource
-
-    restore_maas_dsc_components_patch(
-        dsc_resource=dsc_resource,
-        original_components_patch=original_components_patch,
-    )
+    ) as managed_dsc:
+        yield managed_dsc
 
 
 @pytest.fixture(scope="class")

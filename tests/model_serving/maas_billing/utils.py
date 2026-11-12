@@ -26,6 +26,7 @@ from utilities.constants import (
     MAAS_GATEWAY_NAMESPACE,
     ApiGroups,
     DscComponents,
+    Timeout,
 )
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
@@ -137,7 +138,6 @@ def restore_maas_dsc_components_patch(
     if original_components_patch is not None:
         with ResourceEditor(patches={dsc_resource: {"spec": {"components": original_components_patch}}}):
             pass
-    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
 
 
 def maas_under_kserve_component_patch(
@@ -168,7 +168,7 @@ def maas_component_patch(
 def wait_for_maas_controller_ready(
     dsc_resource: DataScienceCluster,
     uses_aigateway_maas_schema: bool,
-    timeout: int = 900,
+    timeout: int = Timeout.TIMEOUT_5MIN,
 ) -> None:
     """Wait for the MaaS controller readiness condition appropriate to the cluster version."""
     maas_ready_condition = (
@@ -177,7 +177,83 @@ def wait_for_maas_controller_ready(
         else DscComponents.ConditionType.MODELS_AS_SERVICE_READY
     )
     dsc_resource.wait_for_condition(condition=maas_ready_condition, status="True", timeout=timeout)
-    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+
+
+def maas_dsc_maas_ready_condition(uses_aigateway_maas_schema: bool) -> str:
+    """Return the DSC status condition type that signals MaaS controller readiness."""
+    if uses_aigateway_maas_schema:
+        return DscComponents.ConditionType.AIGATEWAY_READY
+    return DscComponents.ConditionType.MODELS_AS_SERVICE_READY
+
+
+def maas_dsc_already_managed_and_ready(
+    dsc_resource: DataScienceCluster,
+    uses_aigateway_maas_schema: bool,
+) -> bool:
+    """Return True when MaaS is MANAGED in DSC spec and the MaaS readiness condition is True."""
+    components = dsc_resource.instance.spec.components
+    if uses_aigateway_maas_schema:
+        try:
+            aigateway = components[DscComponents.AIGATEWAY]
+            if aigateway.managementState != DscComponents.ManagementState.MANAGED:
+                return False
+            if aigateway.modelsAsAService.managementState != DscComponents.ManagementState.MANAGED:
+                return False
+        except AttributeError, KeyError, TypeError:
+            return False
+    else:
+        try:
+            kserve = components[DscComponents.KSERVE]
+            if kserve.modelsAsService.managementState != DscComponents.ManagementState.MANAGED:
+                return False
+        except AttributeError, KeyError, TypeError:
+            return False
+
+    readiness_condition = maas_dsc_maas_ready_condition(uses_aigateway_maas_schema=uses_aigateway_maas_schema)
+    for condition in dsc_resource.instance.status.conditions:
+        if condition.type == readiness_condition and condition.status == "True":
+            return True
+    return False
+
+
+@contextmanager
+def maas_dsc_session_enablement(
+    dsc_resource: DataScienceCluster,
+    *,
+    uses_aigateway_maas_schema: bool,
+) -> Generator[DataScienceCluster]:
+    """Enable MaaS on DSC for a session, or skip when already MANAGED and ready.
+
+    Skips ResourceEditor and waits when the cluster already matches pipeline state.
+    Restores the original DSC components slice after the session when a patch was applied.
+    """
+    if maas_dsc_already_managed_and_ready(
+        dsc_resource=dsc_resource,
+        uses_aigateway_maas_schema=uses_aigateway_maas_schema,
+    ):
+        LOGGER.info("DSC MaaS already MANAGED with MaaS readiness condition True; skipping DSC enable")
+        yield dsc_resource
+        return
+
+    original_components_patch = capture_maas_dsc_components_patch(
+        dsc_resource=dsc_resource,
+        uses_aigateway_maas_schema=uses_aigateway_maas_schema,
+    )
+    component_patch = maas_component_patch(
+        admin_client=dsc_resource.client,
+        models_as_a_service_state=DscComponents.ManagementState.MANAGED,
+        aigateway_state=DscComponents.ManagementState.MANAGED,
+    )
+    with ResourceEditor(patches={dsc_resource: {"spec": {"components": component_patch}}}):
+        wait_for_maas_controller_ready(
+            dsc_resource=dsc_resource,
+            uses_aigateway_maas_schema=uses_aigateway_maas_schema,
+        )
+        yield dsc_resource
+    restore_maas_dsc_components_patch(
+        dsc_resource=dsc_resource,
+        original_components_patch=original_components_patch,
+    )
 
 
 def maas_under_aigateway_component_patch(
