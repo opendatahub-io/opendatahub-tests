@@ -33,6 +33,7 @@ from utilities.constants import (
     LLM_D_CHAT_GENERATION_CONFIG,
     BUILTIN_DETECTOR_CONFIG,
     LLMdInferenceSimConfig,
+    MinIo,
     Timeout,
 )
 from utilities.plugins.constant import OpenAIEnpoints
@@ -232,10 +233,13 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, orchestrator_config, guardrails_gateway_config,guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, orchestrator_config, guardrails_gateway_config,"
+    "guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-huggingface"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
             {
                 "orchestrator_config_data": {
                     "config.yaml": yaml.dump({
@@ -324,6 +328,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
     def test_guardrails_multi_detector_unsuitable_input(
         self,
+        minio_pod,
         current_client_token,
         llm_d_inference_sim_isvc,
         guardrails_orchestrator_route,
@@ -348,6 +353,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
     def test_guardrails_multi_detector_negative_detection(
         self,
+        minio_pod,
         current_client_token,
         llm_d_inference_sim_isvc,
         orchestrator_config,
@@ -370,6 +376,7 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
     def test_guardrails_standalone_detector_endpoint(
         self,
+        minio_pod,
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
@@ -391,6 +398,8 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
     def test_guardrails_traces_in_tempo(
         self,
+        minio_pod,
+        minio_data_connection,
         admin_client,
         model_namespace,
         orchestrator_config,
@@ -423,10 +432,12 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-guardrails-autoconfig"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
             {
                 "auto_config": {
                     "inferenceServiceToGuardrail": LLMdInferenceSimConfig.isvc_name,
@@ -437,7 +448,6 @@ class TestGuardrailsOrchestratorWithHuggingFaceDetectors:
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfig:
     """
@@ -446,9 +456,12 @@ class TestGuardrailsOrchestratorAutoConfig:
 
     def test_guardrails_gateway_info_endpoint(
         self,
+        minio_pod,
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
+        hap_detector_isvc,
+        prompt_injection_detector_isvc,
         guardrails_orchestrator_health_route,
         guardrails_healthcheck,
     ):
@@ -460,9 +473,12 @@ class TestGuardrailsOrchestratorAutoConfig:
 
     def test_guardrails_autoconfig_unsuitable_input(
         self,
+        minio_pod,
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
+        hap_detector_isvc,
+        prompt_injection_detector_isvc,
         guardrails_orchestrator_route,
         guardrails_healthcheck,
     ):
@@ -478,8 +494,11 @@ class TestGuardrailsOrchestratorAutoConfig:
 
     def test_guardrails_autoconfig_negative_detection(
         self,
+        minio_pod,
         current_client_token,
         llm_d_inference_sim_isvc,
+        hap_detector_isvc,
+        prompt_injection_detector_isvc,
         guardrails_orchestrator_route,
         openshift_ca_bundle_file,
         guardrails_healthcheck,
@@ -495,10 +514,12 @@ class TestGuardrailsOrchestratorAutoConfig:
 
 
 @pytest.mark.parametrize(
-    "model_namespace, guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, guardrails_orchestrator",
     [
         pytest.param(
             {"name": "test-autoconfig-gateway"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
             {
                 "auto_config": {
                     "inferenceServiceToGuardrail": LLMdInferenceSimConfig.isvc_name,
@@ -511,7 +532,6 @@ class TestGuardrailsOrchestratorAutoConfig:
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 @pytest.mark.rawdeployment
 class TestGuardrailsOrchestratorAutoConfigWithGateway:
     """
@@ -521,6 +541,7 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
 
     def test_guardrails_autoconfig_gateway_info_endpoint(
         self,
+        minio_pod,
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
@@ -537,6 +558,7 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
 
     def test_guardrails_autoconfig_gateway_unsuitable_input(
         self,
+        minio_pod,
         current_client_token,
         openshift_ca_bundle_file,
         llm_d_inference_sim_isvc,
@@ -568,6 +590,7 @@ class TestGuardrailsOrchestratorAutoConfigWithGateway:
     )
     def test_guardrails_autoconfig_gateway_negative_detection(
         self,
+        minio_pod,
         current_client_token,
         llm_d_inference_sim_isvc,
         prompt_injection_detector_isvc,

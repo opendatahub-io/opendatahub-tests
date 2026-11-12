@@ -254,9 +254,13 @@ def check_guardrails_health_endpoint(
     )
 
 
+@retry(exceptions_dict={TimeoutError: [], ReadTimeout: []}, wait_timeout=30, sleep=5)
 def verify_health_info_response(host, token, ca_bundle_file):
-    response = requests.get(url=f"https://{host}/info", headers=get_auth_headers(token=token), verify=ca_bundle_file)
-    assert response.status_code == http.HTTPStatus.OK
+    response = requests.get(
+        url=f"https://{host}/info", headers=get_auth_headers(token=token), verify=ca_bundle_file, timeout=30
+    )
+    if response.status_code != http.HTTPStatus.OK:
+        raise TimeoutError(f"GuardrailsOrchestrator /info not ready: {response.status_code}: {response.text}")
 
     healthy_status = "HEALTHY"
     response_data = response.json()
@@ -265,7 +269,10 @@ def verify_health_info_response(host, token, ca_bundle_file):
         if service_info["status"] != healthy_status:
             mismatches.append(f"Service {service_name} is not healthy: {service_info['status']}")
 
-    assert not mismatches, f"GuardrailsOrchestrator service failures: {mismatches}"
+    if mismatches:
+        raise TimeoutError(f"GuardrailsOrchestrator service failures: {mismatches}")
+
+    return response
 
 
 def _send_guardrails_orchestrator_post_request(
