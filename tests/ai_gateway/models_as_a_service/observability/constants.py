@@ -40,8 +40,19 @@ LOKI_QUERY_TENANT: str = "application"
 LOKI_QUERY_PATH: str = f"/api/logs/v1/{LOKI_QUERY_TENANT}/loki/api/v1/query"
 LOKI_QUERY_URL: str = f"https://localhost:{LOKI_QUERY_LOCAL_PORT}{LOKI_QUERY_PATH}"
 LOKI_QUERY_RANGE_WINDOW: str = "1h"
-# odh-observability projects the Monitoring CR's usage-logs conditions onto DSCI.status.conditions.
+MONITORING_API_VERSION: str = "services.platform.opendatahub.io/v1alpha1"
+MONITORING_INSTANCE_NAME: str = "default-monitoring"
+# Usage-logs Loki readiness (separate from platform log-forwarding LokiStackAvailable on DSCI).
+MONITORING_USAGE_LOGS_LOKI_CONDITION: str = "UsageLogsLokiStackAvailable"
+# Older odh-observability releases reported usage-logs Loki readiness on Monitoring LokiStackAvailable.
+MONITORING_LEGACY_LOKI_CONDITION: str = "LokiStackAvailable"
+# Bootstrap tests wait on DSCI after operator projection (includes legacy LokiStackAvailable name).
 DSCI_USAGE_LOGS_CONDITIONS: tuple[str, ...] = ("Ready", "UsageLogsCollectorAvailable", "LokiStackAvailable")
+DSCI_USAGE_LOGS_PIPELINE_CONDITIONS: tuple[str, ...] = (
+    "MonitoringReady",
+    "MonitoringStackAvailable",
+    "UsageLogsCollectorAvailable",
+)
 DSCI_USAGE_LOGS_CONDITIONS_WAIT_TIMEOUT: int = 600
 USAGE_LOGS_PROPAGATION_TIMEOUT: int = 300
 USAGE_LOGS_PROPAGATION_SLEEP: int = 15
@@ -60,6 +71,12 @@ USAGE_LOGS_SEAWEEDFS_CREDENTIALS_SECRET_NAME: str = f"{USAGE_LOGS_SEAWEEDFS_NAME
 LOKI_S3_SECRET_NAME: str = "usage-logs-loki-s3"
 LOKI_S3_BUCKET_NAME: str = "usage-logs"
 LOKI_S3_REGION: str = "us-east-1"
+
+# Multi-tenant usage-log E2E (RHOAIENG-99404)
+USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT: str = "usage-logs-tenancy-proxy"
+USAGE_LOGS_TENANCY_PROXY_PORT: int = 8443
+USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT: int = 8109
+USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK: str = "30m"
 
 
 def loki_usage_requests_query(model: str) -> str:
