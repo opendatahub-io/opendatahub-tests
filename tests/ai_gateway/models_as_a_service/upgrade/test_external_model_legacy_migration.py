@@ -123,7 +123,7 @@ class TestPostUpgradeLegacyExternalModelMigration:
         """Given inference EM is programmed, then maas-prefixed legacy networking is removed."""
         wait_for_legacy_maas_prefixed_networking_deleted(
             client=admin_client,
-            resource_name=legacy_migration_baseline_fixture["legacy_resource_name"],
+            model_name=legacy_migration_baseline_fixture["model_name"],
             namespace=legacy_migration_namespace.name,
         )
         LOGGER.info(
@@ -175,7 +175,7 @@ class TestPostUpgradeLegacyExternalModelMigration:
         """Given supersede completed, when checking HTTPRoutes, then none are owned by the legacy ExternalModel."""
         wait_for_legacy_maas_prefixed_networking_deleted(
             client=admin_client,
-            resource_name=legacy_migration_baseline_fixture["legacy_resource_name"],
+            model_name=legacy_migration_baseline_fixture["model_name"],
             namespace=legacy_migration_namespace.name,
         )
         verify_no_legacy_owned_httproutes(
