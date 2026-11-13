@@ -11,6 +11,7 @@ from utilities.constants import (
 )
 from utilities.inference_utils import Inference
 from utilities.infra import get_pods_by_isvc_label, get_product_version
+from utilities.jira import is_jira_open
 from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.modelmesh]
@@ -28,7 +29,6 @@ pytestmark = [pytest.mark.modelmesh]
 )
 class TestOpenVINOModelMesh:
     @pytest.mark.smoke
-    @pytest.mark.dependency(name="test_product_version_in_model_mesh_container")
     def test_product_version_in_model_mesh_container(
         self,
         admin_client,
@@ -36,6 +36,9 @@ class TestOpenVINOModelMesh:
         http_s3_ovms_model_mesh_serving_runtime,
     ):
         """Verify model mesh container contains the correct product version"""
+        if is_jira_open(jira_id="RHAI-12867", admin_client=admin_client):
+            pytest.skip("RHAI-12867: ModelMesh reports a stale runtime version")
+
         pod = get_pods_by_isvc_label(
             client=http_s3_openvino_model_mesh_inference_service.client,
             isvc=http_s3_openvino_model_mesh_inference_service,
@@ -57,7 +60,6 @@ class TestOpenVINOModelMesh:
             raise ValueError(f"Model mesh container does not contain a product version, mm log: {mm_log}")
 
     @pytest.mark.smoke
-    @pytest.mark.dependency(depends=["test_product_version_in_model_mesh_container"])
     @pytest.mark.polarion("ODS-2053", "ODS-2054")
     def test_model_mesh_openvino_rest_inference_internal_route(self, http_s3_openvino_model_mesh_inference_service):
         """Test OpenVINO ModelMesh inference with internal route"""
