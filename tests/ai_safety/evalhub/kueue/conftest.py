@@ -1,4 +1,3 @@
-import time
 from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Any
@@ -9,7 +8,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
-from ocp_resources.exceptions import ResourceTeardownError
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
@@ -55,12 +53,8 @@ from utilities.kueue_utils import (
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
-    drain_namespace_kueue_resources,
     full_kueue_controller_cleanup,
     get_kueue_controller_pod_uids,
-    pause_kueue_controller,
-    remove_kueue_visibility_api_services,
-    resume_kueue_controller,
     wait_for_kueue_controller_rollout,
     wait_for_kueue_crds_available,
     wait_for_queue_active,
@@ -126,7 +120,6 @@ def trustyai_pods_log_rbac(
 @pytest.fixture(scope="session")
 def evalhub_kueue_model_namespace(
     admin_client: DynamicClient,
-    clean_stale_kueue_state: None,
 ) -> Generator[Namespace, Any, Any]:
     """Namespace for the EvalHub CR and deployment.
 
@@ -375,81 +368,6 @@ def kueue_unmanaged_dsc(
         yield
 
 
-@pytest.fixture(scope="session")
-def clean_stale_kueue_state(
-    admin_client: DynamicClient,
-    kueue_unmanaged_dsc: None,
-) -> None:
-    """Delete test resources left behind by a previous failed run.
-
-    Session fixtures create resources with `with` context managers that fail
-    with 409 Conflict if the resources already exist. Namespaces are removed
-    first — their Workloads hold the kueue.x-k8s.io/resource-in-use finalizer
-    on the ClusterQueues — then the cluster-scoped ClusterQueues and
-    ResourceFlavors.
-    """
-    SLOW_CLEANUP_THRESHOLD = 40
-
-    remove_kueue_visibility_api_services(admin_client=admin_client, wait=True)
-
-    for ns_name in [KUEUE_TENANT_NS, KUEUE_MODEL_NS]:
-        namespace = Namespace(client=admin_client, name=ns_name)
-        if not namespace.exists:
-            continue
-        LOGGER.warning(f"Stale namespace {ns_name} found from previous run, cleaning up")
-        start = time.monotonic()
-        drain_namespace_kueue_resources(admin_client=admin_client, namespace=ns_name)
-        namespace.delete(wait=False)
-        try:
-            for sample in TimeoutSampler(
-                wait_timeout=240,
-                sleep=5,
-                func=lambda n=ns_name: not Namespace(client=admin_client, name=n).exists,
-            ):
-                elapsed = time.monotonic() - start
-                if elapsed > SLOW_CLEANUP_THRESHOLD:
-                    LOGGER.warning(
-                        f"Stale namespace {ns_name} cleanup is slow ({elapsed:.0f}s elapsed). "
-                        f"This usually means Kueue Workloads with finalizers are blocking deletion. "
-                        f"If this keeps happening, manually run: "
-                        f"oc delete workloads --all -n {ns_name} --force --grace-period=0"
-                    )
-                if sample:
-                    break
-        except TimeoutExpiredError:
-            LOGGER.warning(f"Namespace {ns_name} stuck after 240s, force-finalizing")
-            namespace = Namespace(client=admin_client, name=ns_name)
-            if namespace.exists:
-                ns_json = namespace.instance.to_dict()
-                ns_json["spec"]["finalizers"] = []
-                admin_client.request("PUT", f"/api/v1/namespaces/{ns_name}/finalize", body=ns_json)
-                try:
-                    for done in TimeoutSampler(
-                        wait_timeout=30,
-                        sleep=2,
-                        func=lambda n=ns_name: not Namespace(client=admin_client, name=n).exists,
-                    ):
-                        if done:
-                            break
-                except TimeoutExpiredError:
-                    LOGGER.warning(
-                        f"Namespace {ns_name} still present after force-finalizing; "
-                        "continuing, but session fixtures may fail with 409 Conflict"
-                    )
-        elapsed = time.monotonic() - start
-        LOGGER.info(f"Stale namespace {ns_name} cleaned up in {elapsed:.0f}s")
-
-    for resource in [
-        ClusterQueue(client=admin_client, name=MULTI_JOB_CLUSTER_QUEUE_NAME),
-        ClusterQueue(client=admin_client, name=SINGLE_JOB_CLUSTER_QUEUE_NAME),
-        ResourceFlavor(client=admin_client, name=MULTI_JOB_FLAVOR_NAME),
-        ResourceFlavor(client=admin_client, name=SINGLE_JOB_FLAVOR_NAME),
-    ]:
-        if resource.exists:
-            LOGGER.warning(f"Stale {resource.kind} {resource.name} found from previous run, cleaning up")
-            resource.delete(wait=True)
-
-
 # Kueue-specific namespace fixture
 @pytest.fixture(scope="session")
 def evalhub_kueue_namespace(
@@ -457,7 +375,6 @@ def evalhub_kueue_namespace(
     kueue_unmanaged_dsc: None,
     evalhub_kueue_multi_job_cluster_queue: ClusterQueue,
     evalhub_kueue_single_job_cluster_queue: ClusterQueue,
-    clean_stale_kueue_state: None,
 ) -> Generator[Namespace, Any, Any]:
     """Namespace with both EvalHub tenant label and Kueue opt-in label.
 
@@ -466,24 +383,14 @@ def evalhub_kueue_namespace(
     are removed. Without this, ClusterQueue deletion fails because Workloads still
     hold the kueue.x-k8s.io/resource-in-use finalizer on the ClusterQueue.
     """
-    original_replicas = 0
-    try:
-        with create_ns(
-            admin_client=admin_client,
-            name=KUEUE_TENANT_NS,
-            labels={EVALHUB_TENANT_LABEL_KEY: "true"},
-            add_kueue_label=True,
-            delete_timeout=Timeout.TIMEOUT_10MIN,
-        ) as namespace:
-            yield namespace
-            drain_namespace_kueue_resources(admin_client=admin_client, namespace=namespace.name)
-            original_replicas = pause_kueue_controller(admin_client=admin_client)
-    except ResourceTeardownError:
-        LOGGER.warning(
-            f"Namespace {KUEUE_TENANT_NS} teardown timed out; clean_stale_kueue_state will recover it on the next run"
-        )
-    finally:
-        resume_kueue_controller(admin_client=admin_client, replicas=original_replicas)
+    with create_ns(
+        admin_client=admin_client,
+        name=KUEUE_TENANT_NS,
+        labels={EVALHUB_TENANT_LABEL_KEY: "true"},
+        add_kueue_label=True,
+        delete_timeout=Timeout.TIMEOUT_10MIN,
+    ) as namespace:
+        yield namespace
 
 
 # Multi-job quota fixtures
@@ -491,7 +398,6 @@ def evalhub_kueue_namespace(
 def evalhub_kueue_multi_job_resource_flavor(
     admin_client: DynamicClient,
     kueue_unmanaged_dsc: None,
-    clean_stale_kueue_state: None,
 ) -> Generator[ResourceFlavor, Any, Any]:
     """ResourceFlavor for multi-job quota tests."""
     with create_resource_flavor(
@@ -561,7 +467,6 @@ def evalhub_kueue_multi_job_local_queue(
 def evalhub_kueue_single_job_resource_flavor(
     admin_client: DynamicClient,
     kueue_unmanaged_dsc: None,
-    clean_stale_kueue_state: None,
 ) -> Generator[ResourceFlavor, Any, Any]:
     """ResourceFlavor for single-job quota tests."""
     with create_resource_flavor(
@@ -643,6 +548,7 @@ def evalhub_kueue_tenant_rbac(
             func=tenant_rbac_ready,
             admin_client=admin_client,
             namespace=evalhub_kueue_namespace.name,
+            evalhub_instance_name=EVALHUB_KUEUE_CR_NAME,
         ):
             if ready:
                 LOGGER.info(f"Operator RBAC provisioned in {evalhub_kueue_namespace.name}")
