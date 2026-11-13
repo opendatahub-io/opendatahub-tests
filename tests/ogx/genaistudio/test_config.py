@@ -1,10 +1,11 @@
 """Unit tests for the Gen AI Studio Playground configuration builders.
 
-Pure config-level tests — no cluster required. They lock down the properties the
-Playground deployment depends on, most importantly the ``genai-bff-proxy``
-``remote::passthrough`` provider whose upstream removal in OGX 1.3.0
-broke the Playground configuration without any downstream test
-failing.
+Pure config-level tests: the tests themselves need no cluster, but the repository
+conftest connects to one, so run them standalone with
+``PYTHONPATH=. pytest --noconftest tests/ogx/genaistudio/test_config.py``. They lock down
+the properties the Playground deployment depends on, most importantly the
+``genai-bff-proxy`` ``remote::passthrough`` provider whose upstream removal in OGX 1.3.0
+broke the Playground configuration without any downstream test failing.
 """
 
 from typing import Any
@@ -22,6 +23,8 @@ from tests.ogx.genaistudio.config import (
     build_genai_playground_config,
     build_genai_playground_server_config,
 )
+
+pytestmark = pytest.mark.tier1
 
 
 def _get_inference_provider(config: dict[str, Any], provider_type: str) -> list[dict[str, Any]]:
