@@ -10,6 +10,7 @@ activation pattern, and that the operator injects GEMINI_API_KEY into the pod.
 
 import pytest
 import structlog
+import yaml
 from ocp_resources.pod import Pod
 from ogx_client import OgxClient
 
@@ -19,9 +20,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 # These tests require live Gemini API access and must not run on disconnected clusters.
 pytestmark = [pytest.mark.skip_on_disconnected]
-
-# Candidate locations for the distribution run/config file inside the pod.
-CONFIG_SEARCH_PATHS = ("/app", "/opt/app-root", "/etc/ogx", "/root/.ogx")
 
 
 @pytest.mark.parametrize(
@@ -65,16 +63,21 @@ class TestGeminiDeployment:
 
         Given: a deployed OGX distribution.
         When: the distribution config file inside the pod is located and inspected.
-        Then: it references the conditional activation pattern
-            ${env.ENABLE_GEMINI:+gemini}.
+        Then: its remote::gemini provider uses the conditional activation
+            pattern ${env.ENABLE_GEMINI:+gemini} as its provider_id.
         """
         pattern = "${env.ENABLE_GEMINI:+gemini}"
-        search_roots = " ".join(CONFIG_SEARCH_PATHS)
-        matched_files = ogx_gemini_pod.execute(
-            command=["sh", "-c", f"grep -rlsF '{pattern}' {search_roots} 2>/dev/null || true"]
-        ).strip()
-        assert matched_files, (
-            f"Conditional activation pattern {pattern!r} not found in any file under {CONFIG_SEARCH_PATHS!r}"
+        # Same path resolution as the image entrypoint; the operator sets RUN_CONFIG_PATH only for a mounted config.
+        config = yaml.safe_load(
+            ogx_gemini_pod.execute(command=["sh", "-c", 'cat "${RUN_CONFIG_PATH:-/opt/app-root/config.yaml}"'])
+        )
+        gemini_provider_ids = [
+            provider.get("provider_id")
+            for provider in config["providers"]["inference"]
+            if provider.get("provider_type") == "remote::gemini"
+        ]
+        assert pattern in gemini_provider_ids, (
+            f"remote::gemini provider_id is {gemini_provider_ids!r} in the running config, expected {pattern!r}"
         )
 
     @pytest.mark.tier1
