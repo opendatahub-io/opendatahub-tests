@@ -146,6 +146,10 @@ class HTTPRequest:
 
 class AcceleratorType:
     NVIDIA: str = "nvidia"
+    # ARM64 hosts with NVIDIA GPUs (for example Grace Hopper). The accelerator and
+    # the CUDA runtime template are the same as NVIDIA; the separate type exists so
+    # ARM-only coverage can be selected independently in CI.
+    NVIDIA_ARM: str = "nvidia_arm"
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
@@ -153,7 +157,17 @@ class AcceleratorType:
     CPU_x86: str = "cpu_x86"
     CPU_POWER: str = "cpu_power"
     CPU_Z: str = "cpu_z"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, SPYRE_PPC64LE, CPU_x86, CPU_POWER, CPU_Z]  # noqa: RUF012
+    SUPPORTED_LISTS: list[str] = [  # noqa: RUF012
+        NVIDIA,
+        NVIDIA_ARM,
+        AMD,
+        GAUDI,
+        SPYRE,
+        SPYRE_PPC64LE,
+        CPU_x86,
+        CPU_POWER,
+        CPU_Z,
+    ]
 
 
 class ApiGroups:

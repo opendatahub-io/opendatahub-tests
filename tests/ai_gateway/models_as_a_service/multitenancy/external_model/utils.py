@@ -71,7 +71,7 @@ from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.project_project_openshift_io import Project
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import TIMEOUT_4MINUTES, ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
@@ -105,6 +105,7 @@ from utilities.resources.external_model import ExternalModel
 from utilities.resources.external_provider import ExternalProvider
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.maastenantconfig import MaasTenantConfig
+from utilities.resources.reference_grant import ReferenceGrant
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -395,8 +396,11 @@ def delete_external_model_and_ref(
     timeout: int = TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
 ) -> None:
     """Delete a model's MaaSModelRef and ExternalModel, waiting for each to be gone."""
-    MaaSModelRef(client=admin_client, name=name, namespace=namespace, ensure_exists=True).delete()
-    wait_for_not_found(client=admin_client, kind="maasmodelref", name=name, namespace=namespace, timeout=timeout)
+    # A model that never reconciled (e.g. a broken provider) has no
+    # MaaSModelRef: only the refs that exist can be deleted.
+    if get_json_or_none(client=admin_client, kind="maasmodelref", name=name, namespace=namespace) is not None:
+        MaaSModelRef(client=admin_client, name=name, namespace=namespace, ensure_exists=True).delete()
+        wait_for_not_found(client=admin_client, kind="maasmodelref", name=name, namespace=namespace, timeout=timeout)
     ExternalModel(client=admin_client, name=name, namespace=namespace, ensure_exists=True).delete()
     wait_for_not_found(client=admin_client, kind="externalmodel", name=name, namespace=namespace, timeout=timeout)
 
@@ -601,6 +605,18 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+def require_crossns_provider_support(admin_client: DynamicClient) -> None:
+    """Gate cross-namespace provider scenarios (RHOAIENG-90804) on capability.
+
+    The AGC ships cross-namespace provider support (validated 8/8 against a
+    product nightly), so the scenarios run wherever the ReferenceGrant CRD
+    the feature depends on is installed; a cluster without it is a setup
+    failure, not a skip.
+    """
+    if get_json_or_none(client=admin_client, kind="crd", name=REFERENCE_GRANT_CRD_NAME) is None:
+        pytest.fail(f"ReferenceGrant CRD {REFERENCE_GRANT_CRD_NAME} is not installed")
+
+
 _WITHDRAWAL_ISSUE_FLAGS = {
     "#106": "TENANT_EXTERNAL_MODEL_LAST_PROVIDER_WITHDRAWAL_E2E",
     "#108": "TENANT_EXTERNAL_MODEL_PARTIAL_WITHDRAWAL_E2E",
@@ -765,6 +781,8 @@ def external_model_stack(
     provider_path: str | None = None,
     provider_config: dict[str, str] | None = None,
     teardown: bool = True,
+    provider_teardown: bool | None = None,
+    delete_timeout: int = TIMEOUT_4MINUTES,
 ) -> Generator[dict[str, Any], Any, Any]:
     """Create the full serving stack for one external model and clean it up.
 
@@ -772,7 +790,12 @@ def external_model_stack(
     ExternalModel + MaaSModelRef, all under one context manager.``override_credential``
     additionally creates a model-namespace Secret wired as the per-model auth
     override. ``endpoint``/``provider_path``/``credential`` re-point the
-    provider away from the header-echo default. ``tenant_refs`` serves a
+    provider away from the header-echo default. ``delete_timeout`` raises the
+    teardown budget for models and providers whose deletion the controller
+    holds back while a reduced ExtProc revision rolls out and in-flight
+    requests drain. ``provider_teardown`` (default: ``teardown``) lets a
+    caller leave provider deletion to namespace teardown when the
+    controller's provider drain cannot complete. ``tenant_refs`` serves a
     model shared across tenant gateways: instead of one tenantRef-less
     MaaSModelRef named after the model, it creates one modelRef per tenant
     (``<name>-<tenant>``, ``spec.tenantRef`` pinned).
@@ -809,7 +832,8 @@ def external_model_stack(
                 endpoint=endpoint,
                 auth={"type": "apikey", "secretRef": {"name": secret_name}},
                 config=provider_config,
-                teardown=teardown,
+                teardown=teardown if provider_teardown is None else provider_teardown,
+                delete_timeout=delete_timeout,
                 wait_for_resource=True,
             )
         )
@@ -848,6 +872,7 @@ def external_model_stack(
                 gateway_refs=gateway_refs,
                 model_name=model_name,
                 teardown=teardown,
+                delete_timeout=delete_timeout,
                 wait_for_resource=True,
             )
         )
@@ -1083,6 +1108,58 @@ def wait_for_gateway_attachment_reason(
         matcher=_matcher,
         what=f"report reason {reason}",
         timeout=timeout,
+    )
+
+
+def wait_for_gateway_attachment_not_ready(
+    admin_client: DynamicClient,
+    model_name: str,
+    model_namespace: str,
+    gateway_name: str,
+    *,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    message_pattern: str | None = None,
+    timeout: int | None = None,
+) -> dict[str, Any]:
+    """Wait until an attachment reports a failure (not serving).
+
+    ``message_pattern`` (case-insensitive regex) additionally requires the
+    failure to mention e.g. the missing ReferenceGrant authorization or Secret.
+    """
+    pattern = re.compile(message_pattern, re.IGNORECASE) if message_pattern else None
+
+    def _match_condition(conditions: list[dict[str, Any]], where: str) -> dict[str, Any]:
+        failures = [condition for condition in conditions if condition.get("status") == "False"]
+        assert failures, f"no False condition on {where}; conditions: {conditions}"
+        if pattern is None:
+            return failures[0]
+        matched = [
+            condition
+            for condition in failures
+            if pattern.search(condition.get("message") or "") or pattern.search(condition.get("reason") or "")
+        ]
+        assert matched, f"no failure on {where} matching {message_pattern!r}; conditions: {conditions}"
+        return matched[0]
+
+    def _check() -> dict[str, Any]:
+        external_model = get_json_or_none(
+            client=admin_client, kind="externalmodel", name=model_name, namespace=model_namespace
+        )
+        assert external_model is not None, f"externalmodel/{model_namespace}/{model_name} not found"
+        conditions, where = _attachment_conditions(
+            external_model=external_model, gateway_name=gateway_name, gateway_namespace=gateway_namespace
+        )
+        assert conditions, (
+            f"no attachment conditions for {gateway_namespace}/{gateway_name} on "
+            f"{model_namespace}/{model_name}; status: {redact_sensitive(external_model.get('status'))}"
+        )
+        return _match_condition(conditions=conditions, where=where)
+
+    return wait_until(
+        check=_check,
+        timeout=timeout or TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
+        what=f"{model_namespace}/{model_name} attachment to {gateway_namespace}/{gateway_name} "
+        f"report failure ({message_pattern or 'any reason'})",
     )
 
 
@@ -2045,6 +2122,400 @@ def assert_not_served(response: requests.Response) -> None:
     )
 
 
+def conflict_cr_name() -> str:
+    """A CR name shared by one test's conflict pair, unique across tests."""
+    return f"e2e-cfl-{uuid.uuid4().hex[:6]}"
+
+
+def provision_model_in_stack(stack: ExitStack, admin_client: DynamicClient, **kwargs: Any) -> dict[str, Any]:
+    """Create one external model serving stack that lives until module teardown."""
+    return stack.enter_context(cm=external_model_stack(admin_client, **kwargs))
+
+
+def serve_in_tenant_with_ns_suffix(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token: str,
+    stack: ExitStack,
+    case: dict[str, str],
+    model: dict[str, Any],
+    **kwargs: Any,
+) -> dict[str, str]:
+    """Serve one model under a tenant and keep the policy/subscription until module teardown."""
+    ns_suffix = model["namespace"].rsplit("-", 1)[-1]
+    return stack.enter_context(
+        cm=serve_external_model_in_tenant(
+            admin_client,
+            request_session_http,
+            ocp_token,
+            tenant=case,
+            model_name=model["name"],
+            model_namespace=model["namespace"],
+            policy_name=f"{model['name']}-{ns_suffix}-access",
+            subscription_name=f"{model['name']}-{ns_suffix}-sub",
+            **kwargs,
+        )
+    )
+
+
+def serve_model_in_tenant_stack(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token: str,
+    stack: ExitStack,
+    env: dict[str, Any],
+    model: dict[str, Any],
+    **kwargs: Any,
+) -> dict[str, str]:
+    """Serve one model under the tenant and keep the policy/subscription until module teardown."""
+    return stack.enter_context(
+        cm=serve_external_model_in_tenant(
+            admin_client,
+            request_session_http,
+            ocp_token,
+            tenant=env["tenant"],
+            model_name=model["name"],
+            model_namespace=model["namespace"],
+            policy_name=f"{model['name']}-access",
+            subscription_name=f"{model['name']}-sub",
+            teardown=env["teardown"],
+            **kwargs,
+        )
+    )
+
+
+def crossns_model_with_provider(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    *,
+    name: str,
+    provider_name: str,
+    override_secret: str | None = None,
+) -> dict[str, Any]:
+    """Create a cross-ns model bound to a caller-managed provider."""
+    suffix = uuid.uuid4().hex[:6]
+    path_tag = f"{name}-{suffix}"
+    stack.enter_context(
+        cm=ExternalModel(
+            client=admin_client,
+            name=name,
+            namespace=env["model_ns"],
+            external_provider_refs=[
+                external_model_binding(
+                    provider_name=provider_name,
+                    provider_namespace=env["provider_ns"],
+                    path_tag=path_tag,
+                    credential_secret=override_secret,
+                )
+            ],
+            gateway_refs=[gateway_ref(gateway_name=env["tenant"]["gateway_name"])],
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    stack.enter_context(
+        cm=MaaSModelRef(
+            client=admin_client,
+            name=name,
+            namespace=env["model_ns"],
+            model_ref={
+                "name": name,
+                "namespace": env["model_ns"],
+                "kind": "ExternalModel",
+                "apiGroup": "inference.opendatahub.io",
+            },
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    return {
+        "name": name,
+        "namespace": env["model_ns"],
+        "client_name": name,
+        "provider": provider_name,
+        "provider_namespace": env["provider_ns"],
+        "path_tag": path_tag,
+    }
+
+
+def crossns_model(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    *,
+    name: str,
+    credential: str | None = None,
+    override: str | None = None,
+) -> dict[str, Any]:
+    """A model in the model namespace referencing a provider in the provider
+    namespace (no ReferenceGrant — callers add grants per scenario)."""
+    suffix = uuid.uuid4().hex[:6]
+    credential = credential or f"sk-extmod-crossns-{suffix}"  # pragma: allowlist secret
+    provider_name = f"{name}-provider"
+    secret_name = f"{provider_name}-cred"
+
+    stack.enter_context(
+        cm=Secret(
+            client=admin_client,
+            name=secret_name,
+            namespace=env["provider_ns"],
+            type="Opaque",
+            string_data={CREDENTIAL_DATA_KEY: credential},
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    stack.enter_context(
+        cm=ExternalProvider(
+            client=admin_client,
+            name=provider_name,
+            namespace=env["provider_ns"],
+            provider="openai",
+            endpoint=EXTERNAL_ENDPOINT,
+            auth={"type": "apikey", "secretRef": {"name": secret_name}},
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+
+    override_secret = None
+    if override is not None:
+        override_secret = f"{name}-override-cred"
+        stack.enter_context(
+            cm=Secret(
+                client=admin_client,
+                name=override_secret,
+                namespace=env["model_ns"],
+                type="Opaque",
+                string_data={CREDENTIAL_DATA_KEY: override},
+                teardown=env["teardown"],
+                wait_for_resource=True,
+            )
+        )
+
+    model = crossns_model_with_provider(
+        admin_client=admin_client,
+        stack=stack,
+        env=env,
+        name=name,
+        provider_name=provider_name,
+        override_secret=override_secret,
+    )
+    return {
+        **model,
+        "secret_name": secret_name,
+        "secret_namespace": env["provider_ns"],
+        "credential": credential,
+        "override_credential": override,
+    }
+
+
+def apply_reference_grant(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    name: str,
+    provider_namespace: str,
+    *,
+    from_namespace: str,
+    to_name: str | None = None,
+) -> ReferenceGrant:
+    """Authorize ExternalModels in *from_namespace* to reference providers in
+    the grant's namespace (P1 cross-namespace contract).
+
+    Grants authorize at namespace granularity only: ReferenceGrant v1beta1's
+    ``from`` has no ``name`` field, and the API server prunes unknown fields,
+    so every ExternalModel in *from_namespace* is covered.
+    """
+    grant_from: dict[str, str] = {
+        "group": "inference.opendatahub.io",
+        "kind": "ExternalModel",
+        "namespace": from_namespace,
+    }
+    grant_to: dict[str, str] = {
+        "group": "inference.opendatahub.io",
+        "kind": "ExternalProvider",
+    }
+    if to_name:
+        grant_to["name"] = to_name
+    return stack.enter_context(
+        cm=ReferenceGrant(
+            client=admin_client,
+            name=name,
+            namespace=provider_namespace,
+            from_=[grant_from],
+            to=[grant_to],
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+
+
+def reference_grant_for(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    model: dict[str, Any],
+    *,
+    name_suffix: str = "",
+    from_namespace: str | None = None,
+) -> ReferenceGrant:
+    """Grant the model's namespace access to the model's provider."""
+    return apply_reference_grant(
+        admin_client=admin_client,
+        stack=stack,
+        env=env,
+        name=f"{model['name']}-grant{name_suffix}",
+        provider_namespace=model["provider_namespace"],
+        from_namespace=from_namespace or model["namespace"],
+        to_name=model["provider"],
+    )
+
+
+def revoke_reference_grant(grant: ReferenceGrant) -> None:
+    """Delete a ReferenceGrant (the attachment waits confirm the effect)."""
+    grant.delete()
+
+
+def crossns_namespace(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    prefix: str,
+) -> str:
+    """Create a namespace admitted to the tenant gateway; return its name."""
+    return namespace_name(
+        namespace=stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                prefix,
+                env["tenant"]["gateway_name"],
+                teardown=env["teardown"],
+            )
+        )
+    )
+
+
+def crossns_secret_with_credential(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    name: str,
+    namespace: str,
+) -> str:
+    """Create an Opaque Secret holding a fresh api-key; return the credential."""
+    credential = f"sk-extmod-{name[:24]}-{uuid.uuid4().hex[:8]}"  # pragma: allowlist secret
+    stack.enter_context(
+        cm=Secret(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            type="Opaque",
+            string_data={CREDENTIAL_DATA_KEY: credential},
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    return credential
+
+
+def crossns_provider(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    name: str,
+    namespace: str,
+    *,
+    secret_name: str | None = None,
+    credential: str | None = None,
+    grant_from_model_ns: bool = False,
+) -> str:
+    """Provision an ExternalProvider; return the credential it injects.
+
+    Creates a dedicated Secret unless *secret_name* names an existing Secret
+    whose *credential* is already known. With *grant_from_model_ns*, also
+    applies the ReferenceGrant admitting the model namespace to this provider.
+    """
+    if secret_name is None or credential is None:
+        credential = crossns_secret_with_credential(
+            admin_client=admin_client, stack=stack, env=env, name=f"{name}-cred", namespace=namespace
+        )
+        secret_name = f"{name}-cred"
+    stack.enter_context(
+        cm=ExternalProvider(
+            client=admin_client,
+            name=name,
+            namespace=namespace,
+            provider="openai",
+            endpoint=EXTERNAL_ENDPOINT,
+            auth={"type": "apikey", "secretRef": {"name": secret_name}},
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    if grant_from_model_ns:
+        apply_reference_grant(
+            admin_client=admin_client,
+            stack=stack,
+            env=env,
+            name=f"{name}-grant",
+            provider_namespace=namespace,
+            from_namespace=env["model_ns"],
+            to_name=name,
+        )
+    assert credential is not None, "credential must be provided or generated with the Secret"
+    return credential
+
+
+def crossns_twin_model(
+    admin_client: DynamicClient,
+    stack: ExitStack,
+    env: dict[str, Any],
+    *,
+    name: str,
+    provider_name: str,
+    provider_namespaces: list[str],
+) -> dict[str, Any]:
+    """Create a model binding *provider_name* once per *provider_namespaces*,
+    with a distinct path tag per binding, plus its MaaSModelRef."""
+    refs = [
+        external_model_binding(
+            provider_name=provider_name,
+            provider_namespace=provider_namespace,
+            path_tag=f"{name}-ns{index}",
+        )
+        for index, provider_namespace in enumerate(provider_namespaces, start=1)
+    ]
+    stack.enter_context(
+        cm=ExternalModel(
+            client=admin_client,
+            name=name,
+            namespace=env["model_ns"],
+            external_provider_refs=refs,
+            gateway_refs=[gateway_ref(gateway_name=env["tenant"]["gateway_name"])],
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    stack.enter_context(
+        cm=MaaSModelRef(
+            client=admin_client,
+            name=name,
+            namespace=env["model_ns"],
+            model_ref={
+                "name": name,
+                "namespace": env["model_ns"],
+                "kind": "ExternalModel",
+                "apiGroup": "inference.opendatahub.io",
+            },
+            teardown=env["teardown"],
+            wait_for_resource=True,
+        )
+    )
+    return {"name": name, "namespace": env["model_ns"], "client_name": name}
+
+
 @contextmanager
 def default_tenant_model_stack(
     admin_client: DynamicClient,
@@ -2501,7 +2972,7 @@ def two_gateway_model(
 
 
 def require_maas_route(admin_client: DynamicClient, model: dict[str, Any]) -> None:
-    """Skip when the MaaS stack cannot resolve this multi-gateway model.
+    """Fail when the MaaS stack cannot resolve this multi-gateway model.
 
     Aggregate-status AGC builds report no per-gateway ``status.gateways``
     results and no ``status.httpRouteName`` for multi-attachment models, so
@@ -2510,7 +2981,7 @@ def require_maas_route(admin_client: DynamicClient, model: dict[str, Any]) -> No
     per-tenant auth keys and quotas impossible to wire for the shared model.
     """
     if not external_model_reports_maas_route(admin_client, model["name"], model["namespace"]):
-        pytest.skip(
+        pytest.fail(
             "AGC reports aggregate model status only (no per-gateway status.gateways "
             "results); the MaaS stack cannot resolve a multi-gateway model's route, so "
             "per-tenant auth/quota serving for a shared model cannot be exercised"
@@ -2522,7 +2993,7 @@ def require_client_name_alias(
     model: dict[str, Any],
     case: dict[str, str],
 ) -> None:
-    """Skip until the published model identity is the client-facing name.
+    """Fail until the published model identity is the client-facing name.
 
     The per-tenant stacks go green with per-gateway status alone, but a
     path-routed request carries ``{namespace}/{client-facing name}`` while
@@ -2534,7 +3005,7 @@ def require_client_name_alias(
     ref_name = model["model_refs"][case["tenant_label_name"]]
     alias = maas_model_ref_alias(admin_client=admin_client, namespace=model["namespace"], name=ref_name)
     if alias != model["client_name"]:
-        pytest.skip(
+        pytest.fail(
             "client-facing model names are not resolvable through the gateway "
             f"yet: MaaSModelRef {model['namespace']}/{ref_name} "
             f"status.resolvedModelAlias={alias!r} != {model['client_name']!r}"

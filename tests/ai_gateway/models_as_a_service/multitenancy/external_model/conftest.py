@@ -32,6 +32,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     default_tenant_model_stack,
     deploy_aitenant_best_effort,
     deployment_image,
+    external_model_binding,
     external_model_stack,
     extmod_tenant_test_params,
     gateway_ref,
@@ -40,16 +41,20 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     namespace_name,
     per_tenant_processing_uses_praxis,
     provision_and_serve_in_tenant,
+    provision_model_in_stack,
     record_tenant_external_model_evidence,
+    require_crossns_provider_support,
     require_maas_route,
     require_tenant_external_model_support,
     serve_in_default_tenant,
     serve_in_tenant_and_cleanup,
+    serve_in_tenant_with_ns_suffix,
     serve_shared_model_in_tenant,
     tenant_case,
     two_gateway_model,
     unadmitted_user_namespace,
     usage_provider,
+    wait_for_attachment_httproute,
     wait_implicitly_attached,
     wait_until,
 )
@@ -67,6 +72,8 @@ from tests.ai_gateway.models_as_a_service.utils import (
 from utilities.certificates_utils import router_ca_bundle_env
 from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.infra import create_ns
+from utilities.resources.external_model import ExternalModel
+from utilities.resources.external_provider import ExternalProvider
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -815,3 +822,241 @@ def implicit_model(
             )
         )
         yield {"model": model, "api_key": api_key, **attachment}
+
+
+@pytest.fixture(scope="module")
+def crossns_env(
+    admin_client: DynamicClient,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """One tenant's case plus admitted model/provider namespaces for the crossns module."""
+    require_crossns_provider_support(admin_client=admin_client)
+    case = tenant_external_model_tenants["tenant_a"]
+    with ExitStack() as stack:
+        model_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-crossns-model",
+                case["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        provider_ns = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-crossns-prov",
+                case["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        LOGGER.info(
+            f"[crossns] model namespace {model_ns.name}, provider namespace {provider_ns.name} "
+            f"on gateway {case['gateway_name']}"
+        )
+        yield {
+            "tenant": case,
+            "model_ns": namespace_name(model_ns),
+            "provider_ns": namespace_name(provider_ns),
+            "teardown": teardown_resources,
+        }
+
+
+@pytest.fixture(scope="module")
+def conflicts_env(
+    admin_client: DynamicClient,
+    tenant_external_model_tenants: dict[str, dict[str, str]],
+    teardown_resources: bool,
+) -> Generator[dict[str, Any], Any, Any]:
+    """Tenant A's case, two admitted user namespaces and a keeper model for the conflicts module."""
+    tenant_a = tenant_external_model_tenants["tenant_a"]
+    with ExitStack() as stack:
+        user_ns_1 = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-cfl-1",
+                tenant_a["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        user_ns_2 = stack.enter_context(
+            cm=admitted_user_namespace(
+                admin_client,
+                "e2e-extmod-cfl-2",
+                tenant_a["gateway_name"],
+                teardown=teardown_resources,
+            )
+        )
+        # Keep one extra model attached to the tenant gateway for the whole
+        # module, in the TENANT namespace: a provider's deletion is held back
+        # while the routing envelope in the provider's own namespace still
+        # lists it, and only tenant namespaces carry an envelope. While
+        # per-test stacks tear down, the tenant envelope keeps the keeper's
+        # candidate, so provider deletion takes the partial-withdrawal path
+        # (which drains) instead of the last-provider path (whose drain cannot
+        # converge and holds the provider finalizer until the namespace is
+        # deleted). The keeper registers no teardown: the namespace deletions
+        # above and the tenant teardown collect it.
+        keeper = stack.enter_context(
+            cm=external_model_stack(
+                admin_client,
+                name=f"e2e-cfl-keeper-{uuid.uuid4().hex[:6]}",
+                namespace=tenant_a["tenant_ns"],
+                gateway_refs=[gateway_ref(gateway_name=tenant_a["gateway_name"])],
+                teardown=False,
+            )
+        )
+        wait_for_attachment_httproute(
+            admin_client=admin_client,
+            route_namespace=keeper["namespace"],
+            gateway_name=tenant_a["gateway_name"],
+            model_name=keeper["name"],
+        )
+        yield {
+            "tenant_a": tenant_a,
+            "user_ns_1": user_ns_1.name,
+            "user_ns_2": user_ns_2.name,
+        }
+
+
+@pytest.fixture(scope="class")
+def same_named_pair(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    conflicts_env: dict[str, Any],
+) -> Generator[dict[str, Any], Any]:
+    """Two same-named model stacks in two user namespaces, both admitted and served."""
+    with ExitStack() as stack:
+        env = conflicts_env
+        tenant_a = env["tenant_a"]
+        gateway = gateway_ref(gateway_name=tenant_a["gateway_name"])
+        shared_cr_name = f"e2e-cfl-same-{uuid.uuid4().hex[:6]}"
+        shared_secret_name = f"{shared_cr_name}-provider-cred"
+
+        model_2 = provision_model_in_stack(
+            stack=stack,
+            admin_client=admin_client,
+            name=shared_cr_name,
+            namespace=env["user_ns_2"],
+            gateway_refs=[gateway],
+            model_name=f"{shared_cr_name}-two",
+            # The suite's provider-naming convention (<model>-provider) keeps
+            # label-pinned DestinationRule discovery exact; both stacks still
+            # share one provider name across the two namespaces.
+            provider_name=f"{shared_cr_name}-provider",
+            credential_secret_name=shared_secret_name,
+        )
+        wait_for_attachment_httproute(
+            admin_client=admin_client,
+            route_namespace=model_2["namespace"],
+            gateway_name=tenant_a["gateway_name"],
+            model_name=model_2["name"],
+        )
+        model_1 = provision_model_in_stack(
+            stack=stack,
+            admin_client=admin_client,
+            name=shared_cr_name,
+            namespace=env["user_ns_1"],
+            gateway_refs=[gateway],
+            provider_name=f"{shared_cr_name}-provider",
+            credential_secret_name=shared_secret_name,
+        )
+        assert model_1["credential"] != model_2["credential"]
+        assert model_1["path_tag"] != model_2["path_tag"]
+
+        for model in (model_1, model_2):
+            wait_for_attachment_httproute(
+                admin_client=admin_client,
+                route_namespace=model["namespace"],
+                gateway_name=tenant_a["gateway_name"],
+                model_name=model["name"],
+            )
+        first_access = serve_in_tenant_with_ns_suffix(
+            admin_client=admin_client,
+            request_session_http=request_session_http,
+            ocp_token=ocp_token_for_actor,
+            stack=stack,
+            case=tenant_a,
+            model=model_1,
+        )
+        second_access = serve_in_tenant_with_ns_suffix(
+            admin_client=admin_client,
+            request_session_http=request_session_http,
+            ocp_token=ocp_token_for_actor,
+            stack=stack,
+            case=tenant_a,
+            model=model_2,
+        )
+        yield {
+            "shared_cr_name": shared_cr_name,
+            "models": (model_1, model_2),
+            "first_access": first_access,
+            "second_access": second_access,
+        }
+
+
+@pytest.fixture(scope="function")
+def broken_pair(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token_for_actor: str,
+    conflicts_env: dict[str, Any],
+) -> Generator[dict[str, Any], Any]:
+    """A healthy served model plus a broken foreign model on the same gateway.
+
+    Function-scoped on purpose: the deletion test destroys the broken model,
+    so a shared instance would break any test that runs after it.
+    """
+    with ExitStack() as stack:
+        env = conflicts_env
+        tenant_a = env["tenant_a"]
+        gateway = gateway_ref(gateway_name=tenant_a["gateway_name"])
+
+        healthy = provision_model_in_stack(
+            stack=stack,
+            admin_client=admin_client,
+            name=f"e2e-cfl-ok-{uuid.uuid4().hex[:6]}",
+            namespace=env["user_ns_1"],
+            gateway_refs=[gateway],
+        )
+        access = serve_in_tenant_with_ns_suffix(
+            admin_client=admin_client,
+            request_session_http=request_session_http,
+            ocp_token=ocp_token_for_actor,
+            stack=stack,
+            case=tenant_a,
+            model=healthy,
+        )
+
+        broken_name = f"e2e-cfl-broken-{uuid.uuid4().hex[:6]}"
+        broken_provider = f"{broken_name}-provider"
+        stack.enter_context(
+            cm=ExternalProvider(
+                client=admin_client,
+                name=broken_provider,
+                namespace=env["user_ns_2"],
+                provider="openai",
+                endpoint=EXTERNAL_ENDPOINT,
+                auth={"type": "apikey", "secretRef": {"name": f"{broken_name}-missing-cred"}},
+                teardown=True,
+                wait_for_resource=True,
+            )
+        )
+        broken_model = stack.enter_context(
+            cm=ExternalModel(
+                client=admin_client,
+                name=broken_name,
+                namespace=env["user_ns_2"],
+                external_provider_refs=[external_model_binding(provider_name=broken_provider)],
+                gateway_refs=[gateway],
+                teardown=True,
+                wait_for_resource=True,
+            )
+        )
+        yield {
+            "healthy": healthy,
+            "access": access,
+            "broken_name": broken_name,
+            "broken_model": broken_model,
+        }
