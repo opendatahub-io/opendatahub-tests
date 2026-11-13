@@ -342,8 +342,10 @@ class UserInference(Inference):
                 # MAX_ARG_STRLEN once shlex-split into an argv entry, making
                 # execve fail with E2BIG; pass them through a file instead.
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as body_file:
+                    # Record the path before writing so failures while writing
+                    # are still covered by the caller's cleanup.
+                    self._body_file_path = body_file.name
                     body_file.write(body)
-                self._body_file_path = body_file.name
                 data_arg = f"--data-binary @{self._body_file_path}"
 
             else:
@@ -520,15 +522,18 @@ class UserInference(Inference):
             InferenceResponseError: When the service is unavailable or returns 5xx.
             ValueError: When the inference command fails.
         """
-        cmd = self.generate_command(
-            model_name=model_name,
-            inference_input=inference_input,
-            use_default_query=use_default_query,
-            insecure=insecure,
-            token=token,
-        )
-
         try:
+            # Generated inside the cleanup scope: writing the request-body temp
+            # file and building the CA-bundle/client parts of the command can
+            # fail after the file exists, and each attempt must clean it up.
+            cmd = self.generate_command(
+                model_name=model_name,
+                inference_input=inference_input,
+                use_default_query=use_default_query,
+                insecure=insecure,
+                token=token,
+            )
+
             # For internal inference, we need to use port forwarding to the service
             if not self.visibility_exposed:
                 if isinstance(self.inference_service, InferenceService):
