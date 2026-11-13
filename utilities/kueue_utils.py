@@ -359,6 +359,16 @@ def check_workload_quota_reserved(workload: Workload) -> bool:
     )
 
 
+def check_workload_finished(workload: Workload) -> bool:
+    """Check if a Kueue Workload has Finished=True condition."""
+    conditions = getattr(workload.instance.status, "conditions", None) or []
+    return any(
+        (condition.get("type") if isinstance(condition, dict) else getattr(condition, "type", None)) == "Finished"
+        and (condition.get("status") if isinstance(condition, dict) else getattr(condition, "status", None)) == "True"
+        for condition in conditions
+    )
+
+
 def check_admission_check_active(admission_check: AdmissionCheck) -> bool:
     """Check if an AdmissionCheck has Active=True condition."""
     conditions = getattr(admission_check.instance.status, "conditions", None) or []
@@ -474,6 +484,31 @@ def count_pods_started(labels: list[str], namespace: str, admin_client: DynamicC
         )
     )
     return sum(1 for pod in pods if pod.instance.status.phase in ("Running", "Succeeded", "Failed"))
+
+
+def count_pods_running(labels: list[str], namespace: str, admin_client: DynamicClient) -> int:
+    """Count pods currently in the Running phase.
+
+    Unlike count_pods_started, this excludes Succeeded/Failed pods. Use this
+    when a test needs evidence the workload is actively running right now
+    (e.g. before deleting its Job), not just that it started at some point.
+
+    Args:
+        labels: Label selectors to match pods on.
+        namespace: Namespace to search.
+        admin_client: Kubernetes client with admin privileges.
+
+    Returns:
+        The number of matching pods currently in Running phase.
+    """
+    pods = list(
+        Pod.get(
+            label_selector=",".join(labels),
+            namespace=namespace,
+            client=admin_client,
+        )
+    )
+    return sum(1 for pod in pods if pod.instance.status.phase == "Running")
 
 
 def wait_for_queue_active(queue: Resource, timeout: int = Timeout.TIMEOUT_2MIN) -> None:
