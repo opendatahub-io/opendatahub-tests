@@ -168,7 +168,7 @@ def capture_isvc_baseline(client: DynamicClient, isvc: InferenceService) -> ISVC
     baseline["runtime_generation"] = runtime.instance.metadata.generation
 
     pod_restart_counts: dict[str, dict[str, int]] = {}
-    pods = get_pods_by_isvc_label(client=client, isvc=isvc)
+    pods = get_pods_by_isvc_label(client=client, isvc=isvc, runtime_name=runtime.name)
     for pod in pods:
         if pod.instance.status.containerStatuses:
             pod_restart_counts[pod.name] = {
