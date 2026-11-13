@@ -19,7 +19,6 @@ from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
@@ -388,18 +387,18 @@ def tinyllama_model_cache_download_secret(
     models_s3_bucket_name: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
+    model_cache_namespace: str,
 ) -> Generator[Secret]:
-    """S3 credential secret in the applications namespace for downloading the cached TinyLlama model.
+    """S3 credential secret in the model cache job namespace for downloading the cached TinyLlama model.
 
     Mirrors ``model_cache_download_s3_secret`` (``kserve/model_cache/conftest.py``) but targets
     the ``models_s3_bucket_*`` credentials that back ``ModelStorage.S3.TINYLLAMA`` (a different
     bucket than the generic ``ci_s3_bucket_*`` used for the MNIST ONNX cache).
     """
-    applications_namespace: str = py_config["applications_namespace"]
     with s3_endpoint_secret(
         client=admin_client,
         name=f"tinyllama-mc-dl-secret-{shortuuid.uuid()[:10].lower()}",
-        namespace=applications_namespace,
+        namespace=model_cache_namespace,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=models_s3_bucket_region,
