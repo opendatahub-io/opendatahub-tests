@@ -64,6 +64,11 @@ AUTHORINO_TLS_BOOTSTRAP_ANNOTATION = "security.opendatahub.io/authorino-tls-boot
 TENANT_GATEWAY_MAAS_AUTH_POLICY_SUFFIX = "-maas-auth"
 SHARED_MAAS_API_SERVICE_NAME = MAAS_API_DEPLOYMENT_NAME
 TENANT_ISOLATION_MODEL_NAME = "llm-s3-tinyllama-free"
+# Two-tenant isolation: tenant B follows A on a loaded cluster — allow longer Kuadrant gateway reconciliation.
+TENANT_ISOLATION_PRIMARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 300
+TENANT_ISOLATION_SECONDARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 600
+# MaaSAuthPolicy/MaaSSubscription Ready after the gateway AuthPolicy is enforced (matches maas-controller gating).
+TENANT_ISOLATION_MAAS_CR_READY_TIMEOUT_SECONDS = 180
 TENANT_MODELS_BUCKET_SECRET_NAME = "models-bucket-secret"  # pragma: allowlist secret
 TENANT_MODELS_BUCKET_SA_NAME = "models-bucket-sa"
 CROSS_TENANT_INFERENCE_REJECTED_STATUSES = frozenset({401, 403})
@@ -659,6 +664,54 @@ def tenant_gateway_maas_auth_policy_name(gateway_name: str) -> str:
     return f"{gateway_name}{TENANT_GATEWAY_MAAS_AUTH_POLICY_SUFFIX}"
 
 
+def _auth_policy_generation_synced(*, auth_policy: AuthPolicy) -> bool:
+    """True when Kuadrant has applied the current AuthPolicy spec (status.observedGeneration == metadata.generation)."""
+    auth_policy.get()
+    metadata = auth_policy.instance.metadata
+    status = auth_policy.instance.status or {}
+    if isinstance(metadata, dict):
+        generation = metadata.get("generation")
+    else:
+        generation = getattr(metadata, "generation", None)
+    if isinstance(status, dict):
+        observed_generation = status.get("observedGeneration")
+    else:
+        observed_generation = getattr(status, "observedGeneration", None)
+    return (
+        generation is not None
+        and observed_generation is not None
+        and int(observed_generation) == int(generation)
+    )
+
+
+def _gateway_auth_policy_reconciled(
+    *,
+    admin_client: DynamicClient,
+    policy_name: str,
+    namespace: str,
+) -> bool:
+    """Match maas-controller gatewayAuthPolicyReady: Accepted, Enforced, and observedGeneration caught up."""
+    if not _auth_policy_generation_synced(
+        auth_policy=AuthPolicy(client=admin_client, name=policy_name, namespace=namespace),
+    ):
+        return False
+    accepted_condition = get_auth_policy_condition(
+        admin_client=admin_client,
+        policy_name=policy_name,
+        namespace=namespace,
+        condition_type="Accepted",
+    )
+    enforced_condition = get_auth_policy_condition(
+        admin_client=admin_client,
+        policy_name=policy_name,
+        namespace=namespace,
+        condition_type="Enforced",
+    )
+    accepted = accepted_condition is not None and accepted_condition.get("status") == "True"
+    enforced = enforced_condition is not None and enforced_condition.get("status") == "True"
+    return accepted and enforced
+
+
 def maas_api_service_host_for_aitenant(aitenant_name: str, api_namespace: str) -> str:
     """Return the in-cluster Service hostname for a per-tenant maas-api Deployment."""
     deployment_name = maas_api_deployment_name_for_aitenant(aitenant_name=aitenant_name)
@@ -676,7 +729,7 @@ def wait_for_tenant_gateway_maas_auth_policy(
     gateway_namespace: str,
     timeout: int = 300,
 ) -> AuthPolicy:
-    """Poll until the MaaS gateway AuthPolicy for a tenant Gateway exists and is Accepted."""
+    """Poll until the per-tenant Kuadrant AuthPolicy matches maas-controller gateway readiness."""
     policy_name = tenant_gateway_maas_auth_policy_name(gateway_name=gateway_name)
     auth_policy = AuthPolicy(
         client=admin_client,
@@ -692,23 +745,26 @@ def wait_for_tenant_gateway_maas_auth_policy(
         ):
             if not auth_policy.exists:
                 continue
-            accepted_condition = get_auth_policy_condition(
+            if _gateway_auth_policy_reconciled(
                 admin_client=admin_client,
                 policy_name=policy_name,
                 namespace=gateway_namespace,
-                condition_type="Accepted",
-            )
-            if accepted_condition is not None and accepted_condition.get("status") == "True":
+            ):
                 LOGGER.info(
-                    f"AuthPolicy '{gateway_namespace}/{policy_name}' is Accepted after MaaSAuthPolicy reconciliation"
+                    f"AuthPolicy '{gateway_namespace}/{policy_name}' is Accepted, Enforced, "
+                    f"and observedGeneration matches generation"
                 )
                 return auth_policy
     except TimeoutExpiredError as error:
         raise AssertionError(
-            f"Timed out waiting for AuthPolicy '{gateway_namespace}/{policy_name}' to become Accepted. "
-            f"Ensure a MaaSAuthPolicy exists in the tenant namespace to trigger gateway reconciliation."
+            f"Timed out after {timeout}s waiting for AuthPolicy '{gateway_namespace}/{policy_name}' "
+            f"to become Accepted and Enforced with observedGeneration == generation. "
+            f"Ensure a MaaSAuthPolicy exists in the tenant namespace to trigger gateway reconciliation.\n"
+            f"{_gateway_maas_auth_policy_status_snapshot(admin_client, gateway_name, gateway_namespace)}"
         ) from error
-    raise AssertionError(f"AuthPolicy '{gateway_namespace}/{policy_name}' did not become Accepted")
+    raise AssertionError(
+        f"AuthPolicy '{gateway_namespace}/{policy_name}' did not reach Accepted, Enforced, and generation sync"
+    )
 
 
 def verify_tenant_gateway_auth_policy_callback_url(
@@ -1250,8 +1306,16 @@ def make_tenant_model_accessible(
     priority: int = 0,
     teardown: bool = True,
     ready_timeout: int = 300,
+    gateway_auth_timeout: int | None = None,
+    maas_cr_ready_timeout: int | None = None,
 ) -> Generator[MaaSSubscription, Any, Any]:
     """Create tenant MaaSAuthPolicy then MaaSSubscription for a tenant-local model (dev order)."""
+    resolved_gateway_auth_timeout = (
+        gateway_auth_timeout if gateway_auth_timeout is not None else ready_timeout
+    )
+    resolved_maas_cr_ready_timeout = (
+        maas_cr_ready_timeout if maas_cr_ready_timeout is not None else ready_timeout
+    )
     with ExitStack() as stack:
         auth_policy = stack.enter_context(
             cm=MaaSAuthPolicy(
@@ -1269,11 +1333,18 @@ def make_tenant_model_accessible(
                 wait_for_resource=True,
             )
         )
+        if gateway_name and gateway_namespace:
+            wait_for_tenant_gateway_maas_auth_policy(
+                admin_client=admin_client,
+                gateway_name=gateway_name,
+                gateway_namespace=gateway_namespace,
+                timeout=resolved_gateway_auth_timeout,
+            )
         _wait_for_maas_resource_ready(
             resource=auth_policy,
             admin_client=admin_client,
             resource_kind="MaaSAuthPolicy",
-            ready_timeout=ready_timeout,
+            ready_timeout=resolved_maas_cr_ready_timeout,
             gateway_name=gateway_name,
             gateway_namespace=gateway_namespace,
             maas_auth_policy=auth_policy,
@@ -1297,7 +1368,7 @@ def make_tenant_model_accessible(
             resource=subscription,
             admin_client=admin_client,
             resource_kind="MaaSSubscription",
-            ready_timeout=ready_timeout,
+            ready_timeout=resolved_maas_cr_ready_timeout,
             gateway_name=gateway_name,
             gateway_namespace=gateway_namespace,
             maas_auth_policy=auth_policy,

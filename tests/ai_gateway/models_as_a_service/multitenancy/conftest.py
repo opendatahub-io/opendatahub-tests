@@ -13,7 +13,10 @@ from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
     delete_orphaned_ns_clash_aitenants,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
+    TENANT_ISOLATION_MAAS_CR_READY_TIMEOUT_SECONDS,
     TENANT_ISOLATION_MODEL_NAME,
+    TENANT_ISOLATION_PRIMARY_GATEWAY_AUTH_TIMEOUT_SECONDS,
+    TENANT_ISOLATION_SECONDARY_GATEWAY_AUTH_TIMEOUT_SECONDS,
     TenantIsolationGovernance,
     gateway_ref_from_aitenant,
     isolation_bootstrap_gateway_context,
@@ -365,6 +368,11 @@ def isolation_tenant_governance(
                         teardown=teardown_resources,
                     )
                 )
+                gateway_auth_timeout = (
+                    TENANT_ISOLATION_PRIMARY_GATEWAY_AUTH_TIMEOUT_SECONDS
+                    if tenant_index == 0
+                    else TENANT_ISOLATION_SECONDARY_GATEWAY_AUTH_TIMEOUT_SECONDS
+                )
                 stack.enter_context(
                     cm=make_tenant_model_accessible(
                         admin_client=admin_client,
@@ -377,6 +385,8 @@ def isolation_tenant_governance(
                         free_group_name=maas_free_group,
                         gateway_name=gateway_name,
                         gateway_namespace=gateway_namespace,
+                        gateway_auth_timeout=gateway_auth_timeout,
+                        maas_cr_ready_timeout=TENANT_ISOLATION_MAAS_CR_READY_TIMEOUT_SECONDS,
                         teardown=teardown_resources,
                     )
                 )
