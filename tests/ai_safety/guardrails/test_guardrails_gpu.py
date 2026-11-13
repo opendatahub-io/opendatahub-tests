@@ -22,6 +22,7 @@ from tests.ai_safety.guardrails.utils import (
 from utilities.constants import (
     HAP_DETECTOR,
     PROMPT_INJECTION_DETECTOR,
+    MinIo,
     VLLMGPUConfig,
 )
 from utilities.plugins.constant import OpenAIEnpoints
@@ -170,12 +171,15 @@ class TestGuardrailsOrchestratorWithBuiltInDetectors:
 @pytest.mark.gpu
 @pytest.mark.tier2
 @pytest.mark.rawdeployment
-@pytest.mark.usefixtures("patched_dsc_kserve_headed")
+@pytest.mark.usefixtures("patched_dsc_kserve_headed", "minio_pod", "minio_data_connection")
 @pytest.mark.parametrize(
-    "model_namespace, orchestrator_config_gpu, guardrails_gateway_config, guardrails_orchestrator",
+    "model_namespace, minio_pod, minio_data_connection, orchestrator_config_gpu, "
+    "guardrails_gateway_config, guardrails_orchestrator",
     [
         pytest.param(
-            {"name": "test-guardrails-huggingface-gpu"},
+            {"name": "test-guardrails-hf-gpu"},
+            MinIo.PodConfig.QWEN_HAP_BPIV2_MINIO_CONFIG,
+            {"bucket": "llms"},
             {"orchestrator_config_data": None},
             {
                 "guardrails_gateway_config_data": {
