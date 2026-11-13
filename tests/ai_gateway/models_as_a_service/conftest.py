@@ -18,6 +18,7 @@ from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.oauth import OAuth
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
@@ -71,6 +72,7 @@ from utilities.general import generate_random_name, wait_for_oauth_openshift_dep
 from utilities.image_constants import SharedImages
 from utilities.infra import create_ns, get_openshift_token, login_with_user_password, s3_endpoint_secret
 from utilities.llmd_utils import create_llmisvc
+from utilities.logger import RedactedString
 from utilities.plugins.constant import OpenAIEnpoints
 from utilities.resources.authorino import Authorino
 from utilities.resources.llm_inference_service import LLMInferenceService
@@ -120,10 +122,38 @@ def request_session_http() -> Generator[requests.Session]:
 
 @pytest.fixture(scope="class")
 def maas_unprivileged_model_namespace(
-    unprivileged_client: DynamicClient, admin_client: DynamicClient
+    unprivileged_client: DynamicClient,
+    admin_client: DynamicClient,
+    non_admin_user_password: tuple[str, RedactedString] | None,
 ) -> Generator[Namespace, Any, Any]:
-    with create_ns(name="llm", unprivileged_client=unprivileged_client, admin_client=admin_client) as ns:
-        yield ns
+    """Model namespace for MaaS tests, reusing an existing "llm" namespace when present.
+
+    The MaaS sample deployment (docs/samples/models) installs simulated models in an "llm"
+    namespace. A ProjectRequest for an existing project fails with 409, and tearing down a
+    namespace the fixtures did not create would delete that content, so reuse it instead.
+    A ProjectRequest grants its requester admin in the namespace it creates; a reused
+    namespace has no such binding, so grant the test user equivalent access explicitly.
+    """
+    existing_ns = Namespace(client=admin_client, name="llm")
+    if existing_ns.exists:
+        LOGGER.info("Namespace llm already exists, reusing it")
+        if not non_admin_user_password:
+            yield existing_ns
+        else:
+            with RoleBinding(
+                client=admin_client,
+                name=generate_random_name(prefix="maas-llm-admin"),
+                namespace=existing_ns.name,
+                role_ref_name="admin",
+                role_ref_kind="ClusterRole",
+                subjects_kind="User",
+                subjects_name=non_admin_user_password[0],
+                teardown=True,
+            ):
+                yield existing_ns
+    else:
+        with create_ns(name="llm", unprivileged_client=unprivileged_client, admin_client=admin_client) as ns:
+            yield ns
 
 
 @pytest.fixture(scope="class")
@@ -154,11 +184,16 @@ def maas_models_endpoint_s3_secret(
 def maas_model_service_account(
     unprivileged_client: DynamicClient, maas_models_endpoint_s3_secret: Secret
 ) -> Generator[ServiceAccount, Any, Any]:
-    """MaaS-specific version of model_service_account using maas_models_endpoint_s3_secret."""
+    """MaaS-specific version of model_service_account using maas_models_endpoint_s3_secret.
+
+    The name is unique per fixture instance so reruns against the reused "llm" namespace never
+    collide with a pre-existing models-bucket-sa, and only the service account created here is
+    torn down. Consumers use ``maas_model_service_account.name``, so the name stays opaque to them.
+    """
     with ServiceAccount(
         client=unprivileged_client,
         namespace=maas_models_endpoint_s3_secret.namespace,
-        name="models-bucket-sa",
+        name=generate_random_name(prefix="maas-models-bucket-sa"),
         secrets=[{"name": maas_models_endpoint_s3_secret.name}],
     ) as sa:
         yield sa

@@ -71,7 +71,7 @@ from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.project_project_openshift_io import Project
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import TIMEOUT_4MINUTES, ResourceEditor
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
@@ -396,8 +396,11 @@ def delete_external_model_and_ref(
     timeout: int = TENANT_EXTERNAL_MODEL_READY_TIMEOUT,
 ) -> None:
     """Delete a model's MaaSModelRef and ExternalModel, waiting for each to be gone."""
-    MaaSModelRef(client=admin_client, name=name, namespace=namespace, ensure_exists=True).delete()
-    wait_for_not_found(client=admin_client, kind="maasmodelref", name=name, namespace=namespace, timeout=timeout)
+    # A model that never reconciled (e.g. a broken provider) has no
+    # MaaSModelRef: only the refs that exist can be deleted.
+    if get_json_or_none(client=admin_client, kind="maasmodelref", name=name, namespace=namespace) is not None:
+        MaaSModelRef(client=admin_client, name=name, namespace=namespace, ensure_exists=True).delete()
+        wait_for_not_found(client=admin_client, kind="maasmodelref", name=name, namespace=namespace, timeout=timeout)
     ExternalModel(client=admin_client, name=name, namespace=namespace, ensure_exists=True).delete()
     wait_for_not_found(client=admin_client, kind="externalmodel", name=name, namespace=namespace, timeout=timeout)
 
@@ -778,6 +781,8 @@ def external_model_stack(
     provider_path: str | None = None,
     provider_config: dict[str, str] | None = None,
     teardown: bool = True,
+    provider_teardown: bool | None = None,
+    delete_timeout: int = TIMEOUT_4MINUTES,
 ) -> Generator[dict[str, Any], Any, Any]:
     """Create the full serving stack for one external model and clean it up.
 
@@ -785,7 +790,12 @@ def external_model_stack(
     ExternalModel + MaaSModelRef, all under one context manager.``override_credential``
     additionally creates a model-namespace Secret wired as the per-model auth
     override. ``endpoint``/``provider_path``/``credential`` re-point the
-    provider away from the header-echo default. ``tenant_refs`` serves a
+    provider away from the header-echo default. ``delete_timeout`` raises the
+    teardown budget for models and providers whose deletion the controller
+    holds back while a reduced ExtProc revision rolls out and in-flight
+    requests drain. ``provider_teardown`` (default: ``teardown``) lets a
+    caller leave provider deletion to namespace teardown when the
+    controller's provider drain cannot complete. ``tenant_refs`` serves a
     model shared across tenant gateways: instead of one tenantRef-less
     MaaSModelRef named after the model, it creates one modelRef per tenant
     (``<name>-<tenant>``, ``spec.tenantRef`` pinned).
@@ -822,7 +832,8 @@ def external_model_stack(
                 endpoint=endpoint,
                 auth={"type": "apikey", "secretRef": {"name": secret_name}},
                 config=provider_config,
-                teardown=teardown,
+                teardown=teardown if provider_teardown is None else provider_teardown,
+                delete_timeout=delete_timeout,
                 wait_for_resource=True,
             )
         )
@@ -861,6 +872,7 @@ def external_model_stack(
                 gateway_refs=gateway_refs,
                 model_name=model_name,
                 teardown=teardown,
+                delete_timeout=delete_timeout,
                 wait_for_resource=True,
             )
         )
@@ -2110,6 +2122,42 @@ def assert_not_served(response: requests.Response) -> None:
     )
 
 
+def conflict_cr_name() -> str:
+    """A CR name shared by one test's conflict pair, unique across tests."""
+    return f"e2e-cfl-{uuid.uuid4().hex[:6]}"
+
+
+def provision_model_in_stack(stack: ExitStack, admin_client: DynamicClient, **kwargs: Any) -> dict[str, Any]:
+    """Create one external model serving stack that lives until module teardown."""
+    return stack.enter_context(cm=external_model_stack(admin_client, **kwargs))
+
+
+def serve_in_tenant_with_ns_suffix(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+    ocp_token: str,
+    stack: ExitStack,
+    case: dict[str, str],
+    model: dict[str, Any],
+    **kwargs: Any,
+) -> dict[str, str]:
+    """Serve one model under a tenant and keep the policy/subscription until module teardown."""
+    ns_suffix = model["namespace"].rsplit("-", 1)[-1]
+    return stack.enter_context(
+        cm=serve_external_model_in_tenant(
+            admin_client,
+            request_session_http,
+            ocp_token,
+            tenant=case,
+            model_name=model["name"],
+            model_namespace=model["namespace"],
+            policy_name=f"{model['name']}-{ns_suffix}-access",
+            subscription_name=f"{model['name']}-{ns_suffix}-sub",
+            **kwargs,
+        )
+    )
+
+
 def serve_model_in_tenant_stack(
     admin_client: DynamicClient,
     request_session_http: requests.Session,
@@ -2924,7 +2972,7 @@ def two_gateway_model(
 
 
 def require_maas_route(admin_client: DynamicClient, model: dict[str, Any]) -> None:
-    """Skip when the MaaS stack cannot resolve this multi-gateway model.
+    """Fail when the MaaS stack cannot resolve this multi-gateway model.
 
     Aggregate-status AGC builds report no per-gateway ``status.gateways``
     results and no ``status.httpRouteName`` for multi-attachment models, so
@@ -2933,7 +2981,7 @@ def require_maas_route(admin_client: DynamicClient, model: dict[str, Any]) -> No
     per-tenant auth keys and quotas impossible to wire for the shared model.
     """
     if not external_model_reports_maas_route(admin_client, model["name"], model["namespace"]):
-        pytest.skip(
+        pytest.fail(
             "AGC reports aggregate model status only (no per-gateway status.gateways "
             "results); the MaaS stack cannot resolve a multi-gateway model's route, so "
             "per-tenant auth/quota serving for a shared model cannot be exercised"
@@ -2945,7 +2993,7 @@ def require_client_name_alias(
     model: dict[str, Any],
     case: dict[str, str],
 ) -> None:
-    """Skip until the published model identity is the client-facing name.
+    """Fail until the published model identity is the client-facing name.
 
     The per-tenant stacks go green with per-gateway status alone, but a
     path-routed request carries ``{namespace}/{client-facing name}`` while
@@ -2957,7 +3005,7 @@ def require_client_name_alias(
     ref_name = model["model_refs"][case["tenant_label_name"]]
     alias = maas_model_ref_alias(admin_client=admin_client, namespace=model["namespace"], name=ref_name)
     if alias != model["client_name"]:
-        pytest.skip(
+        pytest.fail(
             "client-facing model names are not resolvable through the gateway "
             f"yet: MaaSModelRef {model['namespace']}/{ref_name} "
             f"status.resolvedModelAlias={alias!r} != {model['client_name']!r}"
