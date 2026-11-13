@@ -376,15 +376,28 @@ def isolation_bootstrap_gateway_context(
     """
     api_ns = Namespace(client=admin_client, name=api_namespace, ensure_exists=True)
     assert api_ns.exists, f"MaaS API namespace '{api_namespace}' not found"
-    with (
-        ResourceEditor(
-            patches={
-                api_ns: {
-                    "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)},
-                },
-            },
-        ),
-        Gateway(
+    api_ns_label_patch = {
+        "metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)},
+    }
+    if teardown:
+        with (
+            ResourceEditor(patches={api_ns: api_ns_label_patch}),
+            Gateway(
+                client=admin_client,
+                kind_dict=isolation_bootstrap_gateway_body(
+                    gateway_name=gateway_name,
+                    gateway_namespace=gateway_namespace,
+                ),
+                teardown=teardown,
+                wait_for_resource=True,
+            ) as gateway,
+        ):
+            verify_maas_gateway_programmed(gateway=gateway)
+            LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
+            yield gateway
+    else:
+        ResourceEditor(patches={api_ns: api_ns_label_patch}).update()
+        with Gateway(
             client=admin_client,
             kind_dict=isolation_bootstrap_gateway_body(
                 gateway_name=gateway_name,
@@ -392,11 +405,10 @@ def isolation_bootstrap_gateway_context(
             ),
             teardown=teardown,
             wait_for_resource=True,
-        ) as gateway,
-    ):
-        verify_maas_gateway_programmed(gateway=gateway)
-        LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
-        yield gateway
+        ) as gateway:
+            verify_maas_gateway_programmed(gateway=gateway)
+            LOGGER.info(f"Isolation bootstrap Gateway '{gateway_namespace}/{gateway_name}' is Programmed")
+            yield gateway
 
 
 @contextmanager
@@ -595,14 +607,25 @@ def verify_tenant_gateway_auth_policy_callback_url(
     gateway_namespace: str,
     aitenant_name: str,
     api_namespace: str,
+    tenant_namespace_name: str | None = None,
 ) -> str:
     """Assert the tenant Gateway MaaS AuthPolicy callback targets the per-tenant maas-api Service."""
     policy_name = tenant_gateway_maas_auth_policy_name(gateway_name=gateway_name)
+    resolved_api_namespace = api_namespace
+    if tenant_namespace_name is not None:
+        bootstrapped_tenant_config = wait_for_bootstrapped_tenant_deployments_available(
+            admin_client=admin_client,
+            tenant_namespace_name=tenant_namespace_name,
+        )
+        resolved_api_namespace = maas_api_infra_namespace_from_bootstrapped_tenant(
+            bootstrapped_tenant_config=bootstrapped_tenant_config,
+            fallback_api_namespace=api_namespace,
+        )
     expected_host = maas_api_service_host_for_aitenant(
         aitenant_name=aitenant_name,
-        api_namespace=api_namespace,
+        api_namespace=resolved_api_namespace,
     )
-    shared_host = shared_maas_api_service_host(api_namespace=api_namespace)
+    shared_host = shared_maas_api_service_host(api_namespace=resolved_api_namespace)
 
     wait_for_tenant_gateway_maas_auth_policy(
         admin_client=admin_client,
@@ -669,6 +692,18 @@ def wait_for_bootstrapped_tenant_deployments_available(
     return bootstrapped_tenant_config
 
 
+def maas_api_infra_namespace_from_bootstrapped_tenant(
+    bootstrapped_tenant_config: MaasTenantConfig,
+    fallback_api_namespace: str,
+) -> str:
+    """Return per-tenant maas-api namespace from MaasTenantConfig status when the controller sets it."""
+    status = bootstrapped_tenant_config.instance.status
+    infra_namespace = getattr(status, "infraNamespace", None)
+    if infra_namespace:
+        return str(infra_namespace)
+    return fallback_api_namespace
+
+
 def verify_maas_api_deployment_for_aitenant(
     admin_client: DynamicClient,
     api_namespace: str,
@@ -676,20 +711,24 @@ def verify_maas_api_deployment_for_aitenant(
     tenant_namespace_name: str,
 ) -> None:
     """Assert the per-tenant maas-api Deployment is Available in the maas-api namespace."""
-    wait_for_bootstrapped_tenant_deployments_available(
+    bootstrapped_tenant_config = wait_for_bootstrapped_tenant_deployments_available(
         admin_client=admin_client,
         tenant_namespace_name=tenant_namespace_name,
+    )
+    resolved_api_namespace = maas_api_infra_namespace_from_bootstrapped_tenant(
+        bootstrapped_tenant_config=bootstrapped_tenant_config,
+        fallback_api_namespace=api_namespace,
     )
     deployment_name = maas_api_deployment_name_for_aitenant(aitenant_name=aitenant_name)
     maas_api_deployment = Deployment(
         client=admin_client,
         name=deployment_name,
-        namespace=api_namespace,
+        namespace=resolved_api_namespace,
         ensure_exists=True,
     )
-    assert maas_api_deployment.exists, f"Deployment/{deployment_name} not found in namespace '{api_namespace}'"
+    assert maas_api_deployment.exists, f"Deployment/{deployment_name} not found in namespace '{resolved_api_namespace}'"
     maas_api_deployment.wait_for_condition(condition="Available", status="True", timeout=300)
-    LOGGER.info(f"Deployment/{deployment_name} is Available in maas-api namespace '{api_namespace}'")
+    LOGGER.info(f"Deployment/{deployment_name} is Available in maas-api namespace '{resolved_api_namespace}'")
 
 
 def get_maas_api_httproute(
@@ -778,6 +817,7 @@ def patch_llmisvc_with_tenant_gateway_router(
     llm_service: LLMInferenceService,
     gateway_name: str,
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    teardown: bool = True,
 ) -> Generator[None, Any, Any]:
     """Patch an LLMInferenceService to route through a tenant Gateway instead of maas-default-gateway."""
     router_spec = {
@@ -793,7 +833,11 @@ def patch_llmisvc_with_tenant_gateway_router(
         },
         "spec": {"router": router_spec},
     }
-    with ResourceEditor(patches={llm_service: patch_body}):
+    if teardown:
+        with ResourceEditor(patches={llm_service: patch_body}):
+            yield
+    else:
+        ResourceEditor(patches={llm_service: patch_body}).update()
         yield
 
 
@@ -864,6 +908,7 @@ def provision_tenant_model(
                 llm_service=llm_service,
                 gateway_name=gateway_name,
                 gateway_namespace=gateway_namespace,
+                teardown=teardown,
             )
         )
         llm_service.wait_for_condition(
@@ -1018,10 +1063,14 @@ def verify_maas_api_httproute_attached_to_gateway(
 
     Also assert the route attaches to the tenant Gateway via parentRefs.
     """
-    wait_for_bootstrapped_tenant_deployments_available(
+    bootstrapped_tenant_config = wait_for_bootstrapped_tenant_deployments_available(
         admin_client=admin_client,
         tenant_namespace_name=tenant_namespace_name,
         timeout=timeout,
+    )
+    resolved_api_namespace = maas_api_infra_namespace_from_bootstrapped_tenant(
+        bootstrapped_tenant_config=bootstrapped_tenant_config,
+        fallback_api_namespace=api_namespace,
     )
     route_name = maas_api_route_name_for_aitenant(
         aitenant_name=aitenant_name,
@@ -1029,7 +1078,7 @@ def verify_maas_api_httproute_attached_to_gateway(
     maas_api_route = wait_for_maas_api_httproute(
         admin_client=admin_client,
         route_name=route_name,
-        route_namespace=api_namespace,
+        route_namespace=resolved_api_namespace,
         timeout=timeout,
     )
     assert httproute_references_gateway(
@@ -1037,17 +1086,18 @@ def verify_maas_api_httproute_attached_to_gateway(
         gateway_name=gateway_name,
         gateway_namespace=gateway_namespace,
     ), (
-        f"HTTPRoute/{route_name} in '{api_namespace}' should reference "
+        f"HTTPRoute/{route_name} in '{resolved_api_namespace}' should reference "
         f"Gateway '{gateway_namespace}/{gateway_name}' in parentRefs"
     )
     wait_for_httproute_accepted_on_gateway(
         admin_client=admin_client,
         route_name=route_name,
-        route_namespace=api_namespace,
+        route_namespace=resolved_api_namespace,
         gateway_name=gateway_name,
         gateway_namespace=gateway_namespace,
         timeout=timeout,
     )
     LOGGER.info(
-        f"HTTPRoute/{route_name} in '{api_namespace}' is attached to Gateway '{gateway_namespace}/{gateway_name}'"
+        f"HTTPRoute/{route_name} in '{resolved_api_namespace}' is attached to "
+        f"Gateway '{gateway_namespace}/{gateway_name}'"
     )
