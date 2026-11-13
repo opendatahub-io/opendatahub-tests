@@ -1,6 +1,7 @@
 """Pytest fixtures for NeMo Guardrails tests."""
 
 from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any
 
 import pytest
@@ -324,6 +325,52 @@ def nemo_guardrails_multi_config(
 
 
 @pytest.fixture(scope="class")
+def nemo_guardrails_multi_config_auth(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    nemo_multi_config_a: ConfigMap,
+    nemo_multi_config_b: ConfigMap,
+    nemo_api_token_secret: Secret,
+) -> Generator[NemoGuardrails, Any, Any]:
+    """NeMo Guardrails CR with multiple configurations and auth enabled (admin route)."""
+    with NemoGuardrails(
+        client=admin_client,
+        name="nemo-multi-config-auth",
+        namespace=model_namespace.name,
+        annotations={
+            "security.opendatahub.io/enable-auth": "true",
+        },
+        nemo_configs=[
+            {
+                "name": "config-a",
+                "configMaps": [nemo_multi_config_a.name],
+                "default": True,
+            },
+            {
+                "name": "config-b",
+                "configMaps": [nemo_multi_config_b.name],
+                "default": False,
+            },
+        ],
+        replicas=1,
+        env=[
+            {
+                "name": "OPENAI_API_KEY",
+                "valueFrom": {"secretKeyRef": {"name": nemo_api_token_secret.name, "key": "token"}},
+            }
+        ],
+    ) as nemo_cr:
+        deployment = Deployment(
+            client=admin_client,
+            name=nemo_cr.name,
+            namespace=nemo_cr.namespace,
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
+        yield nemo_cr
+
+
+@pytest.fixture(scope="class")
 def nemo_guardrails_second_server(
     admin_client: DynamicClient,
     model_namespace: Namespace,
@@ -434,6 +481,29 @@ def create_nemo_guardrails_route(
     )
 
 
+@contextmanager
+def create_nemo_guardrails_admin_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    nemo_cr: NemoGuardrails,
+) -> Generator[Route, Any, Any]:
+    """Create a Route targeting the admin kube-rbac-proxy port for an auth-enabled CR."""
+    with UtilitiesRoute(
+        client=admin_client,
+        name=f"{nemo_cr.name}-admin",
+        namespace=model_namespace.name,
+        to={
+            "kind": "Service",
+            "name": nemo_cr.name,
+            "weight": 100,
+        },
+        port={"targetPort": f"{nemo_cr.name}-admin"},
+        tls={"termination": "reencrypt"},
+        wait_for_resource=True,
+    ) as route:
+        yield route
+
+
 @pytest.fixture(scope="class")
 def nemo_guardrails_llm_judge_route(
     admin_client: DynamicClient,
@@ -481,18 +551,10 @@ def nemo_guardrails_presidio_admin_route(
     nemo_guardrails_presidio_auth: NemoGuardrails,
 ) -> Generator[Route, Any, Any]:
     """Route targeting the admin proxy port (444) for the auth-enabled Presidio CR."""
-    with UtilitiesRoute(
-        client=admin_client,
-        name=f"{nemo_guardrails_presidio_auth.name}-admin",
-        namespace=model_namespace.name,
-        to={
-            "kind": "Service",
-            "name": nemo_guardrails_presidio_auth.name,
-            "weight": 100,
-        },
-        port={"targetPort": f"{nemo_guardrails_presidio_auth.name}-admin"},
-        tls={"termination": "reencrypt"},
-        wait_for_resource=True,
+    with create_nemo_guardrails_admin_route(
+        admin_client=admin_client,
+        model_namespace=model_namespace,
+        nemo_cr=nemo_guardrails_presidio_auth,
     ) as route:
         yield route
 
@@ -508,6 +570,35 @@ def nemo_guardrails_multi_config_route(
         model_namespace=model_namespace,
         nemo_cr=nemo_guardrails_multi_config,
     )
+
+
+@pytest.fixture(scope="class")
+def nemo_guardrails_multi_config_auth_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    nemo_guardrails_multi_config_auth: NemoGuardrails,
+) -> Generator[Route, Any, Any]:
+    """User-facing route for the auth-enabled multi-config NeMo Guardrails CR."""
+    yield create_nemo_guardrails_route(
+        admin_client=admin_client,
+        model_namespace=model_namespace,
+        nemo_cr=nemo_guardrails_multi_config_auth,
+    )
+
+
+@pytest.fixture(scope="class")
+def nemo_guardrails_multi_config_admin_route(
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    nemo_guardrails_multi_config_auth: NemoGuardrails,
+) -> Generator[Route, Any, Any]:
+    """Admin route for the auth-enabled multi-config NeMo Guardrails CR."""
+    with create_nemo_guardrails_admin_route(
+        admin_client=admin_client,
+        model_namespace=model_namespace,
+        nemo_cr=nemo_guardrails_multi_config_auth,
+    ) as route:
+        yield route
 
 
 @pytest.fixture(scope="class")
@@ -712,6 +803,37 @@ def nemo_guardrails_multi_config_healthcheck(
     verify_guardrails_healthcheck(
         route=nemo_guardrails_multi_config_route,
         openshift_ca_bundle_file=openshift_ca_bundle_file,
+    )
+
+
+@pytest.fixture(scope="class")
+def nemo_guardrails_multi_config_auth_healthcheck(
+    nemo_guardrails_multi_config_auth: NemoGuardrails,
+    nemo_guardrails_multi_config_auth_route: Route,
+    current_client_token: str,
+    openshift_ca_bundle_file: str,
+) -> None:
+    """Healthcheck for the user route of the auth-enabled multi-config CR."""
+    verify_guardrails_healthcheck(
+        route=nemo_guardrails_multi_config_auth_route,
+        openshift_ca_bundle_file=openshift_ca_bundle_file,
+        token=current_client_token,
+    )
+
+
+@pytest.fixture(scope="class")
+def nemo_guardrails_multi_config_admin_route_healthcheck(
+    nemo_guardrails_multi_config_auth: NemoGuardrails,
+    nemo_guardrails_multi_config_admin_route: Route,
+    current_client_token: str,
+    openshift_ca_bundle_file: str,
+) -> None:
+    """Healthcheck for the admin route of the auth-enabled multi-config CR."""
+    wait_for_nemo_guardrails_health(
+        host=nemo_guardrails_multi_config_admin_route.instance.spec.host,
+        token=current_client_token,
+        ca_bundle_file=openshift_ca_bundle_file,
+        health_endpoint="/healthz",
     )
 
 
