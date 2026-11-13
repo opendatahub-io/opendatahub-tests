@@ -20,9 +20,9 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
     USAGE_LOGS_TENANCY_PROXY_PORT,
 )
-from tests.ai_gateway.models_as_a_service.observability.usage_logs_query_utils import (
+from tests.ai_gateway.models_as_a_service.multitenancy.usage_logs.utils import (
+    assert_expected_subscriptions_in_loki,
     resolve_openshift_username,
-    wait_for_subscriptions_in_loki,
 )
 from utilities.logger import RedactedString
 
@@ -104,7 +104,7 @@ class TestMultiTenantUsageLogs:
                 waiting=20,
             ),
         ):
-            admin_subscriptions = wait_for_subscriptions_in_loki(
+            assert_expected_subscriptions_in_loki(
                 http_session=request_session_http,
                 admin_token=user_token,
                 user_id=user_id,
@@ -112,13 +112,9 @@ class TestMultiTenantUsageLogs:
                 query_via_proxy=False,
                 user_bearer_token=user_token,
                 timeout=usage_logs_ingestion_wait_timeout,
+                query_description="Admin Loki",
             )
-            assert expected_subscriptions.issubset(admin_subscriptions), (
-                f"Admin Loki query missing subscriptions: expected {sorted(expected_subscriptions)}, "
-                f"found {sorted(admin_subscriptions)}"
-            )
-
-            personal_subscriptions = wait_for_subscriptions_in_loki(
+            assert_expected_subscriptions_in_loki(
                 http_session=request_session_http,
                 admin_token=user_token,
                 user_id=user_id,
@@ -126,8 +122,5 @@ class TestMultiTenantUsageLogs:
                 query_via_proxy=True,
                 user_bearer_token=user_token,
                 timeout=usage_logs_ingestion_wait_timeout,
-            )
-            assert expected_subscriptions.issubset(personal_subscriptions), (
-                f"Personal tenancy-proxy query missing subscriptions: expected {sorted(expected_subscriptions)}, "
-                f"found {sorted(personal_subscriptions)}"
+                query_description="Personal tenancy-proxy",
             )

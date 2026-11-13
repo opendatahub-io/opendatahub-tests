@@ -508,6 +508,35 @@ def wait_for_subscriptions_in_loki(
     )
 
 
+def assert_expected_subscriptions_in_loki(
+    *,
+    http_session: requests.Session,
+    admin_token: str,
+    user_id: str,
+    expected_subscriptions: set[str],
+    query_via_proxy: bool,
+    user_bearer_token: str,
+    timeout: int,
+    query_description: str,
+    lookback: str = USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
+) -> None:
+    """Poll Loki (admin gateway or tenancy proxy) until all expected subscriptions appear."""
+    found_subscriptions = wait_for_subscriptions_in_loki(
+        http_session=http_session,
+        admin_token=admin_token,
+        user_id=user_id,
+        expected_subscriptions=expected_subscriptions,
+        query_via_proxy=query_via_proxy,
+        user_bearer_token=user_bearer_token,
+        timeout=timeout,
+        lookback=lookback,
+    )
+    assert expected_subscriptions.issubset(found_subscriptions), (
+        f"{query_description} query missing subscriptions: expected {sorted(expected_subscriptions)}, "
+        f"found {sorted(found_subscriptions)}"
+    )
+
+
 def maastenantconfig_for_namespace(
     admin_client: DynamicClient,
     tenant_namespace: str,
