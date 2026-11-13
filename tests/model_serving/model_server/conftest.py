@@ -28,6 +28,7 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     MODEL_CACHE_NODE_COUNT,
     MODEL_CACHE_SIZE,
     LocalModelNodeGroup,
+    model_cache_job_namespace,
 )
 from tests.model_serving.model_server.utils import skip_test
 from utilities.constants import (
@@ -484,10 +485,11 @@ def model_cache_infra_ready(
                 f"within {300}s after enabling modelCache in DSC"
             )
 
+        cache_namespace = model_cache_job_namespace(client=admin_client, applications_namespace=applications_namespace)
         agent = DaemonSet(
             client=admin_client,
             name=MODEL_CACHE_AGENT_DAEMONSET,
-            namespace=applications_namespace,
+            namespace=cache_namespace,
         )
         try:
             for sample in TimeoutSampler(
@@ -499,10 +501,16 @@ def model_cache_infra_ready(
                     break
         except TimeoutExpiredError:
             pytest.fail(
-                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in '{applications_namespace}' within {300}s"
+                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in '{cache_namespace}' within {300}s"
             )
 
         yield dsc
+
+
+@pytest.fixture(scope="session")
+def model_cache_namespace(admin_client: DynamicClient, model_cache_infra_ready: DataScienceCluster) -> str:
+    """Return the reconciled namespace for model cache jobs and node resources."""
+    return model_cache_job_namespace(client=admin_client, applications_namespace=py_config["applications_namespace"])
 
 
 # Kueue Fixtures

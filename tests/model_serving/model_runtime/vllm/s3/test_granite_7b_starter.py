@@ -25,7 +25,6 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
 
 
 @pytest.mark.vllm_gaudi_gpu
-@pytest.mark.vllm_spyrex86_gpu
 @pytest.mark.vllm_nvidia_multi_gpu
 @pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(

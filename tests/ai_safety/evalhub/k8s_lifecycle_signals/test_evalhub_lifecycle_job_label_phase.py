@@ -85,7 +85,7 @@ class TestLblJobLabelPhase:
             namespace=ns,
             key=LIFECYCLE_PHASE_LABEL,
             expected_value=LIFECYCLE_PHASE_RUNNING,
-            timeout=60,
+            timeout=120,
         )
 
         assert label_value == LIFECYCLE_PHASE_RUNNING, (

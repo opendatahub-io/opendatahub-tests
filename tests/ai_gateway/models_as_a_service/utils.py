@@ -407,12 +407,27 @@ def patch_llmisvc_with_maas_router(
         yield
 
 
+def _resolve_request_model_id(models_list: list | None, model_id: str | None) -> str:
+    """Return the model id sent in the request body.
+
+    An explicit model id takes precedence; otherwise the first model listed by /v1/models is used.
+    """
+    if model_id:
+        return model_id
+
+    assert models_list, "No models returned from /v1/models"
+    first_model_id = models_list[0].get("id", "")
+    assert first_model_id, "First model from /v1/models has no 'id' field"
+    return first_model_id
+
+
 def verify_chat_completions(
     request_session_http: requests.Session,
     model_url: str,
     headers: dict,
-    models_list: list,
+    models_list: list | None = None,
     *,
+    model_id: str | None = None,
     prompt_text: str = "Hello from MaaS chat e2e test",
     max_tokens: int = 50,
     request_timeout_seconds: int = 60,
@@ -429,16 +444,15 @@ def verify_chat_completions(
     - For special tests (e.g. rate limiting) you can pass a tuple like
       expected_status_codes=(200, 429) and then inspect response.status_code
       in the test. Only HTTP 200 responses will have their body validated.
+
+    - Pass model_id to target a specific model instead of the first entry of models_list,
+      which matters when the gateway lists models owned by other workloads.
     """
 
-    assert models_list, "No models returned from /v1/models"
-    first_model = models_list[0]
-
-    model_id = first_model.get("id", "")
-    assert model_id, "First model from /v1/models has no 'id' field"
+    request_model_id = _resolve_request_model_id(models_list=models_list, model_id=model_id)
 
     payload_data = {
-        "model": model_id,
+        "model": request_model_id,
         "messages": [{"role": "user", "content": prompt_text}],
         "max_tokens": max_tokens,
     }
@@ -476,6 +490,125 @@ def verify_chat_completions(
         )
 
     return response
+
+
+def verify_streaming_chat_completions(
+    request_session_http: requests.Session,
+    model_url: str,
+    headers: dict,
+    models_list: list | None = None,
+    *,
+    model_id: str | None = None,
+    prompt_text: str = "Hello from MaaS streaming chat e2e test",
+    max_tokens: int = 50,
+    request_timeout_seconds: int = 60,
+    log_prefix: str = "MaaS streaming",
+    max_sse_lines: int = 1000,
+) -> tuple[str, int]:
+    """Verify a streaming (SSE) /v1/chat/completions call and return its reported usage.
+
+    Sends `stream: true` with `stream_options.include_usage: true` so the stream's terminal
+    event carries the token usage. This matters for usage logging: the MaaS gateway's
+    EnvoyFilter cannot parse text/event-stream bodies with json_to_metadata, so its companion
+    `sse_tokens` Lua filter reads the usage fields from the SSE chunks and records them. Without
+    include_usage the server reports no usage and the logged token count is zero.
+
+    Args:
+        request_session_http: HTTP session used to send the request.
+        model_url: Chat-completions URL of the model.
+        headers: Request headers, including the MaaS authorization header.
+        models_list: Models returned by /v1/models; the first model id is used when model_id
+            is not provided.
+        model_id: Explicit model id for the request body, overriding models_list.
+        prompt_text: User message sent to the model.
+        max_tokens: Maximum number of tokens to generate.
+        request_timeout_seconds: HTTP request timeout in seconds.
+        log_prefix: Prefix used in log messages.
+        max_sse_lines: Upper bound on SSE lines consumed, so a runaway stream fails loudly.
+
+    Returns:
+        The model name reported by the streamed chunks and the total tokens from the
+        terminal usage event.
+
+    Raises:
+        AssertionError: If the response is not a 200 event-stream, produces no content, or
+            reports no usage.
+    """
+    request_model_id = _resolve_request_model_id(models_list=models_list, model_id=model_id)
+
+    payload_data = {
+        "model": request_model_id,
+        "messages": [{"role": "user", "content": prompt_text}],
+        "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    LOGGER.info(f"{log_prefix}: POST {model_url} (stream=True) with payload keys={list(payload_data.keys())}")
+
+    streamed_model = ""
+    streamed_content = ""
+    usage_total_tokens: int | None = None
+    done_received = False
+
+    with request_session_http.post(
+        url=model_url,
+        headers=headers,
+        json=payload_data,
+        timeout=request_timeout_seconds,
+        stream=True,
+    ) as response:
+        LOGGER.info(f"{log_prefix}: POST {model_url} -> HTTP {response.status_code}")
+
+        assert response.status_code == 200, (
+            f"/v1/chat/completions streaming failed: HTTP {response.status_code} "
+            f"response={response.text[:200]} (url={model_url})"
+        )
+
+        content_type = response.headers.get("content-type", "")
+        assert "text/event-stream" in content_type, (
+            f"Expected text/event-stream content type for streaming response, got '{content_type}'"
+        )
+
+        for line_number, line in enumerate(response.iter_lines(), start=1):
+            assert line_number <= max_sse_lines, (
+                f"Streaming response exceeded {max_sse_lines} SSE lines without terminating"
+            )
+            if not line or not line.startswith(b"data:"):
+                continue
+
+            data = line.removeprefix(b"data:").strip()
+            if data == b"[DONE]":
+                done_received = True
+                break
+
+            chunk = json.loads(data)
+            streamed_model = chunk.get("model") or streamed_model
+            for choice in chunk.get("choices") or []:
+                streamed_content += (choice.get("delta") or {}).get("content") or ""
+
+            usage = chunk.get("usage")
+            if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int):
+                usage_total_tokens = usage["total_tokens"]
+                prompt_tokens = usage.get("prompt_tokens")
+                completion_tokens = usage.get("completion_tokens")
+                if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
+                    assert usage_total_tokens == prompt_tokens + completion_tokens, (
+                        f"Streaming usage total_tokens={usage_total_tokens} does not match "
+                        f"prompt_tokens={prompt_tokens} + completion_tokens={completion_tokens}"
+                    )
+
+    LOGGER.info(f"{log_prefix}: streaming model={streamed_model!r} total_tokens={usage_total_tokens}")
+
+    assert done_received, "Streaming response ended without a [DONE] event"
+    assert streamed_model, "Streaming response did not report a 'model' field"
+    assert streamed_content.strip(), "Streaming response produced no assistant content deltas"
+    assert usage_total_tokens is not None and usage_total_tokens > 0, (
+        "Streaming response did not report positive token usage; expected stream_options.include_usage "
+        f"to produce a terminal event with usage.total_tokens, got {usage_total_tokens!r}"
+    )
+
+    return streamed_model, usage_total_tokens
 
 
 def assert_mixed_200_and_429(
@@ -844,7 +977,8 @@ def _revoke_orphaned_duplicate_keys(
         except Exception as error:  # noqa: BLE001 - one duplicate must not stop the rest
             LOGGER.warning(
                 f"orphan-key dedupe: revoking key id={duplicate.get('id')} raised, "
-                f"continuing with remaining duplicates: {error}"
+                f"continuing with remaining duplicates",
+                error_type=type(error).__name__,
             )
 
 
@@ -969,7 +1103,6 @@ def create_api_key(
     response = last_response if last_response is not None else response
     if response is None or response.status_code not in (200, 201):
         status = response.status_code if response is not None else "no response"
-        body = response.text[:500] if response is not None else "no HTTP response received"
         retry_summary = (
             f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries} "
             f"proxy_error_retries={proxy_error_retries}"
@@ -979,7 +1112,9 @@ def create_api_key(
             # caller never sees; revoke same-name keys this call created.
             revoke_keys_created_by_this_call(keep_key_id="")
         if raise_on_error:
-            raise AssertionError(f"api-key create failed: status={status} body={body} {retry_summary}")
+            # No response body in the message: it can carry credentials or
+            # customer data into test logs.
+            raise AssertionError(f"api-key create failed: status={status} {retry_summary}")
         return response, {}  # type: ignore[return-value]
 
     try:
@@ -1019,9 +1154,7 @@ def revoke_api_key(
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
     except json.JSONDecodeError as error:
-        raise AssertionError(
-            f"revoke_api_key returned non-JSON response: status={response.status_code} body={response.text[:200]}"
-        ) from error
+        raise AssertionError(f"revoke_api_key returned non-JSON response: status={response.status_code}") from error
     return response, parsed_body
 
 
