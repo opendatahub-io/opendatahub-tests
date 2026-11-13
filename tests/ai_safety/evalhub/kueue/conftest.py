@@ -9,7 +9,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
-from ocp_resources.resource import ResourceEditor
+from ocp_resources.resource import Resource, ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
@@ -61,6 +61,22 @@ from utilities.kueue_utils import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def delete_leftover_if_exists(resource: Resource, timeout: int) -> None:
+    """Delete a fixed-name resource left over from a previous run, if it still exists.
+
+    Based on _cleanup_ns_if_exists in k8s_lifecycle_signals/conftest.py, generalized to any
+    Resource since these fixtures also need to recover ClusterQueues and ResourceFlavors,
+    not just namespaces. resource.delete(wait=True) returns False on timeout instead of
+    raising, so the return value must be checked to catch a stuck delete.
+    """
+    if not resource.exists:
+        return
+    LOGGER.warning(f"{resource.kind} '{resource.name}' left over from a previous run, deleting before setup")
+    if not resource.delete(wait=True, timeout=timeout):
+        pytest.fail(f"{resource.kind} '{resource.name}' did not finish deleting within {timeout}s")
+
 
 KUEUE_TENANT_NS = "test-evalhub-kueue"
 KUEUE_MODEL_NS = "test-evalhub-kueue-model"
@@ -383,6 +399,9 @@ def evalhub_kueue_namespace(
     are removed. Without this, ClusterQueue deletion fails because Workloads still
     hold the kueue.x-k8s.io/resource-in-use finalizer on the ClusterQueue.
     """
+    delete_leftover_if_exists(
+        resource=Namespace(client=admin_client, name=KUEUE_TENANT_NS), timeout=Timeout.TIMEOUT_10MIN
+    )
     with create_ns(
         admin_client=admin_client,
         name=KUEUE_TENANT_NS,
@@ -400,6 +419,9 @@ def evalhub_kueue_multi_job_resource_flavor(
     kueue_unmanaged_dsc: None,
 ) -> Generator[ResourceFlavor, Any, Any]:
     """ResourceFlavor for multi-job quota tests."""
+    delete_leftover_if_exists(
+        resource=ResourceFlavor(client=admin_client, name=MULTI_JOB_FLAVOR_NAME), timeout=Timeout.TIMEOUT_2MIN
+    )
     with create_resource_flavor(
         name=MULTI_JOB_FLAVOR_NAME,
         client=admin_client,
@@ -419,6 +441,9 @@ def evalhub_kueue_multi_job_cluster_queue(
     separate so that tests which stop or drain one queue do not interfere with
     tests using the other, not because it grants more capacity.
     """
+    delete_leftover_if_exists(
+        resource=ClusterQueue(client=admin_client, name=MULTI_JOB_CLUSTER_QUEUE_NAME), timeout=Timeout.TIMEOUT_5MIN
+    )
     resource_groups = [
         {
             "coveredResources": ["cpu", "memory"],
@@ -469,6 +494,9 @@ def evalhub_kueue_single_job_resource_flavor(
     kueue_unmanaged_dsc: None,
 ) -> Generator[ResourceFlavor, Any, Any]:
     """ResourceFlavor for single-job quota tests."""
+    delete_leftover_if_exists(
+        resource=ResourceFlavor(client=admin_client, name=SINGLE_JOB_FLAVOR_NAME), timeout=Timeout.TIMEOUT_2MIN
+    )
     with create_resource_flavor(
         name=SINGLE_JOB_FLAVOR_NAME,
         client=admin_client,
@@ -490,6 +518,9 @@ def evalhub_kueue_single_job_cluster_queue(
     ``stopPolicy: HoldAndDrain`` rather than relying on quota exhaustion. A
     ``pods`` nominalQuota would be the deterministic way to cap concurrency.
     """
+    delete_leftover_if_exists(
+        resource=ClusterQueue(client=admin_client, name=SINGLE_JOB_CLUSTER_QUEUE_NAME), timeout=Timeout.TIMEOUT_5MIN
+    )
     resource_groups = [
         {
             "coveredResources": ["cpu", "memory"],
