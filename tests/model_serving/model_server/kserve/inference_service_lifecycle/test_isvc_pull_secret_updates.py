@@ -40,10 +40,12 @@ class TestISVCPullSecretUpdate:
             isvc=model_car_raw_inference_service_with_pull_secret, pull_secret=ORIGINAL_PULL_SECRET, secret_exists=True
         )
 
+    @pytest.mark.tier1
     def test_update_pull_secret(self, updated_isvc_pull_secret):
         """Update the pull secret and verify it is reflected in the new pod"""
         verify_pull_secret(isvc=updated_isvc_pull_secret, pull_secret=UPDATED_PULL_SECRET, secret_exists=True)
 
+    @pytest.mark.tier1
     def test_remove_pull_secret(self, updated_isvc_remove_pull_secret):
         """Remove the pull secret and verify it is no longer present in the pod."""
         verify_pull_secret(isvc=updated_isvc_remove_pull_secret, pull_secret=UPDATED_PULL_SECRET, secret_exists=False)

@@ -38,10 +38,12 @@ class TestONNXRawRouteReconciliation:
             use_default_query=True,
         )
 
+    @pytest.mark.tier1
     def test_route_value_before_and_after_deletion(self, unprivileged_client, mlserver_raw_inference_service):
         """Verify that the ingress status changes after the route is deleted and recreated."""
         assert_ingress_status_changed(client=unprivileged_client, inference_service=mlserver_raw_inference_service)
 
+    @pytest.mark.tier1
     def test_model_works_after_route_is_recreated(self, mlserver_raw_inference_service):
         """Verify that the model is still queryable via REST after the route is recreated."""
         verify_inference_response(
