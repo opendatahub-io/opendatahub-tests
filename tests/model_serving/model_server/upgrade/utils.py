@@ -37,7 +37,6 @@ from utilities.general import create_isvc_label_selector_str
 from utilities.infra import get_inference_serving_runtime, get_pods_by_isvc_label
 from utilities.kueue_utils import (
     ClusterQueue,
-    Kueue,
     LocalQueue,
     ResourceFlavor,
     check_gated_pods_and_running_pods,
@@ -49,6 +48,7 @@ from utilities.kueue_utils import (
 )
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.inference_pool import InferencePool
+from utilities.resources.kueue import Kueue
 from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
