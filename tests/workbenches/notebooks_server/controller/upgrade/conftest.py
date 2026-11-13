@@ -8,10 +8,14 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_role_binding import ClusterRoleBinding
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
+from ocp_resources.gateway_config import GatewayConfig
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
 from ocp_resources.namespace import Namespace
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
+from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
@@ -27,14 +31,30 @@ from tests.workbenches.notebooks_server.controller.upgrade.kueue_constants impor
     UPGRADE_KUEUE_RESOURCE_FLAVOR_NAME,
     UPGRADE_KUEUE_STOPPED_NOTEBOOK_NAME,
 )
+from tests.workbenches.notebooks_server.controller.upgrade.platform_auth_constants import (
+    DEFAULT_GATEWAY_CONFIG_NAME,
+    DEFAULT_GATEWAY_NAME,
+    KUBE_AUTH_PROXY_CONTAINER_NAME,
+    KUBE_AUTH_PROXY_DEPLOYMENT_NAME,
+    PLATFORM_AUTH_NAMESPACE,
+    PLATFORM_CREDENTIALS_SECRET_NAME,
+    PLATFORM_OAUTH_CLIENT_NAME,
+    SECRET_LIKE_ARG_FLAGS,
+    UPGRADE_PLATFORM_AUTH_BASELINE_CM_NAME,
+    UPGRADE_PLATFORM_AUTH_NAMESPACE,
+)
 from tests.workbenches.notebooks_server.controller.utils import (
     KUBEFLOW_STOPPED_ANNOTATION,
     WORKBENCH_TRUSTED_CA_BUNDLE_NAME,
     HardwareProfile,
     MutatingWebhookConfiguration,
+    OAuthClient,
     StatefulSet,
     build_notebook_dict,
+    normalized_json,
     resolve_notebook_image,
+    secret_data_digests,
+    sha256_digest,
     wait_for_notebook_pod_ready,
 )
 from utilities import constants
@@ -1271,3 +1291,196 @@ def new_kueue_notebook_pod(
     wait_for_notebook_pod_ready(notebook_pod=notebook_pod, context="New kueue notebook (post-upgrade)")
 
     return notebook_pod
+
+
+# ---------------------------------------------------------------------------
+# Platform default-auth upgrade fixtures (RHOAIENG-101897)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def upgrade_platform_auth_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace holding the platform-auth upgrade baseline ConfigMap."""
+    if pytestconfig.option.post_upgrade:
+        ns = Namespace(client=admin_client, name=UPGRADE_PLATFORM_AUTH_NAMESPACE)
+        yield ns
+        if teardown_resources:
+            ns.clean_up()
+        return
+
+    existing_ns = Namespace(client=admin_client, name=UPGRADE_PLATFORM_AUTH_NAMESPACE)
+    if existing_ns.exists:
+        LOGGER.warning(
+            f"Namespace '{UPGRADE_PLATFORM_AUTH_NAMESPACE}' already exists; "
+            f"reusing leftover from a previous pre-upgrade run"
+        )
+        yield existing_ns
+        return
+
+    with create_ns(
+        admin_client=admin_client,
+        name=UPGRADE_PLATFORM_AUTH_NAMESPACE,
+        teardown=teardown_resources,
+    ) as ns:
+        yield ns
+
+
+@pytest.fixture(scope="session")
+def default_gateway_config(admin_client: DynamicClient) -> GatewayConfig:
+    """Cluster-scoped GatewayConfig for the default platform ingress."""
+    return GatewayConfig(client=admin_client, name=DEFAULT_GATEWAY_CONFIG_NAME)
+
+
+@pytest.fixture(scope="session")
+def default_gateway(admin_client: DynamicClient) -> Gateway:
+    """Default Gateway serving the platform ingress (openshift-ingress)."""
+    return Gateway(
+        client=admin_client,
+        name=DEFAULT_GATEWAY_NAME,
+        namespace=PLATFORM_AUTH_NAMESPACE,
+    )
+
+
+@pytest.fixture(scope="session")
+def platform_oauth_client(admin_client: DynamicClient) -> OAuthClient:
+    """Platform OAuthClient used by kube-auth-proxy for default ingress auth."""
+    return OAuthClient(client=admin_client, name=PLATFORM_OAUTH_CLIENT_NAME)
+
+
+@pytest.fixture(scope="session")
+def platform_credentials_secret(admin_client: DynamicClient) -> Secret:
+    """Credentials Secret for kube-auth-proxy (client id/secret, cookie secret)."""
+    return Secret(
+        client=admin_client,
+        name=PLATFORM_CREDENTIALS_SECRET_NAME,
+        namespace=PLATFORM_AUTH_NAMESPACE,
+    )
+
+
+@pytest.fixture(scope="session")
+def kube_auth_proxy_deployment(admin_client: DynamicClient) -> Deployment:
+    """kube-auth-proxy Deployment guarding the default platform ingress."""
+    return Deployment(
+        client=admin_client,
+        name=KUBE_AUTH_PROXY_DEPLOYMENT_NAME,
+        namespace=PLATFORM_AUTH_NAMESPACE,
+    )
+
+
+@pytest.fixture(scope="session")
+def capture_platform_auth_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    upgrade_platform_auth_namespace: Namespace,
+    default_gateway_config: GatewayConfig,
+    default_gateway: Gateway,
+    platform_oauth_client: OAuthClient,
+    platform_credentials_secret: Secret,
+    kube_auth_proxy_deployment: Deployment,
+) -> None:
+    """Capture platform default-auth state to a ConfigMap before upgrade.
+
+    No-op during post-upgrade runs. The baseline stores digests and normalized
+    specs only; raw secret values never enter the ConfigMap or the logs.
+    """
+    if pytestconfig.option.post_upgrade:
+        return
+
+    for resource, resource_kind in (
+        (default_gateway_config, "GatewayConfig"),
+        (default_gateway, "Gateway"),
+        (platform_oauth_client, "OAuthClient"),
+        (platform_credentials_secret, "Secret"),
+        (kube_auth_proxy_deployment, "Deployment"),
+    ):
+        assert resource.exists, f"{resource_kind} '{resource.name}' not found; refusing to capture a broken baseline"
+
+    oauth_client_secret = platform_oauth_client.instance.secret
+    assert oauth_client_secret, (
+        f"OAuthClient '{platform_oauth_client.name}' has an empty secret; refusing to capture a broken baseline"
+    )
+
+    containers = kube_auth_proxy_deployment.instance.spec.template.spec.containers
+    auth_proxy_container = next(
+        (container for container in containers if container.name == KUBE_AUTH_PROXY_CONTAINER_NAME),
+        None,
+    )
+    assert auth_proxy_container is not None, (
+        f"Deployment '{kube_auth_proxy_deployment.name}' has no '{KUBE_AUTH_PROXY_CONTAINER_NAME}' container; "
+        "refusing to capture a broken baseline"
+    )
+
+    kube_auth_proxy_args = list(auth_proxy_container.args)
+    for arg in kube_auth_proxy_args:
+        assert not arg.startswith(tuple(SECRET_LIKE_ARG_FLAGS)), (
+            f"kube-auth-proxy arg '{arg.split('=', 1)[0]}' carries secret material; "
+            "refusing to store it in the baseline ConfigMap"
+        )
+
+    baseline = {
+        "gateway_config_spec": default_gateway_config.instance.spec.to_dict(),
+        "default_gateway_uid": default_gateway.instance.metadata.uid,
+        "oauth_client_grant_method": platform_oauth_client.instance.grantMethod,
+        "oauth_client_redirect_uris": normalized_json(platform_oauth_client.instance.redirectURIs),
+        "oauth_client_secret_digest": sha256_digest(value=oauth_client_secret),
+        "credentials_secret_keys": sorted(platform_credentials_secret.instance.data.keys()),
+        "credentials_secret_digests": secret_data_digests(secret=platform_credentials_secret),
+        "kube_auth_proxy_uid": kube_auth_proxy_deployment.instance.metadata.uid,
+        "kube_auth_proxy_image": auth_proxy_container.image,
+        "kube_auth_proxy_args": normalized_json(kube_auth_proxy_args),
+    }
+
+    baseline_cm = ConfigMap(
+        client=admin_client,
+        name=UPGRADE_PLATFORM_AUTH_BASELINE_CM_NAME,
+        namespace=UPGRADE_PLATFORM_AUTH_NAMESPACE,
+        data={"baseline": json.dumps(baseline)},
+    )
+    if baseline_cm.exists:
+        # Refresh a stale baseline from a previous pre-upgrade run.
+        baseline_cm.delete(wait=True)
+    baseline_cm.deploy()
+
+    LOGGER.info(
+        f"Saved platform-auth upgrade baseline to ConfigMap '{UPGRADE_PLATFORM_AUTH_BASELINE_CM_NAME}' in "
+        f"namespace '{UPGRADE_PLATFORM_AUTH_NAMESPACE}'; captured keys: {sorted(baseline)}"
+    )
+
+
+@pytest.fixture(scope="session")
+def platform_auth_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    upgrade_platform_auth_namespace: Namespace,
+) -> dict[str, Any]:
+    """Load the pre-upgrade platform-auth baseline from the ConfigMap.
+
+    Returns an empty dict during pre-upgrade runs. Depends on
+    upgrade_platform_auth_namespace so the namespace (and baseline ConfigMap)
+    is cleaned up after the post-upgrade checks complete.
+    """
+    if not pytestconfig.option.post_upgrade:
+        return {}
+
+    cm = ConfigMap(
+        client=admin_client,
+        name=UPGRADE_PLATFORM_AUTH_BASELINE_CM_NAME,
+        namespace=UPGRADE_PLATFORM_AUTH_NAMESPACE,
+    )
+
+    assert cm.exists, (
+        f"Platform-auth baseline ConfigMap '{UPGRADE_PLATFORM_AUTH_BASELINE_CM_NAME}' not found in "
+        f"namespace '{UPGRADE_PLATFORM_AUTH_NAMESPACE}'. Ensure pre-upgrade tests ran successfully."
+    )
+
+    cm_data = cm.instance.data or {}
+    raw = cm_data.get("baseline")
+    assert raw, (
+        f"Platform-auth baseline ConfigMap '{UPGRADE_PLATFORM_AUTH_BASELINE_CM_NAME}' has no 'baseline' key in data."
+    )
+
+    return json.loads(raw)
