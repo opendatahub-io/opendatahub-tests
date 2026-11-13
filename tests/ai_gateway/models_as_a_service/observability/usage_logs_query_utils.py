@@ -148,11 +148,7 @@ def _monitoring_cr_condition_fields(
     condition_type: str,
 ) -> tuple[str | None, str | None, str | None]:
     """Return (status, reason, message) for a Monitoring CR status condition type."""
-    monitoring = Monitoring(
-        client=admin_client,
-        name=MONITORING_INSTANCE_NAME,
-        namespace=monitoring_namespace,
-    )
+    monitoring = Monitoring(client=admin_client, name=MONITORING_INSTANCE_NAME)
     if not monitoring.exists:
         return None, None, None
     monitoring.get()
