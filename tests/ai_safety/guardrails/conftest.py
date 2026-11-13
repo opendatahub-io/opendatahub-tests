@@ -1,5 +1,8 @@
+import os
 from typing import Generator, Any, List
+from unittest.mock import patch
 
+import certifi
 import portforward
 import pytest
 from kubernetes.dynamic import DynamicClient
@@ -254,7 +257,6 @@ def installed_tempo_operator(
             operator_namespace=operator_ns.name,
             timeout=Timeout.TIMEOUT_15MIN,
             install_plan_approval="Automatic",
-            starting_csv="tempo-operator.v0.19.0-2",
         )
 
         deployment = Deployment(
@@ -853,13 +855,19 @@ def tempo_traces_service_portforward(admin_client, model_namespace, tempo_stack)
     local_port = 16686
     local_url = f"http://localhost:{local_port}"
 
+    # portforward verifies the API server certificate with OpenSSL, which may not find a system CA bundle
+    ca_env = {} if os.environ.get("SSL_CERT_FILE") else {"SSL_CERT_FILE": certifi.where()}
+
     try:
-        with portforward.forward(
-            pod_or_service=f"{service_name}",
-            namespace=namespace,
-            from_port=local_port,
-            to_port=local_port,
-            waiting=20,
+        with (
+            patch.dict(os.environ, ca_env),
+            portforward.forward(
+                pod_or_service=f"{service_name}",
+                namespace=namespace,
+                from_port=local_port,
+                to_port=local_port,
+                waiting=20,
+            ),
         ):
             LOGGER.info(f"Tempo traces service port-forward established: {local_url}")
             yield local_url
