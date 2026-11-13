@@ -1,6 +1,7 @@
 import pytest
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service import Service
@@ -8,6 +9,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.utils import (
     build_evalhub_kueue_job_payload,
+    build_vllm_arc_easy_benchmark,
     cleanup_evalhub_job,
     cluster_queue_name,
     delete_evalhub_runtime_k8s_job,
@@ -19,7 +21,7 @@ from tests.ai_safety.evalhub.utils import (
     wait_for_evalhub_job_workload_inadmissible,
 )
 from utilities.constants import Timeout
-from utilities.kueue_utils import ClusterQueue, LocalQueue, count_pods_started
+from utilities.kueue_utils import ClusterQueue, LocalQueue, check_workload_finished, count_pods_running
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -116,14 +118,16 @@ class TestEvalHubKueueJobDeletion:
         job_id = None
 
         try:
+            payload = build_evalhub_kueue_job_payload(
+                queue_name=evalhub_kueue_multi_job_local_queue.name,
+                model_service_name=evalhub_kueue_vllm_service.name,
+                tenant_namespace=evalhub_kueue_namespace.name,
+                job_name="tc-del-002",
+            )
+            payload["benchmarks"] = [build_vllm_arc_easy_benchmark(num_examples=1000)]
             data = submit_evalhub_job(
                 **common,
-                payload=build_evalhub_kueue_job_payload(
-                    queue_name=evalhub_kueue_multi_job_local_queue.name,
-                    model_service_name=evalhub_kueue_vllm_service.name,
-                    tenant_namespace=evalhub_kueue_namespace.name,
-                    job_name="tc-del-002",
-                ),
+                payload=payload,
             )
             job_id = data["resource"]["id"]
 
@@ -140,18 +144,32 @@ class TestEvalHubKueueJobDeletion:
 
             selector = evalhub_runtime_label_selector(evalhub_job_id=job_id)
             try:
-                for started_pods in TimeoutSampler(
+                for running_pods in TimeoutSampler(
                     wait_timeout=Timeout.TIMEOUT_10MIN,
                     sleep=5,
-                    func=count_pods_started,
+                    func=count_pods_running,
                     labels=[selector],
                     namespace=evalhub_kueue_namespace.name,
                     admin_client=admin_client,
                 ):
-                    if started_pods >= 1:
+                    if running_pods >= 1:
                         break
             except TimeoutExpiredError:
-                pytest.fail(f"Pod for job {job_id} did not reach running state within {Timeout.TIMEOUT_10MIN}s")
+                pytest.fail(f"Pod for job {job_id} did not reach Running phase within {Timeout.TIMEOUT_10MIN}s")
+
+            jobs = list(Job.get(client=admin_client, namespace=evalhub_kueue_namespace.name, label_selector=selector))
+            assert jobs, (
+                f"Kubernetes Job for EvalHub job {job_id} no longer exists; "
+                "it must have finished before deletion could be tested"
+            )
+            assert workload.exists, (
+                f"Workload {workload.name} no longer exists; "
+                "it must have been cleaned up before deletion could be tested"
+            )
+            assert not check_workload_finished(workload), (
+                f"Workload {workload.name} already has Finished=True; "
+                "the job must have completed before deletion could be tested"
+            )
 
             delete_evalhub_runtime_k8s_job(
                 admin_client=admin_client, namespace=evalhub_kueue_namespace.name, evalhub_job_id=job_id
