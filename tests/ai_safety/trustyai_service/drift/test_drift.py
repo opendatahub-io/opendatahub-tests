@@ -169,10 +169,16 @@ class TestDriftMetrics:
         prometheus,
         metric_name,
     ):
+        metric_name_label: dict[str, str] = {
+            "meanshift": "Meanshift",
+            "kstest": "KSTest",
+            "approxkstest": "APPROXKSTEST",
+            "fouriermmd": "FOURIERMMD",
+        }
         validate_metrics_field(
             prometheus=prometheus,
             metrics_query=f'trustyai_{metric_name}{{namespace="{model_namespace.name}"}}',
-            expected_value=metric_name.upper(),
+            expected_value=metric_name_label[metric_name],
             field_getter=partial(get_metric_label, label_name="metricName"),
         )
 
