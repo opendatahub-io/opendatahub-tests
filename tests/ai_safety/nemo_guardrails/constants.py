@@ -97,3 +97,48 @@ CLEAN_PROMPT = "What is the weather like today?"
 # NeMo Guardrails API endpoints
 CHAT_ENDPOINT = "/v1/chat/completions"
 CHECK_ENDPOINT = "/v1/guardrail/checks"
+
+# TrustyAI admin discoverability endpoints (admin route / kube-rbac-proxy-admin)
+ADMIN_INFO_ENDPOINT = "/admin/info"
+ADMIN_INFO_RAILS_ENDPOINT = "/admin/info/rails"
+ADMIN_INFO_ACTIONS_ENDPOINT = "/admin/info/actions"
+ADMIN_CONFIGS_ENDPOINT = "/admin/configs"
+ADMIN_CONFIG_BY_ID_ENDPOINT = "/admin/config/{config_id}"
+
+# Expected fork endpoint catalog entries exposed by GET /admin/info
+EXPECTED_ADMIN_CATALOG_PATHS = (
+    ADMIN_INFO_ENDPOINT,
+    ADMIN_INFO_RAILS_ENDPOINT,
+    ADMIN_INFO_ACTIONS_ENDPOINT,
+    ADMIN_CONFIGS_ENDPOINT,
+    "/admin/config/{config_id}",
+    CHECK_ENDPOINT,
+)
+
+# Config ids used by admin API fixtures
+PRESIDIO_CONFIG_ID = "presidio"
+MULTI_CONFIG_A_ID = "config-a"
+MULTI_CONFIG_B_ID = "config-b"
+
+PRESIDIO_INPUT_FLOW = "detect sensitive data on input"
+PRESIDIO_OUTPUT_FLOW = "detect sensitive data on output"
+LLM_JUDGE_INPUT_FLOW = "self check input"
+LLM_JUDGE_OUTPUT_FLOW = "self check output"
+
+# TrustyAI fork admin discoverability endpoints (admin route / kube-rbac-proxy-admin)
+ADMIN_INFO_ENDPOINT = "/admin/info"
+ADMIN_INFO_RAILS_ENDPOINT = "/admin/info/rails"
+ADMIN_INFO_ACTIONS_ENDPOINT = "/admin/info/actions"
+ADMIN_CONFIGS_ENDPOINT = "/admin/configs"
+ADMIN_CONFIG_BY_ID_ENDPOINT = "/admin/config/{config_id}"
+
+# Expected fork identity and endpoint catalog entries from GET /admin/info
+ADMIN_IDENTITY_NAME = "NeMo-Guardrails (TrustyAI fork)"
+ADMIN_EXPECTED_ENDPOINT_PATHS = (
+    ADMIN_INFO_ENDPOINT,
+    ADMIN_INFO_RAILS_ENDPOINT,
+    ADMIN_INFO_ACTIONS_ENDPOINT,
+    ADMIN_CONFIGS_ENDPOINT,
+    "/admin/config/{config_id}",
+    CHECK_ENDPOINT,
+)

@@ -236,6 +236,74 @@ def send_request(
     return response
 
 
+def send_admin_get(
+    host: str,
+    path: str,
+    ca_bundle_file: str,
+    token: str | None = None,
+    timeout: int = 30,
+) -> Response:
+    """
+    Send a GET request to a NeMo Guardrails admin endpoint.
+
+    Args:
+        host: Route hostname
+        path: Admin API path (e.g. /admin/info)
+        ca_bundle_file: Path to CA bundle file for TLS verification
+        token: Bearer token for kube-rbac-proxy (None for unauthenticated requests)
+        timeout: Request timeout in seconds
+
+    Returns:
+        Response object
+    """
+    headers = get_auth_headers(token=token) if token else {}
+    return requests.get(
+        url=f"https://{host}{path}",
+        headers=headers,
+        verify=ca_bundle_file,
+        timeout=timeout,
+    )
+
+
+def assert_admin_info_shape(body: dict[str, Any]) -> None:
+    """Assert GET /admin/info has the expected top-level capability document shape."""
+    for key in ("identity", "endpoints", "documentation", "integration", "rails", "actions"):
+        assert key in body, f"Missing '{key}' in /admin/info response: {list(body.keys())}"
+    assert "configs" not in body, "/admin/info must not include per-config payloads"
+
+    identity = body["identity"]
+    for key in ("name", "version", "upstream_delta_summary"):
+        assert identity.get(key), f"identity.{key} must be present and non-empty"
+
+    assert isinstance(body["endpoints"], list), "endpoints must be a list"
+    assert isinstance(body["rails"], list), "rails must be a list"
+    assert isinstance(body["actions"], list), "actions must be a list"
+
+
+def assert_admin_config_detail_shape(detail: dict[str, Any], *, config_id: str | None = None) -> None:
+    """Assert AdminConfigDetail shape returned by /admin/configs and /admin/config/{id}."""
+    label = f" for config '{config_id}'" if config_id else ""
+    for key in ("rails_config", "rails", "files"):
+        assert key in detail, f"Missing '{key}'{label}: {list(detail.keys())}"
+
+    assert isinstance(detail["rails_config"], dict), f"rails_config must be an object{label}"
+    assert isinstance(detail["files"], dict), f"files must be an object{label}"
+
+    rails = detail["rails"]
+    assert isinstance(rails, dict), f"rails must be an object{label}"
+    for key in ("input", "output", "retrieval", "actions", "tool_input", "tool_output"):
+        assert key in rails, f"Missing rails.{key}{label}"
+        assert isinstance(rails[key], list), f"rails.{key} must be a list{label}"
+
+
+def assert_config_files_include_yaml(files: dict[str, str], *, config_id: str | None = None) -> None:
+    """Assert mounted config files include a config.yaml (or *.yml) entry."""
+    label = f" for config '{config_id}'" if config_id else ""
+    assert files, f"files must not be empty{label}"
+    has_config_yaml = any(name == "config.yaml" or name.endswith(("/config.yaml", "config.yml")) for name in files)
+    assert has_config_yaml, f"Expected config.yaml in files{label}, got: {sorted(files.keys())}"
+
+
 def verify_auth_required(response: Response) -> None:
     """
     Verify that authentication is required (request without token should fail).
