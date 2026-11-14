@@ -159,7 +159,11 @@ def fetch_openai_response(  # type: ignore
     if chat_query:
         for query in chat_query:
             messages = [msg for msg in query if "role" in msg]
-            chat_extra_param: dict[str, Any] = {"max_tokens": 256}
+            # DRAFT: Gumbel watermarking requires stochastic sampling. openai_plugin
+            # sends temperature=0, so vLLM silently skips watermarking and the test
+            # passes while verifying nothing. extra_param is merged last, so this wins.
+            # Trade-off: it drops the seed determinism every other vLLM test relies on.
+            chat_extra_param: dict[str, Any] = {"max_tokens": 256, "temperature": 0.8}
             if tool_calling:
                 chat_extra_param.update(tool_calling)
             chat_response = inference_client.request_http(
@@ -171,7 +175,10 @@ def fetch_openai_response(  # type: ignore
     if completion_query:
         for query in completion_query:
             completion_response = inference_client.request_http(
-                endpoint=OpenAIEnpoints.COMPLETIONS, query=query, extra_param={"max_tokens": 256}
+                # DRAFT: temperature>0 required for watermarking, see note above.
+                endpoint=OpenAIEnpoints.COMPLETIONS,
+                query=query,
+                extra_param={"max_tokens": 256, "temperature": 0.8},
             )
             completion_responses.append(completion_response)
 

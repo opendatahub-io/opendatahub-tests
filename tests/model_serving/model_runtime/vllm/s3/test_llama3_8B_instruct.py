@@ -21,6 +21,10 @@ SERVING_ARGUMENT: list[str] = [
     "--model=/mnt/models",
     "--uvicorn-log-level=debug",
     "--dtype=float16",
+    # DRAFT: enables Gumbel watermarking. SERVING_ARGUMENT is shared by the gaudi,
+    # spyre, amd and nvidia markers, so this changes those runs too - see the PR
+    # discussion about moving watermarking to a dedicated test instead.
+    '--watermark-config={"algorithm":"gumbel","key":42}',
 ]
 
 MODEL_PATH: str = "Meta-Llama-3-8B-Instruct"
