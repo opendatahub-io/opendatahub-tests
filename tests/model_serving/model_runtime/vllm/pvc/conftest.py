@@ -22,9 +22,28 @@ from tests.model_serving.model_runtime.vllm.utils import (
     get_gpu_node_zone_selector,
     validate_supported_quantization_schema,
 )
-from utilities.constants import AcceleratorType, KServeDeploymentType, Labels
+from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, StorageClassName
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
+
+# Accelerators whose GPU nodes need a storage class other than the cluster default.
+# amd: IBM VPC block volumes cannot attach to the MI300X nodes, so use node-local LVM storage.
+ACCELERATOR_STORAGE_CLASS: dict[str, str] = {AcceleratorType.AMD: StorageClassName.LVMS_VG1}
+
+# Accelerators where the download pod requests the GPU resource to reach a GPU node.
+GPU_SCHEDULED_ACCELERATORS: frozenset[str] = frozenset({AcceleratorType.NVIDIA, AcceleratorType.AMD})
+
+
+@pytest.fixture(scope="class")
+def model_pvc_storage_class(
+    pytestconfig: pytest.Config,
+    supported_accelerator_type: str,
+) -> str | None:
+    """StorageClass for model PVCs, or None to use the cluster default."""
+    if storage_class_name := pytestconfig.getoption("--model-pvc-storage-class"):
+        return str(storage_class_name)
+
+    return ACCELERATOR_STORAGE_CLASS.get(supported_accelerator_type.lower())
 
 
 @pytest.fixture(scope="class")
@@ -32,6 +51,7 @@ def vllm_model_pvc(
     request: FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    model_pvc_storage_class: str | None,
 ) -> Generator[PersistentVolumeClaim, Any, Any]:
     """PVC for storing vLLM model data downloaded from S3."""
     pvc_kwargs: dict[str, Any] = {
@@ -41,7 +61,7 @@ def vllm_model_pvc(
         "size": request.param["pvc-size"],
         "accessmodes": request.param.get("access-modes", "ReadWriteOnce"),
     }
-    if storage_class_name := request.param.get("storage-class-name"):
+    if storage_class_name := request.param.get("storage-class-name", model_pvc_storage_class):
         pvc_kwargs["storage_class"] = storage_class_name
 
     with PersistentVolumeClaim(**pvc_kwargs) as pvc:
@@ -61,11 +81,18 @@ def pvc_downloaded_model_data(
     models_s3_bucket_region: str,
 ) -> str:
     """Download vLLM model data from the models S3 bucket into the PVC."""
-    gpu_resource = ACCELERATOR_IDENTIFIER.get(
-        supported_accelerator_type.lower(),
-        Labels.Nvidia.NVIDIA_COM_GPU,
-    )
-    node_selector = get_gpu_node_zone_selector(client=admin_client, gpu_resource=gpu_resource)
+    accelerator_type = supported_accelerator_type.lower()
+    gpu_resource = ACCELERATOR_IDENTIFIER.get(accelerator_type, Labels.Nvidia.NVIDIA_COM_GPU)
+
+    # Request the GPU resource so the scheduler places the download pod on a GPU node. Limited
+    # to the accelerators it has been verified on; the rest keep the original zone pinning.
+    gpu_identifier: str | None = None
+    node_selector: dict[str, str] | None = None
+    if accelerator_type in GPU_SCHEDULED_ACCELERATORS:
+        gpu_identifier = gpu_resource
+    else:
+        node_selector = get_gpu_node_zone_selector(client=admin_client, gpu_resource=gpu_resource)
+
     return download_model_data(
         client=admin_client,
         model_namespace=model_namespace.name,
@@ -78,6 +105,7 @@ def pvc_downloaded_model_data(
         use_sub_path=True,
         restricted_scc_init=True,
         node_selector=node_selector,
+        gpu_identifier=gpu_identifier,
     )
 
 
