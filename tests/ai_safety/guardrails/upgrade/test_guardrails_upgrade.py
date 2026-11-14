@@ -357,7 +357,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade:
                         "openai": {
                             "service": {
                                 "hostname": f"{QWEN_MODEL_NAME}-predictor",
-                                "port": 8032,
+                                "port": 80,
                             }
                         },
                         "detectors": {
@@ -365,7 +365,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade:
                                 "type": "text_contents",
                                 "service": {
                                     "hostname": f"{PROMPT_INJECTION_DETECTOR}-predictor",
-                                    "port": 8000,
+                                    "port": 80,
                                 },
                                 "chunker_id": "whole_doc_chunker",
                                 "default_threshold": 0.5,
@@ -374,7 +374,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade:
                                 "type": "text_contents",
                                 "service": {
                                     "hostname": f"{HAP_DETECTOR}-predictor",
-                                    "port": 8000,
+                                    "port": 80,
                                 },
                                 "chunker_id": "whole_doc_chunker",
                                 "default_threshold": 0.5,
@@ -408,6 +408,7 @@ class TestGuardrailsOrchestratorWithBuiltInDetectorsPostUpgrade:
 )
 @pytest.mark.rawdeployment
 @pytest.mark.usefixtures(
+    "patched_dsc_kserve_headed",
     "guardrails_gateway_config",
     "seaweedfs_pvc_otel",
     "seaweedfs_deployment_otel",
@@ -444,6 +445,7 @@ class TestPreUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
         openshift_ca_bundle_file,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         """Verify HuggingFace detector detects unsuitable input before upgrade."""
         send_and_verify_unsuitable_input_detection(
@@ -468,6 +470,7 @@ class TestPreUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
         openshift_ca_bundle_file,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         """Verify HuggingFace detector does not detect harmless input before upgrade."""
         send_and_verify_negative_detection(
@@ -490,6 +493,7 @@ class TestPreUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
         hap_detector_route,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         """Verify standalone detector endpoint works before upgrade."""
         send_and_verify_standalone_detection(
@@ -530,6 +534,7 @@ class TestPreUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
     indirect=True,
 )
 @pytest.mark.usefixtures(
+    "patched_dsc_kserve_headed",
     "seaweedfs_pvc_otel",
     "seaweedfs_deployment_otel",
     "seaweedfs_service_otel",
@@ -558,6 +563,7 @@ class TestPostUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
         openshift_ca_bundle_file,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         """Verify HuggingFace detector detects unsuitable input after upgrade."""
         send_and_verify_unsuitable_input_detection(
@@ -582,6 +588,7 @@ class TestPostUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
         openshift_ca_bundle_file,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         """Verify HuggingFace detector does not detect harmless input after upgrade."""
         send_and_verify_negative_detection(
@@ -604,6 +611,7 @@ class TestPostUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
         hap_detector_route,
         otel_collector,
         tempo_stack,
+        guardrails_healthcheck,
     ):
         """Verify standalone detector endpoint works after upgrade."""
         send_and_verify_standalone_detection(
@@ -627,6 +635,7 @@ class TestPostUpgradeGuardrailsOrchestratorWithHuggingFaceDetectors:
         otel_collector,
         tempo_stack,
         tempo_traces_service_portforward,
+        guardrails_healthcheck,
     ):
         """Verify OpenTelemetry traces from Guardrails Orchestrator are collected in Tempo after upgrade."""
         check_guardrails_traces_in_tempo(tempo_traces_service_portforward=tempo_traces_service_portforward)
