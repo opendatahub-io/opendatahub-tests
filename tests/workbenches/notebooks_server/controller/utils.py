@@ -1,3 +1,5 @@
+import hashlib
+import json
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -6,6 +8,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.resource import NamespacedResource, Resource
+from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
@@ -30,6 +33,57 @@ class MutatingWebhookConfiguration(Resource):
     """MutatingWebhookConfiguration resource (admissionregistration.k8s.io/v1)."""
 
     api_group: str = Resource.ApiGroup.ADMISSIONREGISTRATION_K8S_IO
+
+
+class OAuthClient(Resource):
+    """OAuthClient resource (oauth.openshift.io/v1). Not shipped by ocp_resources.
+
+    Old-style API: grantMethod, redirectURIs and secret are top-level fields,
+    not under .spec.
+    """
+
+    api_group: str = "oauth.openshift.io"
+
+
+def normalized_json(obj: Any) -> str:
+    """Return a stable JSON representation of a resource object.
+
+    Args:
+        obj (Any): Resource object (dict, list or attribute wrapper).
+
+    Returns:
+        str: Sorted-keys JSON string; non-serializable objects use str().
+    """
+    return json.dumps(obj, sort_keys=True, default=str)
+
+
+def sha256_digest(value: str) -> str:
+    """Return the sha256 hex digest of a secret value.
+
+    The value itself is never logged or stored; only the digest is.
+
+    Args:
+        value (str): Secret value to digest.
+
+    Returns:
+        str: Hex sha256 digest.
+    """
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def secret_data_digests(secret: Secret) -> dict[str, str]:
+    """Return per-key sha256 digests of a Secret's data values.
+
+    Values are digested base64-encoded, exactly as stored; only digests are
+    returned, never raw values.
+
+    Args:
+        secret (Secret): Secret resource to digest.
+
+    Returns:
+        dict[str, str]: Mapping of data key to hex sha256 digest.
+    """
+    return {key: sha256_digest(value=value) for key, value in (secret.instance.data or {}).items()}
 
 
 class HardwareProfile(NamespacedResource):
