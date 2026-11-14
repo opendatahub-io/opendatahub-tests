@@ -95,15 +95,20 @@ def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
 
 @pytest.fixture(scope="class")
 def evalhub_cr(
+    request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[EvalHub, Any, Any]:
-    """Create an EvalHub custom resource and wait for it to be ready."""
+    """Create an EvalHub custom resource and wait for it to be ready.
+
+    Accepts an optional indirect param dict with an ``otel`` key to set spec.otel.
+    """
     with EvalHub(
         client=admin_client,
         name="evalhub",
         namespace=model_namespace.name,
         database={"type": "sqlite"},
+        otel=getattr(request, "param", {}).get("otel"),
         wait_for_resource=True,
     ) as evalhub:
         yield evalhub
