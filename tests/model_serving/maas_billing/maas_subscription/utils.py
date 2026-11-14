@@ -13,7 +13,7 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.resource import ResourceEditor
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from utilities.constants import (
     MAAS_GATEWAY_NAME,
@@ -229,6 +229,57 @@ def fetch_and_assert_models_for_subscription(
     return assert_models_response_for_subscription(
         response=response,
         expected_subscription_name=expected_subscription_name,
+    )
+
+
+def poll_models_for_subscription(
+    session: requests.Session,
+    models_url: str,
+    token: str,
+    expected_subscription_name: str,
+    *,
+    wait_timeout: int = 120,
+    sleep: int = 5,
+    request_timeout: int = 30,
+) -> list[dict[str, Any]]:
+    """Poll GET /v1/models until models for the expected subscription are listed.
+
+    MaaS catalog sync can lag subscription Ready; a single GET may return 200 with an empty list.
+    """
+    from tests.model_serving.maas_billing.utils import build_maas_headers
+
+    headers = build_maas_headers(token=token)
+    last_response: requests.Response | None = None
+    try:
+        for last_response in TimeoutSampler(
+            wait_timeout=wait_timeout,
+            sleep=sleep,
+            func=session.get,
+            url=models_url,
+            headers=headers,
+            timeout=request_timeout,
+        ):
+            if last_response.status_code != 200:
+                LOGGER.info(
+                    f"[models] poll {models_url} -> {last_response.status_code}: {(last_response.text or '')[:200]}"
+                )
+                continue
+            models = last_response.json().get("data") or []
+            if not models:
+                LOGGER.info(f"[models] poll {models_url} -> 200 with empty data, retrying")
+                continue
+            return assert_models_response_for_subscription(
+                response=last_response,
+                expected_subscription_name=expected_subscription_name,
+            )
+    except TimeoutExpiredError as err:
+        raise AssertionError(
+            f"Timed out waiting for models at {models_url} for subscription '{expected_subscription_name}'"
+        ) from err
+
+    raise AssertionError(
+        f"No models listed at {models_url} for subscription '{expected_subscription_name}' "
+        f"(last status={(last_response.status_code if last_response else None)})"
     )
 
 
