@@ -67,8 +67,10 @@ TENANT_ISOLATION_MODEL_NAME = "llm-s3-tinyllama-free"
 # Two-tenant isolation: tenant B follows A on a loaded cluster — allow longer Kuadrant gateway reconciliation.
 TENANT_ISOLATION_PRIMARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 300
 TENANT_ISOLATION_SECONDARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 600
-# MaaSAuthPolicy/MaaSSubscription Ready after the gateway AuthPolicy is enforced (matches maas-controller gating).
-TENANT_ISOLATION_MAAS_CR_READY_TIMEOUT_SECONDS = 180
+# After gateway AuthPolicy is enforced: shorter policy wait; subscription can lag on tenant B (Limitador/flow control).
+TENANT_ISOLATION_MAAS_AUTH_POLICY_READY_TIMEOUT_SECONDS = 180
+TENANT_ISOLATION_PRIMARY_MAAS_SUBSCRIPTION_READY_TIMEOUT_SECONDS = 300
+TENANT_ISOLATION_SECONDARY_MAAS_SUBSCRIPTION_READY_TIMEOUT_SECONDS = 300
 TENANT_MODELS_BUCKET_SECRET_NAME = "models-bucket-secret"  # pragma: allowlist secret
 TENANT_MODELS_BUCKET_SA_NAME = "models-bucket-sa"
 CROSS_TENANT_INFERENCE_REJECTED_STATUSES = frozenset({401, 403})
@@ -1233,6 +1235,26 @@ def _gateway_maas_auth_policy_status_snapshot(
     )
 
 
+def _maas_subscription_status_snapshot(subscription: MaaSSubscription) -> str:
+    if not subscription.exists:
+        subscription.get()
+    if not subscription.exists:
+        return f"MaaSSubscription '{subscription.namespace}/{subscription.name}': not found"
+    subscription.get()
+    metadata = subscription.instance.metadata
+    status = subscription.instance.status
+    generation = getattr(metadata, "generation", None)
+    observed_generation = getattr(status, "observedGeneration", None) if status is not None else None
+    phase = getattr(status, "phase", None) if status is not None else None
+    conditions = getattr(status, "conditions", None) if status is not None else None
+    return (
+        f"MaaSSubscription '{subscription.namespace}/{subscription.name}': "
+        f"metadata.generation={generation} status.observedGeneration={observed_generation} "
+        f"status.phase={phase}\n"
+        f"MaaSSubscription conditions:\n{_format_status_conditions(conditions)}"
+    )
+
+
 def format_tenant_governance_ready_timeout_message(
     admin_client: DynamicClient,
     *,
@@ -1243,12 +1265,15 @@ def format_tenant_governance_ready_timeout_message(
     gateway_name: str | None = None,
     gateway_namespace: str | None = None,
     maas_auth_policy: MaaSAuthPolicy | None = None,
+    maas_subscription: MaaSSubscription | None = None,
 ) -> str:
     """Build an assertion message when MaaSAuthPolicy or MaaSSubscription Ready times out."""
     parts = [
         f"Timed out after {ready_timeout}s waiting for {resource_kind}/{resource_namespace}/{resource_name} "
         f"condition Ready=True.",
     ]
+    if maas_subscription is not None:
+        parts.append(_maas_subscription_status_snapshot(maas_subscription))
     if maas_auth_policy is not None:
         parts.append(_maas_auth_policy_status_snapshot(maas_auth_policy))
     if gateway_name and gateway_namespace:
@@ -1275,6 +1300,7 @@ def _wait_for_maas_resource_ready(
     try:
         resource.wait_for_condition(condition="Ready", status="True", timeout=ready_timeout)
     except TimeoutExpiredError as error:
+        maas_subscription = resource if resource_kind == "MaaSSubscription" else None
         raise AssertionError(
             format_tenant_governance_ready_timeout_message(
                 admin_client=admin_client,
@@ -1285,6 +1311,7 @@ def _wait_for_maas_resource_ready(
                 gateway_name=gateway_name,
                 gateway_namespace=gateway_namespace,
                 maas_auth_policy=maas_auth_policy,
+                maas_subscription=maas_subscription,
             )
         ) from error
 
@@ -1307,14 +1334,22 @@ def make_tenant_model_accessible(
     teardown: bool = True,
     ready_timeout: int = 300,
     gateway_auth_timeout: int | None = None,
+    maas_auth_ready_timeout: int | None = None,
+    maas_subscription_ready_timeout: int | None = None,
     maas_cr_ready_timeout: int | None = None,
 ) -> Generator[MaaSSubscription, Any, Any]:
     """Create tenant MaaSAuthPolicy then MaaSSubscription for a tenant-local model (dev order)."""
     resolved_gateway_auth_timeout = (
         gateway_auth_timeout if gateway_auth_timeout is not None else ready_timeout
     )
-    resolved_maas_cr_ready_timeout = (
-        maas_cr_ready_timeout if maas_cr_ready_timeout is not None else ready_timeout
+    fallback_maas_ready = maas_cr_ready_timeout if maas_cr_ready_timeout is not None else ready_timeout
+    resolved_maas_auth_ready_timeout = (
+        maas_auth_ready_timeout if maas_auth_ready_timeout is not None else fallback_maas_ready
+    )
+    resolved_maas_subscription_ready_timeout = (
+        maas_subscription_ready_timeout
+        if maas_subscription_ready_timeout is not None
+        else fallback_maas_ready
     )
     with ExitStack() as stack:
         auth_policy = stack.enter_context(
@@ -1344,7 +1379,7 @@ def make_tenant_model_accessible(
             resource=auth_policy,
             admin_client=admin_client,
             resource_kind="MaaSAuthPolicy",
-            ready_timeout=resolved_maas_cr_ready_timeout,
+            ready_timeout=resolved_maas_auth_ready_timeout,
             gateway_name=gateway_name,
             gateway_namespace=gateway_namespace,
             maas_auth_policy=auth_policy,
@@ -1368,7 +1403,7 @@ def make_tenant_model_accessible(
             resource=subscription,
             admin_client=admin_client,
             resource_kind="MaaSSubscription",
-            ready_timeout=resolved_maas_cr_ready_timeout,
+            ready_timeout=resolved_maas_subscription_ready_timeout,
             gateway_name=gateway_name,
             gateway_namespace=gateway_namespace,
             maas_auth_policy=auth_policy,
