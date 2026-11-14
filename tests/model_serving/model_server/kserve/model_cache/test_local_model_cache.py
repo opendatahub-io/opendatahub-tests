@@ -18,8 +18,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 pytestmark = [
     pytest.mark.smoke,
     pytest.mark.rawdeployment,
-    # The serving tests deploy an OVMS runtime, whose image is not built for arm64
-    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
+    pytest.mark.usefixtures("valid_aws_config"),
 ]
 
 
@@ -28,11 +27,11 @@ class TestModelCacheSmoke:
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        "unprivileged_model_namespace, mlserver_kserve_serving_runtime",
         [
             pytest.param(
                 {"name": "kserve-model-cache-smoke"},
-                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
                 id="test_namespace_cache_node_downloaded",
             )
         ],
@@ -41,7 +40,7 @@ class TestModelCacheSmoke:
     def test_local_model_cache_reaches_node_downloaded(
         self,
         unprivileged_model_namespace: Any,
-        ovms_kserve_serving_runtime: Any,
+        mlserver_kserve_serving_runtime: Any,
         mnist_local_model_cache: LocalModelNamespaceCache,
     ) -> None:
         """Given a provisioned LocalModelNamespaceCache, when status is refreshed,
@@ -60,11 +59,11 @@ class TestModelCacheSmoke:
         assert (copies.get("available") or 0) >= 1
 
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        "unprivileged_model_namespace, mlserver_kserve_serving_runtime",
         [
             pytest.param(
                 {"name": "kserve-model-cache-smoke"},
-                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
                 id="test_cached_model_inference",
             )
         ],
@@ -75,7 +74,7 @@ class TestModelCacheSmoke:
         unprivileged_client: DynamicClient,
         mnist_local_model_cache: LocalModelNamespaceCache,
         mnist_onnx_local_model_cache_inference_service: InferenceService,
-        ovms_kserve_serving_runtime: ServingRuntime,
+        mlserver_kserve_serving_runtime: ServingRuntime,
     ) -> None:
         """Given an ISVC whose storageUri matches a cached model, when inference runs
         over HTTPS, then PVC rewrite is present and response succeeds.
@@ -84,7 +83,7 @@ class TestModelCacheSmoke:
         assert_predictor_uses_cached_pvc(
             client=unprivileged_client,
             isvc=isvc,
-            runtime_name=ovms_kserve_serving_runtime.name,
+            runtime_name=mlserver_kserve_serving_runtime.name,
         )
 
         verify_inference_response(

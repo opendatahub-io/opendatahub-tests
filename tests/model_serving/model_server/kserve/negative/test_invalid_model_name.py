@@ -11,14 +11,14 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.kserve.negative.utils import (
-    VALID_OVMS_INFERENCE_BODY,
+    VALID_MLSERVER_INFERENCE_BODY,
     assert_pods_healthy,
     send_inference_request,
 )
 
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
-VALID_BODY_RAW = json.dumps(VALID_OVMS_INFERENCE_BODY)
+VALID_BODY_RAW = json.dumps(VALID_MLSERVER_INFERENCE_BODY)
 
 
 @pytest.mark.tier3
@@ -26,11 +26,11 @@ class TestInvalidModelName:
     """Test class for verifying error handling when targeting a non-existent model.
 
     Preconditions:
-        - InferenceService "neg-ovms-isvc" deployed and ready
+        - InferenceService "neg-mlserver-isvc" deployed and ready
         - No InferenceService with name "nonexistent-model"
 
     Test Steps:
-        1. Create InferenceService with OVMS runtime
+        1. Create InferenceService with MLServer runtime
         2. Wait for InferenceService status = Ready
         3. Send inference request to /v2/models/nonexistent-model/infer
         4. Verify error response and existing service health
@@ -43,7 +43,7 @@ class TestInvalidModelName:
 
     def test_nonexistent_model_returns_404(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
     ) -> None:
         """Verify that inference to a non-existent model returns 404 status code.
 
@@ -52,7 +52,7 @@ class TestInvalidModelName:
         Then the response should have HTTP status code 404 (Not Found)
         """
         status_code, response_body = send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=VALID_BODY_RAW,
             model_name="nonexistent-model",
         )
@@ -64,7 +64,7 @@ class TestInvalidModelName:
     def test_existing_service_unaffected_after_invalid_model_request(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         initial_pod_state: dict[str, dict[str, Any]],
     ) -> None:
         """Verify that the existing service remains healthy after invalid model requests.
@@ -74,12 +74,12 @@ class TestInvalidModelName:
         Then the existing service pods should remain running without restarts
         """
         send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=VALID_BODY_RAW,
             model_name="nonexistent-model",
         )
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc,
+            isvc=negative_test_mlserver_isvc,
             initial_pod_state=initial_pod_state,
         )

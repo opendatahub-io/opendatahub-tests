@@ -60,6 +60,8 @@ class ModelStoragePath:
     FLAN_T5_SMALL_HF: str = f"{ModelName.FLAN_T5_SMALL}/{ModelName.FLAN_T5_SMALL_HF}"
     BLOOM_560M_CAIKIT: str = f"{ModelName.BLOOM_560M}/{ModelAndFormat.BLOOM_560M_CAIKIT}"
     MNIST_8_ONNX: str = f"{ModelName.MNIST}-8.onnx"
+    # CI S3 bucket directory containing the MNIST ONNX model (`model.onnx`)
+    MNIST_ONNX: str = "test-dir"
     DOG_BREED_ONNX: str = "dog_breed_classification"
     CAT_DOG_ONNX: str = "cat_dog_classification"
 
@@ -74,6 +76,7 @@ class ModelEndpoint:
 
 class ModelVersion:
     AUTOGLUON_1: str = "1"
+    V1: str = "1"
     OPSET1: str = "opset1"
     OPSET13: str = "opset13"
 
@@ -328,14 +331,15 @@ class Containers:
 
 
 class RunTimeConfigs:
-    ONNX_OPSET13_RUNTIME_CONFIG: dict[str, Any] = {  # noqa: RUF012
-        "runtime-name": ModelInferenceRuntime.ONNX_RUNTIME,
-        "model-format": {ModelFormat.ONNX: ModelVersion.OPSET13},
+    MLSERVER_RUNTIME_CONFIG: dict[str, Any] = {  # noqa: RUF012
+        "runtime-name": ModelInferenceRuntime.MLSERVER_RUNTIME,
+        "model-format": {ModelFormat.ONNX: ModelVersion.V1},
     }
 
 
 class ModelCarImage:
     MNIST_8_1: str = SharedImages.MODELCAR_MNIST_8_1
+    MLSERVER_ONNX: str = SharedImages.MLSERVER_ONNX
     GRANITE_8B_CODE_INSTRUCT: str = SharedImages.MODELCAR_GRANITE_8B_CODE_INSTRUCT
 
 

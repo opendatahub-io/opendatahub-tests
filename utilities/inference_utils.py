@@ -1,10 +1,12 @@
 import json
 import re
 import shlex
+import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
 from http import HTTPStatus
 from json import JSONDecodeError
+from pathlib import Path
 from string import Template
 from typing import Any
 from urllib.parse import urlparse
@@ -41,6 +43,10 @@ from utilities.infra import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+# A single argv entry cannot exceed MAX_ARG_STRLEN (128 KiB on 4 KiB-page kernels), so
+# bodies larger than this are passed to curl through a file instead of `-d '{body}'`.
+_MAX_INLINE_BODY_SIZE: int = 64 * 1024
 
 
 class Inference:
@@ -181,6 +187,7 @@ class UserInference(Inference):
         self.inference_type = inference_type
         self.inference_config = inference_config
         self.runtime_config = self.get_runtime_config()
+        self._body_file_path: str | None = None
 
     def get_runtime_config(self) -> dict[str, Any]:
         """
@@ -330,16 +337,31 @@ class UserInference(Inference):
 
         if self.protocol in Protocols.TCP_PROTOCOLS:
             cmd_exec = "curl -i -s "
+            if len(body) > _MAX_INLINE_BODY_SIZE:
+                # Large bodies (e.g. the ~750 KB ResNet-50 ONNX payload) exceed
+                # MAX_ARG_STRLEN once shlex-split into an argv entry, making
+                # execve fail with E2BIG; pass them through a file instead.
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as body_file:
+                    # Record the path before writing so failures while writing
+                    # are still covered by the caller's cleanup.
+                    self._body_file_path = body_file.name
+                    body_file.write(body)
+                data_arg = f"--data-binary @{self._body_file_path}"
+
+            else:
+                data_arg = f"-d '{body}'"
 
         elif self.protocol == "grpc":
             cmd_exec = "grpcurl -connect-timeout 10 "
             if self.deployment_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES:
                 cmd_exec += " --plaintext "
 
+            data_arg = f"-d '{body}'"
+
         else:
             raise ValueError(f"Protocol {self.protocol} not supported")
 
-        cmd = f"{cmd_exec} -d '{body}'  -H {header}"
+        cmd = f"{cmd_exec} {data_arg} -H {header}"
 
         if token:
             cmd += f" {HTTPRequest.AUTH_HEADER.format(token=token)}"
@@ -500,46 +522,54 @@ class UserInference(Inference):
             InferenceResponseError: When the service is unavailable or returns 5xx.
             ValueError: When the inference command fails.
         """
-        cmd = self.generate_command(
-            model_name=model_name,
-            inference_input=inference_input,
-            use_default_query=use_default_query,
-            insecure=insecure,
-            token=token,
-        )
+        try:
+            # Generated inside the cleanup scope: writing the request-body temp
+            # file and building the CA-bundle/client parts of the command can
+            # fail after the file exists, and each attempt must clean it up.
+            cmd = self.generate_command(
+                model_name=model_name,
+                inference_input=inference_input,
+                use_default_query=use_default_query,
+                insecure=insecure,
+                token=token,
+            )
 
-        # For internal inference, we need to use port forwarding to the service
-        if not self.visibility_exposed:
-            if isinstance(self.inference_service, InferenceService):
-                svc = get_services_by_isvc_label(
-                    client=self.inference_service.client,
-                    isvc=self.inference_service,
-                    runtime_name=self.runtime.name,
-                )[0]
-                port = self.get_target_port(svc=svc)
+            # For internal inference, we need to use port forwarding to the service
+            if not self.visibility_exposed:
+                if isinstance(self.inference_service, InferenceService):
+                    svc = get_services_by_isvc_label(
+                        client=self.inference_service.client,
+                        isvc=self.inference_service,
+                        runtime_name=self.runtime.name,
+                    )[0]
+                    port = self.get_target_port(svc=svc)
+                else:
+                    svc = get_pods_by_ig_label(
+                        client=self.inference_service.client,
+                        ig=self.inference_service,
+                    )[0]
+                    port = 8080
+
+                cmd = cmd.replace("localhost", f"localhost:{port}")
+
+                with portforward.forward(
+                    pod_or_service=svc.name,
+                    namespace=svc.namespace,
+                    from_port=port,
+                    to_port=port,
+                ):
+                    res, out, err = run_command(
+                        command=shlex.split(cmd), verify_stderr=False, check=False, hide_log_command=True
+                    )
+
             else:
-                svc = get_pods_by_ig_label(
-                    client=self.inference_service.client,
-                    ig=self.inference_service,
-                )[0]
-                port = 8080
-
-            cmd = cmd.replace("localhost", f"localhost:{port}")
-
-            with portforward.forward(
-                pod_or_service=svc.name,
-                namespace=svc.namespace,
-                from_port=port,
-                to_port=port,
-            ):
                 res, out, err = run_command(
                     command=shlex.split(cmd), verify_stderr=False, check=False, hide_log_command=True
                 )
-
-        else:
-            res, out, err = run_command(
-                command=shlex.split(cmd), verify_stderr=False, check=False, hide_log_command=True
-            )
+        finally:
+            if self._body_file_path:
+                Path(self._body_file_path).unlink(missing_ok=True)
+                self._body_file_path = None
 
         if res:
             if f"http/1.0 {HTTPStatus.SERVICE_UNAVAILABLE}" in out.lower():

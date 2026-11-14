@@ -15,18 +15,13 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import (
-    KSERVE_KUEUE_POD_CPU_LIMIT,
-    KSERVE_KUEUE_POD_CPU_REQUEST,
-    KSERVE_KUEUE_POD_MEMORY_LIMIT,
-    KSERVE_KUEUE_POD_MEMORY_REQUEST,
-)
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     Annotations,
     DscComponents,
     Labels,
-    ModelFormat,
+    ModelAndFormat,
+    ModelCarImage,
     Protocols,
     RuntimeTemplates,
     Timeout,
@@ -47,6 +42,8 @@ from utilities.kueue_utils import (
     is_kueue_operator_installed,
     wait_for_kueue_crds_available,
 )
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG, ONNX_RESNET50_INFERENCE_CONFIG
+from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.inference_pool import InferencePool
 from utilities.resources.llm_inference_service import LLMInferenceService
@@ -59,6 +56,56 @@ UPGRADE_AUTH_TOKEN_EXPIRATION_SECONDS: int = 7 * 24 * 60 * 60
 UPGRADE_KUEUE_DSC_STATE_CM_NAME = "upgrade-kueue-dsc-state"
 
 
+def _isvc_model_format(inference_service: InferenceService) -> str:
+    """Return the ISVC predictor's model format name (e.g. ``onnx``, ``openvino_ir``)."""
+    return inference_service.instance.spec.predictor.model.modelFormat.name
+
+
+def get_upgrade_isvc_inference_config(inference_service: InferenceService) -> dict[str, Any]:
+    """Return the inference config matching the ISVC's deployed model.
+
+    Upgrade lanes re-run inference against ISVCs created by the pre-upgrade run. During the
+    OVMS-to-MLServer migration window, pre-upgrade release branches still deploy ``openvino_ir``
+    models served by OVMS, while this branch deploys ONNX models served by MLServer. Selecting
+    the payload by the ISVC's actual model (format plus storage URI) keeps post-upgrade
+    verification working for both: the S3 MNIST ONNX model takes the MNIST payload, while the
+    ``MLSERVER_ONNX`` ModelCar is a ResNet-50 image whose payload differs. Remove the
+    ``openvino_ir`` branch once the oldest supported pre-upgrade branch deploys MLServer
+    (see RHOAIENG-95304).
+    """
+    if _isvc_model_format(inference_service) == ModelAndFormat.OPENVINO_IR:
+        return OPENVINO_KSERVE_INFERENCE_CONFIG
+    if inference_service.instance.spec.predictor.model.storageUri == ModelCarImage.MLSERVER_ONNX:
+        return ONNX_RESNET50_INFERENCE_CONFIG
+    return ONNX_INFERENCE_CONFIG
+
+
+def get_upgrade_isvc_metrics_query(inference_service: InferenceService) -> str:
+    """Return the Prometheus success-counter query matching the ISVC's serving runtime.
+
+    OVMS exposes ``ovms_requests_success`` (label ``name``), MLServer exposes
+    ``model_infer_request_success_total`` (label ``model``). Both are scraped through the
+    per-ISVC metrics ServiceMonitor which adds the ``namespace`` label.
+    """
+    if _isvc_model_format(inference_service) == ModelAndFormat.OPENVINO_IR:
+        return f'ovms_requests_success{{namespace="{inference_service.namespace}", name="{inference_service.name}"}}'
+    return (
+        f'model_infer_request_success_total{{namespace="{inference_service.namespace}", '
+        f'model="{inference_service.name}"}}'
+    )
+
+
+def get_upgrade_modelcar_storage_uri(inference_service: InferenceService) -> str:
+    """Return the ModelCar storage URI the pre-upgrade lane deployed for this ISVC.
+
+    Pre-migration branches deployed the OpenVINO MNIST ModelCar (``openvino`` model format);
+    this branch deploys the MLServer-compatible ResNet-50 ONNX ModelCar.
+    """
+    if _isvc_model_format(inference_service) == ModelAndFormat.OPENVINO_IR:
+        return ModelCarImage.MNIST_8_1
+    return ModelCarImage.MLSERVER_ONNX
+
+
 def _kserve_kueue_upgrade_runtime_template_kwargs(
     runtime_kwargs: dict[str, Any],
     teardown_resources: bool,
@@ -66,16 +113,9 @@ def _kserve_kueue_upgrade_runtime_template_kwargs(
     """Build ServingRuntimeFromTemplate kwargs for KServe Kueue upgrade tests."""
     return {
         **runtime_kwargs,
-        "template_name": RuntimeTemplates.OVMS_KSERVE,
+        "template_name": RuntimeTemplates.MLSERVER,
         "multi_model": False,
-        "enable_http": True,
         "teardown": teardown_resources,
-        "resources": {
-            ModelFormat.OVMS: {
-                "requests": {"cpu": KSERVE_KUEUE_POD_CPU_REQUEST, "memory": KSERVE_KUEUE_POD_MEMORY_REQUEST},
-                "limits": {"cpu": KSERVE_KUEUE_POD_CPU_LIMIT, "memory": KSERVE_KUEUE_POD_MEMORY_LIMIT},
-            }
-        },
     }
 
 

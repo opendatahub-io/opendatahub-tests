@@ -24,16 +24,16 @@ from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
 
 from tests.model_serving.model_server.kserve.negative.utils import (
-    VALID_OVMS_INFERENCE_BODY,
+    VALID_MLSERVER_INFERENCE_BODY,
     assert_pods_healthy,
 )
 
 pytestmark = [
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
+    pytest.mark.usefixtures("valid_aws_config"),
 ]
 
-_VALID_BODY: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
+_VALID_BODY: str = json.dumps(VALID_MLSERVER_INFERENCE_BODY)
 
 TIMEOUT_EXPECTED_CODES: set[int] = {
     HTTPStatus.REQUEST_TIMEOUT,  # 408
@@ -82,7 +82,7 @@ class TestInferenceTimeout:
     """Client-side timeout produces a clear error without crashing the server.
 
     Preconditions:
-        - OVMS RawDeployment InferenceService deployed and Ready
+        - MLServer RawDeployment InferenceService deployed and Ready
         - Model responds successfully for normal requests
 
     Expected Results:
@@ -93,7 +93,7 @@ class TestInferenceTimeout:
 
     def test_short_timeout_returns_timeout_error(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
     ) -> None:
         """Verify that an extremely short client timeout produces a timeout error.
 
@@ -102,7 +102,7 @@ class TestInferenceTimeout:
         Then the response should indicate a timeout (408, 504, or curl exit 28)
         """
         status_code, response_body = _send_request_with_timeout(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             timeout_seconds=0.001,
             body=_VALID_BODY,
         )
@@ -114,7 +114,7 @@ class TestInferenceTimeout:
     def test_pod_remains_healthy_after_timeout(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         initial_pod_state: dict[str, dict[str, Any]],
     ) -> None:
         """Verify that the predictor pod remains healthy after timeout events.
@@ -125,7 +125,7 @@ class TestInferenceTimeout:
         """
         for i in range(3):
             status_code, _ = _send_request_with_timeout(
-                inference_service=negative_test_ovms_isvc,
+                inference_service=negative_test_mlserver_isvc,
                 timeout_seconds=0.001,
                 body=_VALID_BODY,
             )
@@ -135,13 +135,13 @@ class TestInferenceTimeout:
 
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc,
+            isvc=negative_test_mlserver_isvc,
             initial_pod_state=initial_pod_state,
         )
 
     def test_normal_request_succeeds_after_timeouts(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
     ) -> None:
         """Verify that normal inference succeeds after timeout events.
 
@@ -151,7 +151,7 @@ class TestInferenceTimeout:
         """
         for i in range(3):
             status_code, _ = _send_request_with_timeout(
-                inference_service=negative_test_ovms_isvc,
+                inference_service=negative_test_mlserver_isvc,
                 timeout_seconds=0.001,
                 body=_VALID_BODY,
             )
@@ -160,7 +160,7 @@ class TestInferenceTimeout:
         from tests.model_serving.model_server.kserve.negative.utils import send_inference_request
 
         status_code, response_body = send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=_VALID_BODY,
         )
 

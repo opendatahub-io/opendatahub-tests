@@ -40,7 +40,6 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 pytestmark = [
     pytest.mark.tier1,
     pytest.mark.rawdeployment,
-    # The serving tests deploy an OVMS runtime, whose image is not built for arm64
     pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config", "skip_if_disconnected"),
 ]
 
@@ -50,11 +49,11 @@ class TestModelCacheDeletion:
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        "unprivileged_model_namespace, mlserver_kserve_serving_runtime",
         [
             pytest.param(
                 {"name": "kserve-cache-deletion"},
-                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
                 id="test_cache_deletion_cleanup",
             )
         ],
@@ -64,7 +63,7 @@ class TestModelCacheDeletion:
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
-        ovms_kserve_serving_runtime: ServingRuntime,
+        mlserver_kserve_serving_runtime: ServingRuntime,
         model_cache_infra_ready: DataScienceCluster,
         model_cache_download_s3_secret: Secret,
         model_cache_namespace: str,
@@ -149,11 +148,11 @@ class TestModelCacheReuse:
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        "unprivileged_model_namespace, mlserver_kserve_serving_runtime",
         [
             pytest.param(
                 {"name": "kserve-cache-reuse"},
-                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
                 id="test_second_isvc_reuses_cache",
             )
         ],
@@ -163,7 +162,7 @@ class TestModelCacheReuse:
         self,
         unprivileged_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
-        ovms_kserve_serving_runtime: ServingRuntime,
+        mlserver_kserve_serving_runtime: ServingRuntime,
         mnist_local_model_cache: LocalModelNamespaceCache,
         mnist_onnx_local_model_cache_inference_service: InferenceService,
         ci_s3_bucket_name: str,
@@ -173,13 +172,13 @@ class TestModelCacheReuse:
         then both ISVCs use PVC-backed storage and cache status lists both.
         """
         first_isvc = mnist_onnx_local_model_cache_inference_service
-        model_format_name: str = ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name
+        model_format_name: str = ModelFormat.ONNX
 
         with create_isvc(
             client=unprivileged_client,
             name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-lmcache-2",
             namespace=unprivileged_model_namespace.name,
-            runtime=ovms_kserve_serving_runtime.name,
+            runtime=mlserver_kserve_serving_runtime.name,
             storage_uri=f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/",
             model_format=model_format_name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
@@ -189,7 +188,7 @@ class TestModelCacheReuse:
             assert_predictor_uses_cached_pvc(
                 client=unprivileged_client,
                 isvc=second_isvc,
-                runtime_name=ovms_kserve_serving_runtime.name,
+                runtime_name=mlserver_kserve_serving_runtime.name,
             )
 
             verify_inference_response(
@@ -215,11 +214,11 @@ class TestModelCacheReuse:
             )
 
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        "unprivileged_model_namespace, mlserver_kserve_serving_runtime",
         [
             pytest.param(
                 {"name": "kserve-cache-reuse"},
-                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
                 id="test_cache_namespace_isolation",
             )
         ],
@@ -229,7 +228,7 @@ class TestModelCacheReuse:
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
-        ovms_kserve_serving_runtime: Any,
+        mlserver_kserve_serving_runtime: Any,
         mnist_local_model_cache: LocalModelNamespaceCache,
     ) -> None:
         """Given a cache in the test namespace,
@@ -254,11 +253,11 @@ class TestModelCacheStorageClass:
     """Tier 1: model cache PVCs use the expected StorageClass and capacity."""
 
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        "unprivileged_model_namespace, mlserver_kserve_serving_runtime",
         [
             pytest.param(
                 {"name": "kserve-cache-reuse"},
-                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
                 id="test_node_pvc_storage_class",
             )
         ],
@@ -268,7 +267,7 @@ class TestModelCacheStorageClass:
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
-        ovms_kserve_serving_runtime: Any,
+        mlserver_kserve_serving_runtime: Any,
         model_cache_infra_ready: DataScienceCluster,
         model_cache_namespace: str,
     ) -> None:
@@ -296,11 +295,11 @@ class TestModelCacheStorageClass:
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        "unprivileged_model_namespace, mlserver_kserve_serving_runtime",
         [
             pytest.param(
                 {"name": "kserve-cache-reuse"},
-                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
                 id="test_download_pv_storage_class",
             )
         ],
@@ -310,7 +309,7 @@ class TestModelCacheStorageClass:
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
-        ovms_kserve_serving_runtime: Any,
+        mlserver_kserve_serving_runtime: Any,
         mnist_local_model_cache: LocalModelNamespaceCache,
     ) -> None:
         """Given a cache that has reached NodeDownloaded,
@@ -345,11 +344,11 @@ class TestModelCacheInvalidCredentials:
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "unprivileged_model_namespace, ovms_kserve_serving_runtime",
+        "unprivileged_model_namespace, mlserver_kserve_serving_runtime",
         [
             pytest.param(
                 {"name": "kserve-cache-invalid-creds"},
-                RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+                RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
                 id="test_invalid_credentials_cache",
             )
         ],
@@ -359,7 +358,7 @@ class TestModelCacheInvalidCredentials:
         self,
         admin_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
-        ovms_kserve_serving_runtime: ServingRuntime,
+        mlserver_kserve_serving_runtime: ServingRuntime,
         model_cache_infra_ready: DataScienceCluster,
         invalid_s3_download_secret: Secret,
         ci_s3_bucket_name: str,

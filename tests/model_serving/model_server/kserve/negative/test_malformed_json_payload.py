@@ -14,7 +14,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     send_inference_request,
 )
 
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 MALFORMED_JSON_EXPECTED_CODES: set[int] = {
     HTTPStatus.BAD_REQUEST,
@@ -30,18 +30,18 @@ class TestMalformedJsonPayload:
     """Test class for verifying error handling when receiving malformed JSON payloads.
 
     Preconditions:
-        - InferenceService deployed with OVMS runtime (RawDeployment)
+        - InferenceService deployed with MLServer runtime (RawDeployment)
         - Model is ready and serving
 
     Test Steps:
-        1. Create InferenceService with OVMS runtime
+        1. Create InferenceService with MLServer runtime
         2. Wait for InferenceService status = Ready
         3. Send POST with malformed JSON bodies (missing brace, trailing comma, plain text)
         4. Verify error responses and pod health
 
     Expected Results:
         - HTTP Status Code: 400 Bad Request or 412 Precondition Failed
-          (OVMS returns 412 for JSON parse errors)
+          (MLServer/FastAPI returns 400 for JSON parse errors)
         - Response indicates JSON parse failure
         - No pod crash or restart
     """
@@ -56,7 +56,7 @@ class TestMalformedJsonPayload:
     )
     def test_malformed_json_returns_error(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         malformed_body: str,
     ) -> None:
         """Verify that malformed JSON payloads return an error status code.
@@ -66,7 +66,7 @@ class TestMalformedJsonPayload:
         Then the response should have HTTP status code 400 or 412
         """
         status_code, response_body = send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=malformed_body,
         )
 
@@ -77,7 +77,7 @@ class TestMalformedJsonPayload:
     def test_model_pod_remains_healthy_after_malformed_json(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         initial_pod_state: dict[str, dict[str, Any]],
     ) -> None:
         """Verify that the model pod remains healthy after receiving malformed JSON.
@@ -87,11 +87,11 @@ class TestMalformedJsonPayload:
         Then the same pods should still be running without additional restarts
         """
         send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=MISSING_BRACE_BODY,
         )
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc,
+            isvc=negative_test_mlserver_isvc,
             initial_pod_state=initial_pod_state,
         )

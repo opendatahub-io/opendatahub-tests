@@ -21,20 +21,20 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.kserve.negative.utils import (
-    VALID_OVMS_INFERENCE_BODY,
+    VALID_MLSERVER_INFERENCE_BODY,
     assert_pods_healthy,
     send_inference_request_with_method,
 )
 
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
-VALID_BODY_RAW: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
+VALID_BODY_RAW: str = json.dumps(VALID_MLSERVER_INFERENCE_BODY)
 
-# OVMS / Istio / envoy may return 404 or 405 for wrong methods depending on the
-# proxy configuration – both are acceptable error responses.
+# MLServer (FastAPI) / Istio / envoy may return 404 or 405 for wrong methods
+# depending on the proxy configuration – both are acceptable error responses.
 WRONG_METHOD_EXPECTED_CODES: set[int] = {
     HTTPStatus.METHOD_NOT_ALLOWED,  # 405 - canonical "wrong method"
-    HTTPStatus.NOT_ACCEPTABLE,  # 406 - OVMS returns this with "Unsupported method"
+    HTTPStatus.NOT_ACCEPTABLE,  # 406 - returned by some proxies for unsupported methods
     HTTPStatus.NOT_FOUND,  # 404 - some proxies return this when route is method-scoped
     HTTPStatus.BAD_REQUEST,  # 400 - permissive proxies that inspect body first
 }
@@ -46,7 +46,7 @@ class TestWrongHttpMethod:
     """KServe inference endpoint rejects non-POST methods with a 4xx status code.
 
     Preconditions:
-        - OVMS RawDeployment InferenceService is deployed and Ready
+        - MLServer RawDeployment InferenceService is deployed and Ready
         - A valid JSON inference body is available for reuse
 
     Expected Results:
@@ -65,7 +65,7 @@ class TestWrongHttpMethod:
     )
     def test_wrong_http_method_returns_4xx(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         http_method: str,
     ) -> None:
         """Verify that using a non-POST method on the infer endpoint returns 4xx.
@@ -75,7 +75,7 @@ class TestWrongHttpMethod:
         Then the response must be a 4xx client error and the service must not crash
         """
         status_code, response_body = send_inference_request_with_method(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             http_method=http_method,
             body=VALID_BODY_RAW,
         )
@@ -87,7 +87,7 @@ class TestWrongHttpMethod:
     def test_model_pod_remains_healthy_after_wrong_method_requests(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         initial_pod_state: dict[str, dict[str, Any]],
     ) -> None:
         """Verify that the model pod remains healthy after wrong-method requests.
@@ -98,12 +98,12 @@ class TestWrongHttpMethod:
         """
         for method in ("GET", "DELETE"):
             send_inference_request_with_method(
-                inference_service=negative_test_ovms_isvc,
+                inference_service=negative_test_mlserver_isvc,
                 http_method=method,
                 body=VALID_BODY_RAW,
             )
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc,
+            isvc=negative_test_mlserver_isvc,
             initial_pod_state=initial_pod_state,
         )
