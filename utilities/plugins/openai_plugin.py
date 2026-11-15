@@ -60,7 +60,7 @@ class OpenAIClient:
         data = self._construct_request_data(endpoint, query, extra_param)
         try:
             url = f"{self.host}{endpoint}"
-            response = requests.post(url, headers=headers, json=data, verify=False)
+            response = requests.post(url, headers=headers, json=data, verify=False, timeout=(10, 300))
             LOGGER.info(response)
             response.raise_for_status()
             message = response.json()
@@ -93,7 +93,7 @@ class OpenAIClient:
         tokens = []
         try:
             url = f"{self.host}{endpoint}"
-            response = requests.post(url, headers=headers, json=data, verify=False, stream=True)
+            response = requests.post(url, headers=headers, json=data, verify=False, stream=True, timeout=(10, 300))
             LOGGER.info(response)
             response.raise_for_status()
             for line in response.iter_lines():
@@ -126,7 +126,7 @@ class OpenAIClient:
         headers = RestHeader.HEADERS
         url = f"{host}{endpoint}"
         try:
-            response = requests.get(url, headers=headers, verify=False)
+            response = requests.get(url, headers=headers, verify=False, timeout=(10, 60))
             LOGGER.info(response)
             response.raise_for_status()
             message = response.json()
@@ -197,7 +197,7 @@ class OpenAIClient:
         """
         data = {}
         if OpenAIEnpoints.CHAT_COMPLETIONS in endpoint:
-            data = {"messages": query, "temperature": 0, "seed": 1037, "stream": streaming}
+            data = {"messages": query, "temperature": 0, "seed": 1037, "stream": streaming, "max_tokens": 256}
         elif OpenAIEnpoints.EMBEDDINGS in endpoint:
             data = {
                 "input": query["text"],

@@ -1,3 +1,5 @@
+import base64
+from pathlib import Path
 from typing import Any, Union
 from utilities.constants import AcceleratorType, KServeDeploymentType, Labels, RuntimeTemplates
 
@@ -66,11 +68,23 @@ CHAT_QUERY: list[list[dict[str, str]]] = [
     ],
 ]
 
-IMAGE_URL_SCENERY: str = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"  # noqa: E501
-IMAGE_URL_DUCK: str = (
-    "https://upload.wikimedia.org/wikipedia/commons/d/da/2015_Kaczka_krzy%C5%BCowka_w_wodzie_%28samiec%29.jpg"
-)
-IMAGE_URL_LION: str = "https://upload.wikimedia.org/wikipedia/commons/7/77/002_The_lion_king_Snyggve_in_the_Serengeti_National_Park_Photo_by_Giles_Laurent.jpg"  # noqa: E501
+ASSETS_DIR: Path = Path(__file__).parent / "assets"
+
+
+def image_to_data_url(filename: str) -> str:
+    """Return a base64 data URL for an image bundled in the repo.
+
+    Test images are bundled instead of referenced from external URLs (wikimedia):
+    external URLs rot (thumbnail policy changes, file removals) and break the
+    vision tests, while the vLLM server has to fetch them at request time.
+    """
+    image_path = ASSETS_DIR / filename
+    return f"data:image/jpeg;base64,{base64.b64encode(image_path.read_bytes()).decode()}"
+
+
+IMAGE_URL_SCENERY: str = image_to_data_url("test_image_duck.jpg")
+IMAGE_URL_DUCK: str = image_to_data_url("test_image_duck.jpg")
+IMAGE_URL_LION: str = image_to_data_url("test_image_lion.jpg")
 
 MULTI_IMAGE_QUERIES: list[list[dict[Any, Any]]] = [
     [
