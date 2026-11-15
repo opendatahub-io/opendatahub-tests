@@ -95,9 +95,12 @@ def _validate_tool_calls(message: dict[str, Any], context: str) -> None:
 def _validate_openai_choice(choice: Any, context: str) -> None:
     if not isinstance(choice, dict):
         raise InferenceValidationError(f"{context}: expected dict choice, got {type(choice).__name__}")
-    finish_reason = (choice.get("finish_reason") or "").lower() if isinstance(choice.get("finish_reason"), str) else ""
+    raw_finish_reason = choice.get("finish_reason")
+    finish_reason = raw_finish_reason.lower() if isinstance(raw_finish_reason, str) else ""
     if finish_reason and finish_reason not in VALID_FINISH_REASONS:
-        LOGGER.warning(f"{context}: unexpected finish_reason '{finish_reason}' (expected one of {VALID_FINISH_REASONS})")
+        LOGGER.warning(
+            f"{context}: unexpected finish_reason '{finish_reason}' (expected one of {VALID_FINISH_REASONS})"
+        )
     message = choice.get("message")
     if isinstance(message, dict):
         if message.get("tool_calls"):
