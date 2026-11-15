@@ -45,3 +45,8 @@ enable-extensions =
     UFN,
     NIC,
     NIT,
+
+per-file-ignores =
+    # Mock upstream server scripts: standalone stdlib code deployed into pods,
+    # positional arguments are idiomatic there.
+    tests/ogx/mockupstream/scripts/*.py: FCN001

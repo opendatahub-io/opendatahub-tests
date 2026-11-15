@@ -171,8 +171,6 @@ catalogs:
     id: hf_private_gated
     type: hf
     enabled: true
-    properties:
-      apiKeyEnvVar: HF_API_KEY_HUGGINGFACE_HUB_PRIVATE
     includedModels:
     - RH-AI-Hub/Manual-Gated-Model-1
 """,
@@ -201,7 +199,7 @@ class TestHuggingFacePrivateGatedModelValidation:
         """
         Validate private gated HuggingFace model synchronization with token authentication.
 
-        Given: A HuggingFace private gated model (RH-AI-Hub/Private-Model-1)
+        Given: A HuggingFace gated model (RH-AI-Hub/Manual-Gated-Model-1)
         When: The model catalog is configured with the model and an authenticated token
         Then: The model is successfully imported and retrievable via the catalog API
         """
