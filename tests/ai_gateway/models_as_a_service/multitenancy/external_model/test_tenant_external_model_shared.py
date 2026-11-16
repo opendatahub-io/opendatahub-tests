@@ -24,9 +24,10 @@ pinned): per-gateway status makes the controller's tenant selection require
 it for models attached to more than one gateway, and each tenant's
 subscription references its own modelRef.
 
-The route/status tests always run. The serving tests (auth and quota
-isolation, real inference) additionally need two capabilities, each with its
-own skip gate:
+The route test always runs. The per-gateway status test skips on
+aggregate-status AGC builds (no ``status.gateways`` entries). The serving
+tests (auth and quota isolation, real inference) additionally need two
+capabilities, each with its own skip gate:
 
 - the AGC's per-gateway ``status.gateways`` results: aggregate-status AGC
   builds write ``status.httpRouteName`` for single-attachment models only,
@@ -58,7 +59,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.external_model.utils impo
     assert_returns_usage,
     assert_served_by_provider,
     exhaust_tenant_token_budget,
-    gateway_status_entry,
+    get_json_or_none,
     infer_external_chat,
     infer_for_shared_model,
     maas_model_ref_phase,
@@ -147,10 +148,23 @@ class TestSharedModelTwoGateways:
         tenant_external_model_tenants: dict[str, dict[str, str]],
         shared_model: dict[str, Any],
     ) -> None:
-        """status.gateways carries an independent ready result per gateway."""
+        """Per-gateway readiness assertions, skipping aggregate-status-only AGC.
+
+        Skips only when the model's ``status.gateways`` list is empty (an AGC
+        build that reports aggregate model status only); a missing model is a
+        setup failure and fails rather than skips. When any entry exists, a
+        per-gateway entry that goes missing is a failure, not a skip.
+        ``test_both_gateways_serve`` is subject to the module's serving skip
+        gates.
+        """
         model = shared_model["model"]
         cases = tuple(tenant_external_model_tenants.values())
-        if gateway_status_entry(admin_client, model["name"], model["namespace"], cases[0]["gateway_name"]) is None:
+        external_model = get_json_or_none(
+            client=admin_client, kind="externalmodel", name=model["name"], namespace=model["namespace"]
+        )
+        assert external_model is not None, f"externalmodel {model['namespace']}/{model['name']} must exist"
+        gateway_entries = (external_model.get("status") or {}).get("gateways") or []
+        if not gateway_entries:
             pytest.skip(
                 "AGC reports aggregate model status only (no status.gateways entries); "
                 "per-gateway readiness is covered by test_both_gateways_serve"
