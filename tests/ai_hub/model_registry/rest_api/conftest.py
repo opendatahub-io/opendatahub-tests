@@ -173,7 +173,7 @@ def external_db_template_with_ca(
     )
 
     if db_backend_under_test == "mysql":
-        db_deployment_template["spec"]["containers"][0]["args"].append(f"--ssl-ca={CA_FILE_PATH}")
+        db_deployment_template["spec"]["containers"][0].setdefault("args", []).append(f"--ssl-ca={CA_FILE_PATH}")
 
     elif db_backend_under_test == "postgres":
         postgres_ssl_args = [

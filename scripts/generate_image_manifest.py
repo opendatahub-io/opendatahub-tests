@@ -23,6 +23,7 @@ IMAGE_CLASS_MAP: dict[str, str] = {
     "ai_hub": "tests.ai_hub.image_constants.AiHubImages",
     "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
     "fixtures": "tests.fixtures.image_constants.FixturesImages",
+    "ogx": "tests.ogx.image_constants.OgxImages",
     "rhoai_mcp": "tests.rhoai_mcp.image_constants.RhoaiMcpImages",
     "shared": "utilities.image_constants.SharedImages",
     "workbenches": "tests.workbenches.image_constants.WorkbenchesImages",
@@ -37,6 +38,7 @@ KNOWN_REGISTRIES: tuple[str, ...] = (
     "docker.io",
     "registry.redhat.io",
     "public.ecr.aws",
+    "icr.io",
     "nvcr.io",
 )
 

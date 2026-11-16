@@ -14,6 +14,7 @@ from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.node import Node
+from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
@@ -21,7 +22,7 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler, TimeoutWatch
 from urllib3.exceptions import HTTPError
 
 from tests.model_serving.model_server.kserve.autoscaling.keda.utils import get_isvc_keda_scaledobject
-from utilities.constants import ApiGroups, KServeDeploymentType, Protocols, Timeout
+from utilities.constants import ApiGroups, Containers, KServeDeploymentType, Protocols, Timeout
 from utilities.exceptions import (
     InferenceResponseError,
 )
@@ -672,3 +673,52 @@ def verify_no_inference_pods(client: DynamicClient, isvc: InferenceService, wait
         LOGGER.error(f"{[pod.name for pod in pods]} were not deleted")
         return False
     return True
+
+
+def isvc_running_pods_have_agent_sidecar(client: DynamicClient, isvc: InferenceService) -> bool:
+    """
+    Check whether every Running predictor pod of the ISVC runs the kserve-agent sidecar.
+
+    KServe injects the agent container into pods at creation time (pod mutator
+    webhook) when the InferenceService has inference logging configured, so the
+    presence of the container proves the sidecar was injected for the current pods.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+
+    Returns:
+        bool: True when at least one Running pod exists and all Running pods
+            have the agent container.
+    """
+    running_pods = [pod for pod in get_pods_by_isvc_label(client=client, isvc=isvc) if pod.status == Pod.Status.RUNNING]
+    return bool(running_pods) and all(
+        Containers.KSERVE_AGENT_CONTAINER_NAME in {container.name for container in pod.instance.spec.containers}
+        for pod in running_pods
+    )
+
+
+def wait_for_isvc_agent_sidecar(
+    client: DynamicClient, isvc: InferenceService, timeout: int = Timeout.TIMEOUT_15MIN
+) -> None:
+    """
+    Wait until every Running predictor pod of the ISVC runs the kserve-agent sidecar.
+
+    The wait implicitly covers the rollout triggered by enabling inference
+    logging: pods created before logging was enabled do not have the sidecar,
+    so the condition only holds once they are replaced.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+        isvc (InferenceService): InferenceService object
+        timeout (int): Timeout in seconds
+    """
+    for sample in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=isvc_running_pods_have_agent_sidecar,
+        client=client,
+        isvc=isvc,
+    ):
+        if sample:
+            return

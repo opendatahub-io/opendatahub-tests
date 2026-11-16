@@ -47,7 +47,7 @@ MR_DB_IMAGE_DIGEST: str = AiHubImages.MYSQL
 MR_DB_MYSQL_ARGS: list[str] = ["--datadir", "/var/lib/mysql/datadir"]
 # MySQL 8.4 from registry.redhat.io — supports amd64/arm64/s390x/ppc64le.
 # Uses run-mysqld entrypoint which sets MYSQL_DATADIR internally, no args needed.
-MR_DB_IMAGE_DIGEST_S390X: str = AiHubImages.MYSQL_S390X
+MR_DB_IMAGE_DIGEST_S390X_PPC: str = AiHubImages.MYSQL_S390X_PPC
 MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-name": "model_registry",
     "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret

@@ -5,6 +5,10 @@ class SharedImages:
     image_constants.py instead (e.g. tests/ai_safety/image_constants.py).
     """
 
+    LLMD_INFERENCE_SIM_UPSTREAM: str = (
+        "ghcr.io/llm-d/llm-d-inference-sim@sha256:c3ba435081a4d032676b218ea34eb3a1c54507da0fade2f6297f9c37894fe0d1"
+    )
+
     MILVUS: str = "docker.io/milvusdb/milvus@sha256:3d772c3eae3a6107b778636cea5715b9353360b92e5dcfdcaf4ca7022f4f497c"
     ETCD: str = "quay.io/coreos/etcd@sha256:3397341272b9e0a6f44d7e3fc7c321c6efe6cbe82ce866b9b01d0c704bfc5bf3"
 
@@ -45,6 +49,15 @@ class SharedImages:
 
     SEAWEEDFS: str = (
         "ghcr.io/chrislusf/seaweedfs@sha256:6620371e8af8282056685c652d4637265698c9e2c2d59f9594e6ac333ad6c634"
+    )
+
+    SEAWEEDFS_PPC64LE: str = (
+        "icr.io/ppc64le-oss/seaweedfs-ppc64le"
+        "@sha256:f0671dcb703b1301b546e4ab016496d818bdb1ae596dea91d135d9ce236eb698"  # pragma: allowlist secret
+    )
+    DISTRIBUTION_REGISTRY_PPC64LE: str = (
+        "public.ecr.aws/docker/library/registry"
+        "@sha256:d4032d4cc323c1731c707931ecada07a53076eac38e3b61ae57533f170f2c6c3"  # pragma: allowlist secret
     )
 
     MARIADB_1011: str = (

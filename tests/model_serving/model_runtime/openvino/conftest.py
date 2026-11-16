@@ -34,7 +34,7 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
-from utilities.infra import get_pods_by_isvc_label
+from utilities.infra import get_pods_by_isvc_label, is_disconnected_cluster
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -44,6 +44,13 @@ OVMS_SMOKE_SCRIPT_NAMES = ("ovms_smoketest.py", "smoke.py")
 OVMS_SMOKE_CONFIGMAP_NAME = "ovms-smoke-scripts"
 OVMS_SMOKE_POD_NAME = "ovms-smoke-pod"
 OVMS_SMOKE_SCRIPTS_MOUNT_PATH = "/scripts"
+
+
+@pytest.fixture(scope="session")
+def skip_ovms_on_disconnected(admin_client: DynamicClient) -> None:
+    """Skip test if running on a disconnected (air-gapped) cluster."""
+    if is_disconnected_cluster(client=admin_client):
+        pytest.skip("Test requires internet access, not available on disconnected clusters")
 
 
 @pytest.fixture(scope="class")

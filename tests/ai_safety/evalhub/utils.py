@@ -4,19 +4,27 @@ from typing import Any, Final
 import pytest
 import requests
 import structlog
+import yaml
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
+from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
-from ocp_resources.pod import Pod
+from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.role_binding import RoleBinding
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
+    EVALHUB_APP_LABEL,
     EVALHUB_COLLECTIONS_PATH,
+    EVALHUB_COMPONENT_LABEL,
+    EVALHUB_CONFIG_VOLUME_NAME,
+    EVALHUB_CONTAINER_NAME,
     EVALHUB_CRD_NAME,
     EVALHUB_DEFAULT_HARDWARE_PROFILE,
     EVALHUB_FULL_API_VERSION_V1,
@@ -34,6 +42,8 @@ from tests.ai_safety.evalhub.constants import (
     EVALHUB_K8S_LABEL_COMPONENT_VALUE,
     EVALHUB_K8S_LABEL_JOB_ID,
     EVALHUB_LOG_CONTENT_TYPE,
+    EVALHUB_METRICS_PATH,
+    EVALHUB_METRICS_PORT,
     EVALHUB_MT_CR_NAME,
     EVALHUB_PROVIDERS_PATH,
     EVALHUB_VLLM_EMULATOR_PORT,
@@ -69,6 +79,40 @@ class MLflowWithWorkspaces(MLflow):
         super().to_dict()
         if self._workspace_label_selector is not None and "spec" in self.res:
             self.res["spec"]["workspaceLabelSelector"] = self._workspace_label_selector
+
+
+def label_selector_matches(selector: dict[str, Any], labels: dict[str, str]) -> bool:
+    """Check whether a Kubernetes LabelSelector matches a set of labels.
+
+    Both ``matchLabels`` and ``matchExpressions`` must be satisfied, as in Kubernetes.
+
+    Args:
+        selector: LabelSelector dict with optional ``matchLabels`` and ``matchExpressions``.
+        labels: Labels of the object being selected, e.g. a namespace's labels.
+
+    Returns:
+        True if every requirement in the selector is satisfied by the labels.
+    """
+    for key, value in (selector.get("matchLabels") or {}).items():
+        if labels.get(key) != value:
+            return False
+    for expression in selector.get("matchExpressions") or []:
+        key = expression["key"]
+        operator = expression["operator"]
+        values = expression.get("values") or []
+        if operator == "In":
+            matched = key in labels and labels[key] in values
+        elif operator == "NotIn":
+            matched = key not in labels or labels[key] not in values
+        elif operator == "Exists":
+            matched = key in labels
+        elif operator == "DoesNotExist":
+            matched = key not in labels
+        else:
+            matched = False
+        if not matched:
+            return False
+    return True
 
 
 class TransientEvalhubHealthError(Exception):
@@ -1701,6 +1745,108 @@ def fetch_operator_metrics(
     )
     response.raise_for_status()
     return response.text
+
+
+def get_ready_evalhub_api_pod(client: DynamicClient, namespace: str) -> Pod | None:
+    """Return a running, ready EvalHub API pod that is not shutting down, or None if there is none yet.
+
+    After a rollout, the old pod can still be listed while it terminates, so the first
+    pod matching the label selector is not necessarily usable.
+    """
+    # raw=True reads pod data from a single list call, so a pod deleted mid-check
+    # can't raise NotFoundError on a per-pod fetch.
+    for pod in Pod.get(
+        client=client,
+        namespace=namespace,
+        label_selector=f"app={EVALHUB_APP_LABEL},component={EVALHUB_COMPONENT_LABEL}",
+        raw=True,
+    ):
+        if pod.metadata.deletionTimestamp or not pod.status or pod.status.phase != Pod.Status.RUNNING:
+            continue
+        container_statuses = pod.status.containerStatuses or []
+        if container_statuses and all(status.ready for status in container_statuses):
+            return Pod(client=client, namespace=namespace, name=pod.metadata.name)
+    return None
+
+
+def assert_evalhub_otel_metrics_enabled(evalhub_deployment: Deployment) -> None:
+    """Assert that the EvalHub deployment runs with OTEL metrics enabled.
+
+    EvalHub emits HTTP request metrics on /metrics only when both ``otel.enabled`` and
+    ``otel.enable_metrics`` are true in its config.yaml, which the operator generates from
+    ``spec.otel`` on the EvalHub CR. With the default CR (no ``spec.otel``), /metrics has
+    no HTTP metrics, so tests that check them must enable OTEL.
+
+    Args:
+        evalhub_deployment: EvalHub API Deployment created by the operator.
+
+    Raises:
+        AssertionError: If the mounted config.yaml does not enable OTEL metrics.
+    """
+    volumes = evalhub_deployment.instance.spec.template.spec.volumes or []
+    config_volume = next((volume for volume in volumes if volume.name == EVALHUB_CONFIG_VOLUME_NAME), None)
+    assert config_volume and config_volume.configMap, (
+        f"Deployment {evalhub_deployment.name} has no ConfigMap volume named '{EVALHUB_CONFIG_VOLUME_NAME}'"
+    )
+    config_map = ConfigMap(
+        client=evalhub_deployment.client,
+        name=config_volume.configMap.name,
+        namespace=evalhub_deployment.namespace,
+        ensure_exists=True,
+    )
+    config = yaml.safe_load((config_map.instance.data or {}).get("config.yaml") or "") or {}
+    otel_config = config.get("otel") or {}
+    assert otel_config.get("enabled") and otel_config.get("enable_metrics"), (
+        "EvalHub HTTP request metrics require OTEL metrics: set spec.otel with enabled and enableMetrics "
+        f"on the EvalHub CR (e.g. EVALHUB_OTEL_METRICS_STDOUT_CONFIG). ConfigMap {config_map.name} has "
+        f"otel config: {otel_config}"
+    )
+
+
+def fetch_evalhub_metrics(client: DynamicClient, evalhub_metrics_service: Service, timeout: int = 120) -> str:
+    """Fetch raw Prometheus text from the EvalHub metrics Service.
+
+    The metrics port is cluster-internal with no Route, so the request is made with curl
+    from inside an EvalHub API pod rather than from the test runner. The pod is selected
+    on each call so a pod replaced since an earlier scrape is not reused. If the pod is
+    deleted or the exec fails before curl runs, another ready pod is selected; a curl
+    failure is raised as is.
+
+    Args:
+        client: Kubernetes dynamic client.
+        evalhub_metrics_service: Metrics Service created by the operator for EvalHub.
+        timeout: Seconds to wait for a ready EvalHub API pod.
+
+    Returns:
+        Raw Prometheus text-format string from the /metrics endpoint.
+
+    Raises:
+        ExecOnPodError: If curl fails, for example on an HTTP error from /metrics.
+    """
+    url = (
+        f"http://{evalhub_metrics_service.name}.{evalhub_metrics_service.namespace}"
+        f".svc.cluster.local:{EVALHUB_METRICS_PORT}{EVALHUB_METRICS_PATH}"
+    )
+    for evalhub_api_pod in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=get_ready_evalhub_api_pod,
+        client=client,
+        namespace=evalhub_metrics_service.namespace,
+    ):
+        if not evalhub_api_pod:
+            continue
+        try:
+            # -f makes curl exit non-zero on HTTP errors, which fails the pod exec
+            return evalhub_api_pod.execute(command=["curl", "-sSf", url], container=EVALHUB_CONTAINER_NAME)
+        except NotFoundError:
+            LOGGER.info(f"EvalHub pod {evalhub_api_pod.name} was deleted before the scrape, selecting another pod")
+        except ExecOnPodError as exc:
+            # rc -1 means the exec itself failed (pod shutting down, stream closed); any other
+            # rc is curl's exit code, which is a real failure of the metrics endpoint
+            if exc.rc != -1:
+                raise
+            LOGGER.info(f"Exec on EvalHub pod {evalhub_api_pod.name} failed ({exc.err}), selecting another pod")
 
 
 def fetch_trace_collector_logs(trace_collector_pod: Pod, tail_lines: int = 5000) -> str:

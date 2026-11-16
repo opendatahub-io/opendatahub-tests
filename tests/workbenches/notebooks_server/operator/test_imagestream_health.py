@@ -240,7 +240,7 @@ def _validate_imagestreams_with_label(
     [
         pytest.param(
             "opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=workbenches",
-            12,
+            13,
             True,
             id="test_notebook_imagestreams",
         ),
@@ -301,7 +301,7 @@ def test_workbench_imagestreams_health(
     [
         pytest.param(
             "opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=workbenches",
-            12,
+            13,
             id="test_notebook_imagestreams",
         ),
     ],

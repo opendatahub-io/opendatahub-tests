@@ -15,6 +15,7 @@ from tests.ogx.constants import (
     OGX_CORE_VLLM_MAX_TOKENS,
     OGX_CORE_VLLM_TLS_VERIFY,
     OGX_CORE_VLLM_URL,
+    OGX_POSTGRES_SERVICE_NAME,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -53,12 +54,18 @@ def build_ogx_server_config(
             - files_provider: Files storage provider (``"local"`` or ``"s3"``;
               default ``"local"``).
             - ogx_storage_size: PVC size for workload storage (e.g. ``"2Gi"``).
-            - enable_gemini: When truthy, inject ``GEMINI_API_KEY`` (from the
-              ``ogx-distribution-secret``) so the distribution's conditional
-              ``remote::gemini`` provider activates. Optionally also sets
+            - enable_gemini: When truthy, set ``ENABLE_GEMINI`` so the
+              distribution's conditional ``remote::gemini`` provider activates,
+              and inject ``GEMINI_API_KEY`` (from the ``ogx-distribution-secret``)
+              to authenticate it. Optionally also sets
               ``GEMINI_INFERENCE_MODEL`` when configured in constants.
             - network: Optional NetworkSpec dict for the OGXServer CR.
-
+            - praxis_mode: Optional PraxisModeSpec dict for the OGXServer CR.
+            - cpu_requests / cpu_limits: Workload CPU request and limit
+              (defaults ``"1"`` and ``"2"``). The OGX operator copies
+              ``workload.resources`` onto the Praxis migration Job as well, so a
+              suite that runs the migration alongside the server needs room on
+              one node for both at once.
     Returns:
         OGXServerSpec configuration dict with ``distribution``, ``workload``,
         and optional ``tls`` sections.
@@ -66,8 +73,8 @@ def build_ogx_server_config(
 
     env_vars = []
     tls_config: dict[str, Any] | None = None
-    cpu_requests = "1"
-    cpu_limits = "2"
+    cpu_requests = params.get("cpu_requests", "1")
+    cpu_limits = params.get("cpu_limits", "2")
 
     env_vars.extend((
         {"name": "INFERENCE_MODEL", "value": OGX_CORE_INFERENCE_MODEL},
@@ -118,7 +125,7 @@ def build_ogx_server_config(
 
     # POSTGRESQL environment variables for sql_default and kvstore_default
     env_vars.extend((
-        {"name": "POSTGRES_HOST", "value": "vector-io-postgres-service"},
+        {"name": "POSTGRES_HOST", "value": OGX_POSTGRES_SERVICE_NAME},
         {"name": "POSTGRES_PORT", "value": "5432"},
         {
             "name": "POSTGRES_USER",
@@ -180,6 +187,9 @@ def build_ogx_server_config(
 
     if params.get("network"):
         config["network"] = params["network"]
+
+    if praxis_mode := params.get("praxis_mode"):
+        config["praxis_mode"] = praxis_mode
 
     if tls_config:
         config["tls"] = tls_config

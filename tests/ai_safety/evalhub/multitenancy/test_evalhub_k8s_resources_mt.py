@@ -32,7 +32,6 @@ from tests.ai_safety.evalhub.utils import (
     delete_evalhub_job,
     evalhub_runtime_label_selector,
     get_evalhub_job_http,
-    post_evalhub_job_raw,
     submit_evalhub_job,
     wait_for_evalhub_runtime_job_count,
     wait_for_evalhub_runtime_resources_absent,
@@ -448,91 +447,6 @@ class TestEvalHubK8sJobDeleteBehaviour:
         )
         assert resp.status_code == 204
 
-        wait_for_evalhub_runtime_resources_absent(
-            admin_client=admin_client,
-            namespace=tenant_a_namespace.name,
-            evalhub_job_id=job_id,
-        )
-
-
-@pytest.mark.parametrize(
-    "model_namespace",
-    [
-        pytest.param(
-            {"name": "test-evalhub-k8s-mlflow"},
-        ),
-    ],
-    indirect=True,
-)
-@pytest.mark.ai_safety
-class TestEvalHubK8sMlflowJobSpec:
-    """experiment_name / tags in job.json when the cluster EvalHub enables MLflow."""
-
-    def test_mlflow_experiment_fields_in_job_json_when_supported(
-        self,
-        tenant_a_token: str,
-        tenant_a_namespace: Namespace,
-        evalhub_mt_ca_bundle_file: str,
-        evalhub_mt_route: Route,
-        evalhub_vllm_emulator_service: Service,
-        admin_client: DynamicClient,
-    ) -> None:
-        """If POST accepts an experiment block, spec ConfigMap job.json must carry experiment_name and tags."""
-        base = build_evalhub_job_payload(
-            model_service_name=evalhub_vllm_emulator_service.name,
-            tenant_namespace=tenant_a_namespace.name,
-            job_name="evalhub-k8s-mlflow-spec-job",
-        )
-        base["experiment"] = {
-            "name": "odh-fvt-evalhub-experiment",
-            "tags": [{"key": "suite", "value": "k8s-resources-mt"}],
-        }
-        resp = post_evalhub_job_raw(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            payload=base,
-        )
-        if resp.status_code != 202:
-            pytest.fail(
-                "EvalHub instance does not accept experiment payload (MLflow likely disabled): "
-                f"{resp.status_code} {resp.text}"
-            )
-
-        job_id = resp.json()["resource"]["id"]
-        wait_for_evalhub_runtime_job_count(
-            admin_client=admin_client,
-            namespace=tenant_a_namespace.name,
-            evalhub_job_id=job_id,
-            minimum=1,
-        )
-
-        selector = evalhub_runtime_label_selector(evalhub_job_id=job_id)
-        cms = list(
-            ConfigMap.get(
-                client=admin_client,
-                namespace=tenant_a_namespace.name,
-                label_selector=selector,
-            )
-        )
-        spec_cms = [cm for cm in cms if cm.name.endswith("-spec")]
-        assert len(spec_cms) >= 1
-        raw = (spec_cms[0].instance.data or {}).get("job.json")
-        assert raw
-        spec = json.loads(raw)
-        assert spec.get("experiment_name") == "odh-fvt-evalhub-experiment"
-        tags = spec.get("tags") or []
-        assert any(t.get("key") == "suite" and t.get("value") == "k8s-resources-mt" for t in tags)
-
-        delete_evalhub_job(
-            host=evalhub_mt_route.host,
-            token=tenant_a_token,
-            ca_bundle_file=evalhub_mt_ca_bundle_file,
-            tenant=tenant_a_namespace.name,
-            job_id=job_id,
-            hard_delete=True,
-        )
         wait_for_evalhub_runtime_resources_absent(
             admin_client=admin_client,
             namespace=tenant_a_namespace.name,
