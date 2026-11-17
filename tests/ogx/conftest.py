@@ -29,6 +29,7 @@ from tests.ogx.constants import (
     ModelInfo,
 )
 from tests.ogx.datasets import Dataset
+from tests.ogx.mockupstream.deployments import MockUpstream, deploy_mock_maas_server
 from tests.ogx.server_config import build_ogx_server_config
 from tests.ogx.utils import (
     create_ogx_server,
@@ -58,6 +59,27 @@ def skip_ogx_if_not_supported_openshift_version(admin_client: DynamicClient, ope
         )
         LOGGER.info(message)
         pytest.skip(reason=message)
+
+
+@pytest.fixture(scope="class")
+def mock_maas_upstream(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[MockUpstream, Any, Any]:
+    """Deploy the mock MaaS (genai-proxy) upstream in the test namespace.
+
+    Shared by the mock-upstream-backed feature suites (maaspassthrough, mcp,
+    otel). Deployed with a debug Route so tests can query the mock's
+    /v1/debug endpoints from outside the cluster. Only instantiated for test
+    classes that request it.
+    """
+    with deploy_mock_maas_server(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace,
+        teardown=teardown_resources,
+    ) as upstream:
+        yield upstream
 
 
 @pytest.fixture(scope="class")

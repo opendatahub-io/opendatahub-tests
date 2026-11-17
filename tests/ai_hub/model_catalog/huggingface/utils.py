@@ -5,7 +5,8 @@ import requests
 import structlog
 from huggingface_hub import HfApi
 from kubernetes.dynamic import DynamicClient
-from timeout_sampler import retry
+from ocp_resources.deployment import Deployment
+from timeout_sampler import TimeoutSampler, retry
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.constants import HF_SOURCE_ID
@@ -13,6 +14,44 @@ from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
 from tests.ai_hub.utils import execute_get_command, get_model_catalog_pod
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def wait_for_huggingface_token_rollout(deployment: Deployment, api_key_env_var: str, secret_name: str | None) -> None:
+    """Wait for the operator to inject or remove an HF token and finish the rollout.
+
+    Args:
+        deployment: Model catalog Deployment managed by the operator.
+        api_key_env_var: Environment variable derived from the Hugging Face source ID.
+        secret_name: Expected Secret name, or None to wait for removal of the variable.
+    """
+    LOGGER.info(f"Waiting for {deployment.name} rollout with {api_key_env_var} Secret reference: {secret_name}")
+    for deployment_instance in TimeoutSampler(wait_timeout=300, sleep=5, func=lambda: deployment.instance):
+        sample = deployment_instance.to_dict()
+        containers = sample["spec"]["template"]["spec"]["containers"]
+        catalog_container = next((container for container in containers if container["name"] == CATALOG_CONTAINER), {})
+        if not catalog_container:
+            continue
+        env_var = next(
+            (env_var for env_var in catalog_container.get("env") or [] if env_var["name"] == api_key_env_var), {}
+        )
+        secret_ref = env_var.get("valueFrom", {}).get("secretKeyRef", {})
+        token_configured = (
+            secret_ref.get("name") == secret_name and secret_ref.get("key") == "apiKey"
+            if secret_name is not None
+            else not env_var
+        )
+        status = sample.get("status", {})
+        replicas = sample["spec"].get("replicas", 1)
+        if (
+            token_configured
+            and replicas > 0
+            and status.get("observedGeneration", 0) == sample["metadata"]["generation"]
+            and all(
+                status.get(replica_field, 0) == replicas
+                for replica_field in ("replicas", "updatedReplicas", "readyReplicas", "availableReplicas")
+            )
+        ):
+            return
 
 
 def get_huggingface_model_params(model_name: str, huggingface_api: HfApi) -> dict[str, Any]:
