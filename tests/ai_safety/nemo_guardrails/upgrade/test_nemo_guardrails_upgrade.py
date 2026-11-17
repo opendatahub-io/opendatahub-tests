@@ -159,7 +159,9 @@ class TestNemoGuardrailsLLMAsPreUpgrade:
 
         verify_auth_required(response=response)
 
-
+@pytest.mark.tier1
+@pytest.mark.ai_safety
+@pytest.mark.rawdeployment
 @pytest.mark.parametrize(
     "model_namespace",
     [pytest.param({"name": "test-nemo-guardrails-upgrade"})],
