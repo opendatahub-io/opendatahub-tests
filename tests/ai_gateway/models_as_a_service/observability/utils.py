@@ -18,6 +18,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.open_telemetry_collector import OpenTelemetryCollector
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.route import Route
 from ocp_resources.service_monitor import ServiceMonitor
 from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
@@ -41,6 +42,8 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     LOKI_QUERY_TENANT,
     LOKI_QUERY_URL,
     OTEL_COLLECTOR_CRD_NAME,
+    RHOAI_THANOS_QUERIER_ROUTE_NAME,
+    THANOS_QUERIER_ROUTE_WAIT_TIMEOUT,
     USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
     USAGE_LOGS_COLLECTOR_NAME,
     USAGE_LOGS_CRB_NAME,
@@ -289,6 +292,27 @@ def wait_for_limitador_service_monitor(
     ):
         if sampler:
             return service_monitor
+    return None
+
+
+def wait_for_thanos_route(
+    admin_client: DynamicClient,
+    namespace: str,
+    timeout: int = THANOS_QUERIER_ROUTE_WAIT_TIMEOUT,
+) -> Route | None:
+    """Wait for the RHOAI observability Thanos querier route to exist, tolerating a stack still rolling out."""
+    thanos_route = Route(
+        client=admin_client,
+        name=RHOAI_THANOS_QUERIER_ROUTE_NAME,
+        namespace=namespace,
+    )
+    for sampler in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=lambda: thanos_route.exists,
+    ):
+        if sampler:
+            return thanos_route
     return None
 
 
