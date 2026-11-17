@@ -19,6 +19,7 @@ from ocp_resources.open_telemetry_collector import OpenTelemetryCollector
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service_monitor import ServiceMonitor
+from ocp_utilities.monitoring import Prometheus
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -164,6 +165,34 @@ def resolve_kuadrant_namespace(admin_client: DynamicClient) -> str:
             return kuadrant.namespace
 
     return kuadrant_instances[0].namespace
+
+
+class RbacScopedPrometheus(Prometheus):
+    """Prometheus client for a Thanos querier route fronted by a kube-rbac-proxy.
+
+    The RHOAI MaaS Thanos querier proxy (data-science-thanos-querier-proxy-config) authorizes
+    every request via `authorization.rewrites.byQueryParameter`, which requires a `namespace`
+    query parameter to build the SubjectAccessReview; without it, the proxy returns HTTP 400
+    ("no attributes generated") before the request ever reaches Thanos. This subclass appends
+    that parameter to every outgoing request, independent of the PromQL `query` parameter.
+    """
+
+    def __init__(self, *, rbac_namespace: str, **kwargs: Any) -> None:
+        self._rbac_namespace = rbac_namespace
+        super().__init__(**kwargs)
+
+    def _get_response(self, query: str) -> dict[str, Any]:
+        separator = "&" if "?" in query else "?"
+        return super()._get_response(query=f"{query}{separator}namespace={self._rbac_namespace}")
+
+    def get_scrape_interval(self) -> int:
+        """Skip `Prometheus.get_scrape_interval`'s `/api/v1/targets` call.
+
+        Thanos Querier (unlike Prometheus) does not implement `/api/v1/targets`, so that call
+        always 404s here; fall back directly to the same default the base class uses when the
+        scrape interval can't be determined.
+        """
+        return 30
 
 
 def limitador_namespace_selector_matches_kuadrant_namespace(

@@ -39,6 +39,7 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     USAGE_LOGS_SEAWEEDFS_NAME,
 )
 from tests.ai_gateway.models_as_a_service.observability.utils import (
+    RbacScopedPrometheus,
     get_maas_config_default,
     limitador_is_deployed,
     maas_config_usage_logging_disabled,
@@ -46,6 +47,7 @@ from tests.ai_gateway.models_as_a_service.observability.utils import (
     monitoring_namespace_exists,
     opentelemetry_collector_crd_installed,
     patch_maas_config_limitador_scrape_interval,
+    resolve_kuadrant_namespace,
     resolve_maas_monitoring_namespace,
     usage_logs_monitoring_spec,
     wait_for_dsci_usage_logs_conditions,
@@ -164,7 +166,12 @@ def maas_observability_prometheus(
             f"Route '{RHOAI_THANOS_QUERIER_ROUTE_NAME}' not found in '{maas_monitoring_namespace}'; "
             "RHOAI observability stack is not deployed"
         )
-    return Prometheus(
+    try:
+        rbac_namespace = resolve_kuadrant_namespace(admin_client=admin_client)
+    except AssertionError as exc:
+        pytest.fail(str(exc))
+    return RbacScopedPrometheus(
+        rbac_namespace=rbac_namespace,
         client=admin_client,
         namespace=maas_monitoring_namespace,
         resource_name=RHOAI_THANOS_QUERIER_ROUTE_NAME,
