@@ -542,9 +542,9 @@ class TestCredentialSourceSelection:
             assert external_model is not None, (
                 f"externalmodel {model['namespace']}/{model['name']} must exist after the missing-secret failure"
             )
-            phase = external_model["status"]["phase"]
-            assert phase != "Ready", (
-                f"model must report a non-Ready phase after the missing-secret failure, got {phase!r}"
+            phase = (external_model.get("status") or {}).get("phase")
+            assert phase and phase != "Ready", (
+                f"model must report a present, non-Ready phase after the missing-secret failure, got {phase!r}"
             )
 
 

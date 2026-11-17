@@ -23,6 +23,12 @@ OGX_CLIENT_VERIFY_SSL = os.getenv("OGX_CLIENT_VERIFY_SSL", "false").lower() == "
 OGX_CORE_POD_FILTER: str = "app=ogx"
 OGX_OPENSHIFT_MINIMAL_VERSION: VersionInfo = semver.VersionInfo.parse("4.17.0")
 
+# Metrics port exposed by the OGX operator when spec.monitoring is enabled
+# (auth-exempt, separate from the API port, never routed — per the telemetry
+# design, only network-isolated scrapers may reach it). Matches the env var
+# the OGX server itself uses for the standalone scrape endpoint.
+OGX_METRICS_PORT = int(os.getenv("OGX_METRICS_PORT", "9464"))
+
 POSTGRES_IMAGE = os.getenv("OGX_VECTOR_IO_POSTGRES_IMAGE", SharedImages.POSTGRESQL_15)
 POSTGRESQL_USER = os.getenv("OGX_VECTOR_IO_POSTGRESQL_USER", "ps_user")
 POSTGRESQL_PASSWORD = os.getenv("OGX_VECTOR_IO_POSTGRESQL_PASSWORD", "ps_password")
@@ -49,9 +55,12 @@ OGX_CORE_AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "dummy")
 
 # Remote Gemini inference provider (remote::gemini) configuration.
 # The provider activates conditionally in the Red Hat OGX Distribution config.yaml
-# via the pattern ${env.GEMINI_API_KEY:+gemini-inference}; injecting a non-empty
-# GEMINI_API_KEY into the OgxServer pod is what turns the provider on.
+# via the pattern ${env.ENABLE_GEMINI:+gemini}; setting ENABLE_GEMINI in the
+# OgxServer pod is what turns the provider on, and GEMINI_API_KEY (via
+# api_key: ${env.GEMINI_API_KEY:=}) is what authenticates it to the Gemini API.
 GEMINI_PROVIDER_TYPE = "remote::gemini"
+# Provider whose coexistence with remote::gemini TC-REG-001 checks.
+OPENAI_PROVIDER_TYPE = "remote::openai"
 # provider_id reported by GET /v1/providers for the Gemini inference provider.
 GEMINI_PROVIDER_ID = os.getenv("OGX_CORE_GEMINI_PROVIDER_ID", "gemini")
 # Header used to override provider configuration (e.g. the API key) per request.

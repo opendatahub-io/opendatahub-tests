@@ -66,11 +66,12 @@ ROUTE_TIMEOUT_MAP: dict[str, str] = {
     AcceleratorType.CPU_Z: IBM_Z_ROUTE_TIMEOUT,
 }
 
-# Readiness budget for create_isvc, which covers pod creation, weight loading and
-# vLLM's torch.compile warmup. Warmup scales with model size on Z - roughly 13min
-# for a 7B and 22min for an 8B - so a 14B model can still be compiling when the
-# 1800s Power default expires.
-IBM_POWER_Z_ISVC_TIMEOUT: int = 1800
+# Readiness budget for create_isvc, which covers the S3 weight download, pod
+# creation, weight loading and vLLM's torch.compile warmup. Warmup scales with
+# model size on Z - roughly 13min for a 7B and 22min for an 8B. On Power the S3
+# download alone measured ~28min for a 14B model, leaving the old 1800s budget
+# exhausted before compile finished, so Power needs the same 3600s as Z.
+IBM_POWER_Z_ISVC_TIMEOUT: int = 3600
 IBM_Z_ISVC_TIMEOUT: int = 3600
 
 ISVC_TIMEOUT_MAP: dict[str, int] = {
@@ -90,13 +91,13 @@ IBM_POWER_Z_CHAT_INFERENCE_REQUEST: dict[str, Any] = {
 
 # ELYZA is based on Llama-2 which has no chat_template in tokenizer_config.json.
 # vLLM rejects /v1/chat/completions with HTTP 400 unless an explicit template is
-# supplied.  The vLLM CPU image ships template_chatml.jinja at /app/data/template/.
+# supplied.  The vLLM CPU image ships template_chatml.jinja at /opt/app-root/template/.
 ELYZA_SERVING_ARGUMENT: list[str] = [
     "--dtype=bfloat16",
     "--model=/mnt/models",
     "--max-model-len=256",
     "--max-num-seqs=1",
     "--max-num-batched-tokens=256",
-    "--chat-template=/app/data/template/template_chatml.jinja",
+    "--chat-template=/opt/app-root/template/template_chatml.jinja",
     "--uvicorn-log-level=debug",
 ]
