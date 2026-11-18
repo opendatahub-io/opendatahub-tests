@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 from contextlib import ExitStack, contextmanager
 from typing import Any, TypedDict
@@ -63,6 +64,13 @@ AUTHORINO_TLS_BOOTSTRAP_ANNOTATION = "security.opendatahub.io/authorino-tls-boot
 TENANT_GATEWAY_MAAS_AUTH_POLICY_SUFFIX = "-maas-auth"
 SHARED_MAAS_API_SERVICE_NAME = MAAS_API_DEPLOYMENT_NAME
 TENANT_ISOLATION_MODEL_NAME = "llm-s3-tinyllama-free"
+# Two-tenant isolation: tenant B follows A on a loaded cluster — allow longer Kuadrant gateway reconciliation.
+TENANT_ISOLATION_PRIMARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 300
+TENANT_ISOLATION_SECONDARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 600
+# After gateway AuthPolicy is enforced: shorter policy wait; subscription can lag on tenant B (Limitador/flow control).
+TENANT_ISOLATION_MAAS_AUTH_POLICY_READY_TIMEOUT_SECONDS = 180
+TENANT_ISOLATION_PRIMARY_MAAS_SUBSCRIPTION_READY_TIMEOUT_SECONDS = 300
+TENANT_ISOLATION_SECONDARY_MAAS_SUBSCRIPTION_READY_TIMEOUT_SECONDS = 300
 TENANT_MODELS_BUCKET_SECRET_NAME = "models-bucket-secret"  # pragma: allowlist secret
 TENANT_MODELS_BUCKET_SA_NAME = "models-bucket-sa"
 CROSS_TENANT_INFERENCE_REJECTED_STATUSES = frozenset({401, 403})
@@ -376,14 +384,24 @@ def tenant_gateway_hostname(gateway_name: str, maas_host: str) -> str:
     return f"{gateway_name}.{ingress_domain}"
 
 
+def isolation_gateway_https_only_listeners() -> bool:
+    """When true, bootstrap Gateways expose HTTPS only (workaround for RHOAIENG-84569)."""
+    return os.environ.get("E2E_ISOLATION_GATEWAY_HTTPS_ONLY", "").lower() in ("1", "true", "yes")
+
+
 def isolation_bootstrap_gateway_body(
     gateway_name: str,
     gateway_namespace: str,
+    *,
+    https_only: bool | None = None,
 ) -> dict[str, Any]:
     """Build a tenant Gateway that accepts labeled maas-api HTTPRoutes on HTTP and HTTPS.
 
     External hostnames are configured on the OpenShift Route, not on the Gateway listener.
+    Set ``E2E_ISOLATION_GATEWAY_HTTPS_ONLY=true`` to omit the plaintext HTTP listener (84569).
     """
+    if https_only is None:
+        https_only = isolation_gateway_https_only_listeners()
     gateway_access_label = gateway_access_label_key(gateway_name=gateway_name)
     allowed_routes = {
         "namespaces": {
@@ -395,6 +413,31 @@ def isolation_bootstrap_gateway_body(
             },
         },
     }
+    https_listener = {
+        "name": "https",
+        "port": GATEWAY_HTTPS_PORT,
+        "protocol": "HTTPS",
+        "allowedRoutes": allowed_routes,
+        "tls": {
+            "mode": "Terminate",
+            "certificateRefs": [
+                {
+                    "group": "",
+                    "kind": "Secret",
+                    "name": GATEWAY_TLS_CERTIFICATE_SECRET_NAME,
+                },
+            ],
+        },
+    }
+    listeners: list[dict[str, Any]] = []
+    if not https_only:
+        listeners.append({
+            "name": "http",
+            "port": GATEWAY_HTTP_PORT,
+            "protocol": "HTTP",
+            "allowedRoutes": allowed_routes,
+        })
+    listeners.append(https_listener)
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "Gateway",
@@ -407,30 +450,7 @@ def isolation_bootstrap_gateway_body(
         },
         "spec": {
             "gatewayClassName": AIGATEWAY_GATEWAY_CLASS_NAME,
-            "listeners": [
-                {
-                    "name": "http",
-                    "port": GATEWAY_HTTP_PORT,
-                    "protocol": "HTTP",
-                    "allowedRoutes": allowed_routes,
-                },
-                {
-                    "name": "https",
-                    "port": GATEWAY_HTTPS_PORT,
-                    "protocol": "HTTPS",
-                    "allowedRoutes": allowed_routes,
-                    "tls": {
-                        "mode": "Terminate",
-                        "certificateRefs": [
-                            {
-                                "group": "",
-                                "kind": "Secret",
-                                "name": GATEWAY_TLS_CERTIFICATE_SECRET_NAME,
-                            },
-                        ],
-                    },
-                },
-            ],
+            "listeners": listeners,
         },
     }
 
@@ -646,6 +666,50 @@ def tenant_gateway_maas_auth_policy_name(gateway_name: str) -> str:
     return f"{gateway_name}{TENANT_GATEWAY_MAAS_AUTH_POLICY_SUFFIX}"
 
 
+def _auth_policy_generation_synced(*, auth_policy: AuthPolicy) -> bool:
+    """True when Kuadrant has applied the current AuthPolicy spec (status.observedGeneration == metadata.generation)."""
+    auth_policy.get()
+    metadata = auth_policy.instance.metadata
+    status = auth_policy.instance.status or {}
+    if isinstance(metadata, dict):
+        generation = metadata.get("generation")
+    else:
+        generation = getattr(metadata, "generation", None)
+    if isinstance(status, dict):
+        observed_generation = status.get("observedGeneration")
+    else:
+        observed_generation = getattr(status, "observedGeneration", None)
+    return generation is not None and observed_generation is not None and int(observed_generation) == int(generation)
+
+
+def _gateway_auth_policy_reconciled(
+    *,
+    admin_client: DynamicClient,
+    policy_name: str,
+    namespace: str,
+) -> bool:
+    """Match maas-controller gatewayAuthPolicyReady: Accepted, Enforced, and observedGeneration caught up."""
+    if not _auth_policy_generation_synced(
+        auth_policy=AuthPolicy(client=admin_client, name=policy_name, namespace=namespace),
+    ):
+        return False
+    accepted_condition = get_auth_policy_condition(
+        admin_client=admin_client,
+        policy_name=policy_name,
+        namespace=namespace,
+        condition_type="Accepted",
+    )
+    enforced_condition = get_auth_policy_condition(
+        admin_client=admin_client,
+        policy_name=policy_name,
+        namespace=namespace,
+        condition_type="Enforced",
+    )
+    accepted = accepted_condition is not None and accepted_condition.get("status") == "True"
+    enforced = enforced_condition is not None and enforced_condition.get("status") == "True"
+    return accepted and enforced
+
+
 def maas_api_service_host_for_aitenant(aitenant_name: str, api_namespace: str) -> str:
     """Return the in-cluster Service hostname for a per-tenant maas-api Deployment."""
     deployment_name = maas_api_deployment_name_for_aitenant(aitenant_name=aitenant_name)
@@ -663,7 +727,7 @@ def wait_for_tenant_gateway_maas_auth_policy(
     gateway_namespace: str,
     timeout: int = 300,
 ) -> AuthPolicy:
-    """Poll until the MaaS gateway AuthPolicy for a tenant Gateway exists and is Accepted."""
+    """Poll until the per-tenant Kuadrant AuthPolicy matches maas-controller gateway readiness."""
     policy_name = tenant_gateway_maas_auth_policy_name(gateway_name=gateway_name)
     auth_policy = AuthPolicy(
         client=admin_client,
@@ -679,23 +743,26 @@ def wait_for_tenant_gateway_maas_auth_policy(
         ):
             if not auth_policy.exists:
                 continue
-            accepted_condition = get_auth_policy_condition(
+            if _gateway_auth_policy_reconciled(
                 admin_client=admin_client,
                 policy_name=policy_name,
                 namespace=gateway_namespace,
-                condition_type="Accepted",
-            )
-            if accepted_condition is not None and accepted_condition.get("status") == "True":
+            ):
                 LOGGER.info(
-                    f"AuthPolicy '{gateway_namespace}/{policy_name}' is Accepted after MaaSAuthPolicy reconciliation"
+                    f"AuthPolicy '{gateway_namespace}/{policy_name}' is Accepted, Enforced, "
+                    f"and observedGeneration matches generation"
                 )
                 return auth_policy
     except TimeoutExpiredError as error:
         raise AssertionError(
-            f"Timed out waiting for AuthPolicy '{gateway_namespace}/{policy_name}' to become Accepted. "
-            f"Ensure a MaaSAuthPolicy exists in the tenant namespace to trigger gateway reconciliation."
+            f"Timed out after {timeout}s waiting for AuthPolicy '{gateway_namespace}/{policy_name}' "
+            f"to become Accepted and Enforced with observedGeneration == generation. "
+            f"Ensure a MaaSAuthPolicy exists in the tenant namespace to trigger gateway reconciliation.\n"
+            f"{_gateway_maas_auth_policy_status_snapshot(admin_client, gateway_name, gateway_namespace)}"
         ) from error
-    raise AssertionError(f"AuthPolicy '{gateway_namespace}/{policy_name}' did not become Accepted")
+    raise AssertionError(
+        f"AuthPolicy '{gateway_namespace}/{policy_name}' did not reach Accepted, Enforced, and generation sync"
+    )
 
 
 def verify_tenant_gateway_auth_policy_callback_url(
@@ -938,6 +1005,29 @@ def patch_llmisvc_with_tenant_gateway_router(
         yield
 
 
+def s3_secret_config_for_storage_uri(
+    storage_uri: str,
+    *,
+    aws_s3_bucket: str,
+    aws_s3_region: str,
+    aws_s3_endpoint: str,
+) -> tuple[str, str, str]:
+    """Align KServe S3 secret region/endpoint with the bucket named in ``storage_uri``.
+
+    CI model URIs under ``ods-ci-wisdom`` live in ``us-east-2``; pytest flags often pass
+    ``us-east-1`` for unrelated buckets. Using the wrong region yields S3 HeadBucket 301 and
+    a CrashLooping storage-initializer.
+    """
+    bucket_in_uri = urlparse(url=storage_uri).netloc
+    if bucket_in_uri == ModelStorage.S3.ODS_CI_WISDOM_BUCKET:
+        return (
+            ModelStorage.S3.ODS_CI_WISDOM_BUCKET,
+            ModelStorage.S3.ODS_CI_WISDOM_REGION,
+            ModelStorage.S3.ODS_CI_WISDOM_ENDPOINT,
+        )
+    return aws_s3_bucket, aws_s3_region, aws_s3_endpoint
+
+
 @contextmanager
 def provision_tenant_model(
     admin_client: DynamicClient,
@@ -950,52 +1040,64 @@ def provision_tenant_model(
     aws_s3_region: str,
     aws_s3_bucket: str,
     aws_s3_endpoint: str,
+    storage_uri: str = ModelStorage.S3.TINYLLAMA,
     teardown: bool = True,
     llm_ready_timeout: int = 900,
     httproute_timeout: int = 300,
     spec_tenant_ref: str | None = None,
 ) -> Generator[MaaSModelRef, Any, Any]:
-    """Provision a tenant-local TinyLlama model whose HTTPRoute attaches to the tenant Gateway."""
+    """Provision a tenant-local model whose HTTPRoute attaches to the tenant Gateway."""
     label_namespace_gateway_access(
         admin_client=admin_client,
         namespace_name=tenant_namespace_name,
         gateway_name=gateway_name,
     )
+    service_account: str | None = TENANT_MODELS_BUCKET_SA_NAME
     with ExitStack() as stack:
-        stack.enter_context(
-            cm=s3_endpoint_secret(
-                client=admin_client,
-                name=TENANT_MODELS_BUCKET_SECRET_NAME,
-                namespace=tenant_namespace_name,
-                aws_access_key=aws_access_key,
-                aws_secret_access_key=aws_secret_access_key,
-                aws_s3_region=aws_s3_region,
+        if storage_uri.startswith("s3://"):
+            secret_bucket, secret_region, secret_endpoint = s3_secret_config_for_storage_uri(
+                storage_uri=storage_uri,
                 aws_s3_bucket=aws_s3_bucket,
+                aws_s3_region=aws_s3_region,
                 aws_s3_endpoint=aws_s3_endpoint,
-                teardown=teardown,
             )
-        )
-        stack.enter_context(
-            cm=ServiceAccount(
-                client=admin_client,
-                namespace=tenant_namespace_name,
-                name=TENANT_MODELS_BUCKET_SA_NAME,
-                secrets=[{"name": TENANT_MODELS_BUCKET_SECRET_NAME}],
-                teardown=teardown,
+            stack.enter_context(
+                cm=s3_endpoint_secret(
+                    client=admin_client,
+                    name=TENANT_MODELS_BUCKET_SECRET_NAME,
+                    namespace=tenant_namespace_name,
+                    aws_access_key=aws_access_key,
+                    aws_secret_access_key=aws_secret_access_key,
+                    aws_s3_region=secret_region,
+                    aws_s3_bucket=secret_bucket,
+                    aws_s3_endpoint=secret_endpoint,
+                    teardown=teardown,
+                )
             )
-        )
+            stack.enter_context(
+                cm=ServiceAccount(
+                    client=admin_client,
+                    namespace=tenant_namespace_name,
+                    name=TENANT_MODELS_BUCKET_SA_NAME,
+                    secrets=[{"name": TENANT_MODELS_BUCKET_SECRET_NAME}],
+                    teardown=teardown,
+                )
+            )
+        else:
+            service_account = None
+
         llm_service = stack.enter_context(
             cm=create_llmisvc(
                 client=admin_client,
                 name=model_name,
                 namespace=tenant_namespace_name,
-                storage_uri=ModelStorage.S3.TINYLLAMA,
+                storage_uri=storage_uri,
                 container_image=SharedImages.VLLM_CPU,
                 container_resources={
                     "limits": {"cpu": "2", "memory": "12Gi"},
                     "requests": {"cpu": "1", "memory": "8Gi"},
                 },
-                service_account=TENANT_MODELS_BUCKET_SA_NAME,
+                service_account=service_account,
                 wait=False,
                 timeout=llm_ready_timeout,
                 teardown=teardown,
@@ -1049,6 +1151,169 @@ def provision_tenant_model(
         yield maas_model
 
 
+def _format_status_conditions(conditions: Any) -> str:
+    if not conditions:
+        return "(no status.conditions)"
+    lines: list[str] = []
+    for condition in conditions:
+        if isinstance(condition, dict):
+            cond_type = condition.get("type")
+            status = condition.get("status")
+            reason = condition.get("reason")
+            message = condition.get("message")
+        else:
+            cond_type = getattr(condition, "type", None)
+            status = getattr(condition, "status", None)
+            reason = getattr(condition, "reason", None)
+            message = getattr(condition, "message", None)
+        lines.append(f"  - type={cond_type} status={status} reason={reason} message={message!r}")
+    return "\n".join(lines)
+
+
+def _maas_auth_policy_status_snapshot(auth_policy: MaaSAuthPolicy) -> str:
+    if not auth_policy.exists:
+        auth_policy.get()
+    if not auth_policy.exists:
+        return f"MaaSAuthPolicy '{auth_policy.namespace}/{auth_policy.name}': not found"
+    auth_policy.get()
+    metadata = auth_policy.instance.metadata
+    status = auth_policy.instance.status
+    generation = getattr(metadata, "generation", None)
+    observed_generation = getattr(status, "observedGeneration", None) if status is not None else None
+    phase = getattr(status, "phase", None) if status is not None else None
+    conditions = getattr(status, "conditions", None) if status is not None else None
+    return (
+        f"MaaSAuthPolicy '{auth_policy.namespace}/{auth_policy.name}': "
+        f"metadata.generation={generation} status.observedGeneration={observed_generation} "
+        f"status.phase={phase}\n"
+        f"MaaSAuthPolicy conditions:\n{_format_status_conditions(conditions)}"
+    )
+
+
+def _gateway_maas_auth_policy_status_snapshot(
+    admin_client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str,
+) -> str:
+    policy_name = tenant_gateway_maas_auth_policy_name(gateway_name=gateway_name)
+    gateway_policy = AuthPolicy(
+        client=admin_client,
+        name=policy_name,
+        namespace=gateway_namespace,
+    )
+    if not gateway_policy.exists:
+        try:
+            gateway_policy.get()
+        except NotFoundError, ResourceNotFoundError:
+            return (
+                f"Gateway AuthPolicy '{gateway_namespace}/{policy_name}': not found "
+                "(maas-controller may not have created it yet)"
+            )
+    if not gateway_policy.exists:
+        return f"Gateway AuthPolicy '{gateway_namespace}/{policy_name}': not found"
+    gateway_policy.get()
+    metadata = gateway_policy.instance.metadata or {}
+    status = gateway_policy.instance.status or {}
+    if not isinstance(metadata, dict):
+        generation = getattr(metadata, "generation", None)
+    else:
+        generation = metadata.get("generation")
+    if not isinstance(status, dict):
+        observed_generation = getattr(status, "observedGeneration", None)
+        conditions = getattr(status, "conditions", None)
+    else:
+        observed_generation = status.get("observedGeneration")
+        conditions = status.get("conditions")
+    return (
+        f"Gateway AuthPolicy '{gateway_namespace}/{policy_name}': "
+        f"metadata.generation={generation} status.observedGeneration={observed_generation}\n"
+        f"Gateway AuthPolicy conditions:\n{_format_status_conditions(conditions)}"
+    )
+
+
+def _maas_subscription_status_snapshot(subscription: MaaSSubscription) -> str:
+    if not subscription.exists:
+        subscription.get()
+    if not subscription.exists:
+        return f"MaaSSubscription '{subscription.namespace}/{subscription.name}': not found"
+    subscription.get()
+    metadata = subscription.instance.metadata
+    status = subscription.instance.status
+    generation = getattr(metadata, "generation", None)
+    observed_generation = getattr(status, "observedGeneration", None) if status is not None else None
+    phase = getattr(status, "phase", None) if status is not None else None
+    conditions = getattr(status, "conditions", None) if status is not None else None
+    return (
+        f"MaaSSubscription '{subscription.namespace}/{subscription.name}': "
+        f"metadata.generation={generation} status.observedGeneration={observed_generation} "
+        f"status.phase={phase}\n"
+        f"MaaSSubscription conditions:\n{_format_status_conditions(conditions)}"
+    )
+
+
+def format_tenant_governance_ready_timeout_message(
+    admin_client: DynamicClient,
+    *,
+    resource_kind: str,
+    resource_namespace: str,
+    resource_name: str,
+    ready_timeout: int,
+    gateway_name: str | None = None,
+    gateway_namespace: str | None = None,
+    maas_auth_policy: MaaSAuthPolicy | None = None,
+    maas_subscription: MaaSSubscription | None = None,
+) -> str:
+    """Build an assertion message when MaaSAuthPolicy or MaaSSubscription Ready times out."""
+    parts = [
+        (
+            f"Timed out after {ready_timeout}s waiting for {resource_kind}/{resource_namespace}/{resource_name} "
+            f"condition Ready=True."
+        ),
+    ]
+    if maas_subscription is not None:
+        parts.append(_maas_subscription_status_snapshot(maas_subscription))
+    if maas_auth_policy is not None:
+        parts.append(_maas_auth_policy_status_snapshot(maas_auth_policy))
+    if gateway_name and gateway_namespace:
+        parts.append(
+            _gateway_maas_auth_policy_status_snapshot(
+                admin_client=admin_client,
+                gateway_name=gateway_name,
+                gateway_namespace=gateway_namespace,
+            )
+        )
+    return "\n".join(parts)
+
+
+def _wait_for_maas_resource_ready(
+    *,
+    resource: MaaSAuthPolicy | MaaSSubscription,
+    admin_client: DynamicClient,
+    resource_kind: str,
+    ready_timeout: int,
+    gateway_name: str | None = None,
+    gateway_namespace: str | None = None,
+    maas_auth_policy: MaaSAuthPolicy | None = None,
+) -> None:
+    try:
+        resource.wait_for_condition(condition="Ready", status="True", timeout=ready_timeout)
+    except TimeoutExpiredError as error:
+        maas_subscription = resource if resource_kind == "MaaSSubscription" else None
+        raise AssertionError(
+            format_tenant_governance_ready_timeout_message(
+                admin_client=admin_client,
+                resource_kind=resource_kind,
+                resource_namespace=resource.namespace,
+                resource_name=resource.name,
+                ready_timeout=ready_timeout,
+                gateway_name=gateway_name,
+                gateway_namespace=gateway_namespace,
+                maas_auth_policy=maas_auth_policy,
+                maas_subscription=maas_subscription,
+            )
+        ) from error
+
+
 @contextmanager
 def make_tenant_model_accessible(
     admin_client: DynamicClient,
@@ -1059,13 +1324,27 @@ def make_tenant_model_accessible(
     subscription_name: str,
     owner_group_name: str,
     free_group_name: str,
+    gateway_name: str | None = None,
+    gateway_namespace: str | None = None,
     tokens_per_minute: int = 1000,
     window: str = "1m",
     priority: int = 0,
     teardown: bool = True,
     ready_timeout: int = 300,
+    gateway_auth_timeout: int | None = None,
+    maas_auth_ready_timeout: int | None = None,
+    maas_subscription_ready_timeout: int | None = None,
+    maas_cr_ready_timeout: int | None = None,
 ) -> Generator[MaaSSubscription, Any, Any]:
     """Create tenant MaaSAuthPolicy then MaaSSubscription for a tenant-local model (dev order)."""
+    resolved_gateway_auth_timeout = gateway_auth_timeout if gateway_auth_timeout is not None else ready_timeout
+    fallback_maas_ready = maas_cr_ready_timeout if maas_cr_ready_timeout is not None else ready_timeout
+    resolved_maas_auth_ready_timeout = (
+        maas_auth_ready_timeout if maas_auth_ready_timeout is not None else fallback_maas_ready
+    )
+    resolved_maas_subscription_ready_timeout = (
+        maas_subscription_ready_timeout if maas_subscription_ready_timeout is not None else fallback_maas_ready
+    )
     with ExitStack() as stack:
         auth_policy = stack.enter_context(
             cm=MaaSAuthPolicy(
@@ -1083,7 +1362,22 @@ def make_tenant_model_accessible(
                 wait_for_resource=True,
             )
         )
-        auth_policy.wait_for_condition(condition="Ready", status="True", timeout=ready_timeout)
+        if gateway_name and gateway_namespace:
+            wait_for_tenant_gateway_maas_auth_policy(
+                admin_client=admin_client,
+                gateway_name=gateway_name,
+                gateway_namespace=gateway_namespace,
+                timeout=resolved_gateway_auth_timeout,
+            )
+        _wait_for_maas_resource_ready(
+            resource=auth_policy,
+            admin_client=admin_client,
+            resource_kind="MaaSAuthPolicy",
+            ready_timeout=resolved_maas_auth_ready_timeout,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+            maas_auth_policy=auth_policy,
+        )
         subscription = stack.enter_context(
             cm=create_maas_subscription(
                 admin_client=admin_client,
@@ -1099,7 +1393,15 @@ def make_tenant_model_accessible(
                 wait_for_resource=True,
             )
         )
-        subscription.wait_for_condition(condition="Ready", status="True", timeout=ready_timeout)
+        _wait_for_maas_resource_ready(
+            resource=subscription,
+            admin_client=admin_client,
+            resource_kind="MaaSSubscription",
+            ready_timeout=resolved_maas_subscription_ready_timeout,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+            maas_auth_policy=auth_policy,
+        )
         LOGGER.info(
             f"Tenant governance Ready in '{tenant_namespace_name}': "
             f"policy={auth_policy_name}, subscription={subscription_name}"
