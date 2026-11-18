@@ -106,7 +106,7 @@ def _envoy_filter_config_patches(envoy_filter: EnvoyFilter) -> list[Mapping[str,
     raw_patches = getattr(spec, "configPatches", None) or getattr(spec, "config_patches", None) or []
     patches: list[Mapping[str, Any]] = []
     for patch in raw_patches:
-        mapping = _nested_mapping(patch)
+        mapping = _nested_mapping(value=patch)
         if mapping is not None:
             patches.append(mapping)
     return patches
@@ -118,39 +118,39 @@ def tenant_usage_logs_envoy_filter_capture_user_ready(envoy_filter: EnvoyFilter)
     has_username_rule = False
 
     for patch in _envoy_filter_config_patches(envoy_filter):
-        apply_to = _config_patch_apply_to(patch)
+        apply_to = _config_patch_apply_to(patch=patch)
         if apply_to == "NETWORK_FILTER":
-            patch_body = _nested_mapping(patch.get("patch"))
-            value = _nested_mapping(patch_body.get("value") if patch_body else None)
-            typed_config = _nested_mapping(value.get("typed_config") if value else None)
+            patch_body = _nested_mapping(value=patch.get("patch"))
+            value = _nested_mapping(value=patch_body.get("value") if patch_body else None)
+            typed_config = _nested_mapping(value=value.get("typed_config") if value else None)
             access_logs = typed_config.get("access_log") if typed_config else None
             if not isinstance(access_logs, list):
                 continue
             for access_log in access_logs:
-                access_log_map = _nested_mapping(access_log)
+                access_log_map = _nested_mapping(value=access_log)
                 if access_log_map is None:
                     continue
-                access_typed = _nested_mapping(access_log_map.get("typed_config"))
-                attrs = _nested_mapping(access_typed.get("attributes") if access_typed else None)
+                access_typed = _nested_mapping(value=access_log_map.get("typed_config"))
+                attrs = _nested_mapping(value=access_typed.get("attributes") if access_typed else None)
                 values = attrs.get("values") if attrs else None
                 if not isinstance(values, list):
                     continue
                 for entry in values:
-                    entry_map = _nested_mapping(entry)
+                    entry_map = _nested_mapping(value=entry)
                     if entry_map is not None and entry_map.get("key") == "user_id":
                         has_user_id_attr = True
                         break
         elif apply_to == "HTTP_FILTER":
-            patch_body = _nested_mapping(patch.get("patch"))
-            value = _nested_mapping(patch_body.get("value") if patch_body else None)
+            patch_body = _nested_mapping(value=patch.get("patch"))
+            value = _nested_mapping(value=patch_body.get("value") if patch_body else None)
             if value is None or value.get("name") != "envoy.filters.http.header_to_metadata.identity":
                 continue
-            typed_config = _nested_mapping(value.get("typed_config"))
+            typed_config = _nested_mapping(value=value.get("typed_config"))
             rules = typed_config.get("request_rules") if typed_config else None
             if not isinstance(rules, list):
                 continue
             for rule in rules:
-                rule_map = _nested_mapping(rule)
+                rule_map = _nested_mapping(value=rule)
                 if rule_map is not None and rule_map.get("header") == "X-MaaS-Username":
                     has_username_rule = True
                     break
