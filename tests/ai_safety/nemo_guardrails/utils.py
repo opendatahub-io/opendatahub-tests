@@ -484,8 +484,8 @@ def get_ready_nemo_guardrails_pod(client: DynamicClient, namespace: str, label_s
     - Not shutting down (no deletionTimestamp)
     - All containers ready
 
-    The pod instance data is loaded before returning to ensure validation doesn't trigger
-    a new GET request that could fail if the pod disappears.
+    The pod instance data is loaded and rechecked before returning to ensure readiness
+    and image validation use the same observation.
 
     Args:
         client: DynamicClient to query the cluster
@@ -503,11 +503,20 @@ def get_ready_nemo_guardrails_pod(client: DynamicClient, namespace: str, label_s
         container_statuses = pod.status.containerStatuses or []
         if container_statuses and all(status.ready for status in container_statuses):
             pod_wrapper = Pod(client=client, namespace=namespace, name=pod.metadata.name)
-            # Load instance data now so validation uses this snapshot
+            # Load instance data and recheck readiness on the GET result
             try:
-                _ = pod_wrapper.instance
+                instance = pod_wrapper.instance
             except NotFoundError:
                 # Pod was deleted between list and GET; continue to next candidate
+                continue
+            # Recheck readiness and deletionTimestamp on GET result to ensure validation
+            # uses the same observation
+            if instance.metadata.deletionTimestamp:
+                continue
+            if not instance.status or instance.status.phase != Pod.Status.RUNNING:
+                continue
+            get_container_statuses = instance.status.containerStatuses or []
+            if not (get_container_statuses and all(status.ready for status in get_container_statuses)):
                 continue
             return pod_wrapper
     return None
