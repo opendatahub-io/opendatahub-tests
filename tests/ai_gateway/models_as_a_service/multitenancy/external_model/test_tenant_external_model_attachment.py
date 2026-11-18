@@ -350,6 +350,15 @@ class TestAttachmentLifecycleCleanup:
                         "post-detach inference rate-limited while the remaining "
                         f"gateway's limits settle: {redact_sensitive(response.text)}"
                     )
+                    # Transient 5xx and empty-body 403 responses surface while
+                    # the remaining gateway reloads its filters; neither is a
+                    # steady state, so keep polling within the settle window.
+                    assert not (
+                        response.status_code >= 500 or (response.status_code == 403 and not response.text.strip())
+                    ), (
+                        "post-detach inference failed while the remaining gateway "
+                        f"settles: {response.status_code}: {redact_sensitive(response.text)}"
+                    )
                     # The reduced overlay takes time to reach the remaining
                     # gateway's extproc; until then requests land on the
                     # provider-selection sink (empty-body 404). Neither 429 nor
@@ -844,9 +853,16 @@ class TestCredentialRotationFollowsSource:
                 case=tenant_b,
                 model=model,
                 api_key=env["access"]["api_key"],
+                # Single shot: the outer wait_until owns the retry window, and
+                # the verdict logic needs error_observed to see every failed
+                # probe instead of letting inner retries absorb them.
+                retries=0,
             )
             if response.status_code == 200:
-                authorization = (echo_headers(response=response).get("Authorization") or "").strip()
+                headers = echo_headers(response=response)
+                # The echo may carry either header case; accept both, matching
+                # assert_served_by_provider.
+                authorization = (headers.get("Authorization") or headers.get("authorization") or "").strip()
 
                 def _carries(credential: str) -> bool:
                     return any(

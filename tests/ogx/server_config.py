@@ -54,9 +54,10 @@ def build_ogx_server_config(
             - files_provider: Files storage provider (``"local"`` or ``"s3"``;
               default ``"local"``).
             - ogx_storage_size: PVC size for workload storage (e.g. ``"2Gi"``).
-            - enable_gemini: When truthy, inject ``GEMINI_API_KEY`` (from the
-              ``ogx-distribution-secret``) so the distribution's conditional
-              ``remote::gemini`` provider activates. Optionally also sets
+            - enable_gemini: When truthy, set ``ENABLE_GEMINI`` so the
+              distribution's conditional ``remote::gemini`` provider activates,
+              and inject ``GEMINI_API_KEY`` (from the ``ogx-distribution-secret``)
+              to authenticate it. Optionally also sets
               ``GEMINI_INFERENCE_MODEL`` when configured in constants.
             - network: Optional NetworkSpec dict for the OGXServer CR.
             - praxis_mode: Optional PraxisModeSpec dict for the OGXServer CR.

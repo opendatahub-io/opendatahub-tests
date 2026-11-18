@@ -18,7 +18,6 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
-from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
@@ -120,18 +119,18 @@ def model_cache_download_s3_secret(
     ci_s3_bucket_name: str,
     ci_s3_bucket_region: str,
     ci_s3_bucket_endpoint: str,
+    model_cache_namespace: str,
 ) -> Generator[Secret, Any, Any]:
     """S3 credential secret in the job namespace for ``LocalModelNamespaceCache`` download Jobs.
 
-    The download Job runs in the operator's job namespace (``redhat-ods-applications``),
+    The download Job runs in the configured model cache job namespace,
     which is separate from the ISVC namespace.  The ``LocalModelNamespaceCache`` spec references
     this secret via ``spec.storage.key``.
     """
-    applications_namespace: str = py_config["applications_namespace"]
     with s3_endpoint_secret(
         client=admin_client,
         name=f"model-cache-download-secret-{shortuuid.uuid()[:10].lower()}",
-        namespace=applications_namespace,
+        namespace=model_cache_namespace,
         aws_access_key=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=ci_s3_bucket_region,
@@ -147,13 +146,13 @@ def invalid_s3_download_secret(
     ci_s3_bucket_name: str,
     ci_s3_bucket_region: str,
     ci_s3_bucket_endpoint: str,
+    model_cache_namespace: str,
 ) -> Generator[Secret, Any, Any]:
     """S3 secret with invalid credentials for negative download testing."""
-    applications_namespace: str = py_config["applications_namespace"]
     with s3_endpoint_secret(
         client=admin_client,
         name=f"model-cache-invalid-secret-{shortuuid.uuid()[:10].lower()}",
-        namespace=applications_namespace,
+        namespace=model_cache_namespace,
         aws_access_key="INVALIDACCESSKEY12345",
         aws_secret_access_key="INVALIDSECRETACCESSKEY6789",  # pragma: allowlist secret
         aws_s3_region=ci_s3_bucket_region,
