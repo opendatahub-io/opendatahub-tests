@@ -6,7 +6,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.nemo_guardrails import NemoGuardrails
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.nemo_guardrails.constants import (
     CHAT_ENDPOINT,
@@ -210,17 +210,27 @@ class TestNemoGuardrailsLLMAsPostUpgrade:
 
         # Get a ready pod from the current ReplicaSet
         label_selector = f"app={nemo_guardrails_llm_judge.name}"
-        for _ in TimeoutSampler(wait_timeout=120, sleep=5, func=lambda: None):
-            pod = get_ready_nemo_guardrails_pod(
-                client=admin_client,
-                namespace=model_namespace.name,
-                label_selector=label_selector,
-            )
-            if pod is not None:
-                break
-        assert pod is not None, f"No ready pod found for {nemo_guardrails_llm_judge.name} after rollout"
+        try:
+            pod = None
+            for sample_pod in TimeoutSampler(
+                wait_timeout=120,
+                sleep=5,
+                func=lambda: get_ready_nemo_guardrails_pod(
+                    client=admin_client,
+                    namespace=model_namespace.name,
+                    label_selector=label_selector,
+                ),
+            ):
+                if sample_pod is not None:
+                    pod = sample_pod
+                    break
+        except TimeoutExpiredError as err:
+            raise AssertionError(
+                f"No ready pod found for NemoGuardrails '{nemo_guardrails_llm_judge.name}' "
+                f"in namespace '{model_namespace.name}' after rollout within 120s"
+            ) from err
 
-        # Validate images (ignoring registry differences, checking image name + SHA256)
+        # Validate images (outside timeout handler so digest mismatches have their own error)
         validate_nemo_guardrails_images(pod=pod, trustyai_operator_configmap=trustyai_operator_configmap)
 
     @pytest.mark.post_upgrade

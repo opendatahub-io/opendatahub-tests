@@ -460,7 +460,7 @@ def wait_for_deployment_rollout(
             last_status = status
             if status is None:
                 continue
-            desired = instance.spec.replicas or 1
+            desired = instance.spec.replicas if instance.spec.replicas is not None else 1
             generation = instance.metadata.generation or 0
             observed = getattr(status, "observedGeneration", None) or 0
             updated = getattr(status, "updatedReplicas", None) or 0
@@ -476,7 +476,7 @@ def wait_for_deployment_rollout(
 
 def get_ready_nemo_guardrails_pod(client: DynamicClient, namespace: str, label_selector: str) -> Pod | None:
     """
-    Return a running, ready NeMo Guardrails pod that is not shutting down.
+    Return a running, ready NeMo Guardrails pod with instance data loaded.
 
     After a rollout, old pods can still be listed while they terminate, so this function
     filters for pods that are:
@@ -484,13 +484,16 @@ def get_ready_nemo_guardrails_pod(client: DynamicClient, namespace: str, label_s
     - Not shutting down (no deletionTimestamp)
     - All containers ready
 
+    The pod instance data is loaded before returning to ensure validation doesn't trigger
+    a new GET request that could fail if the pod disappears.
+
     Args:
         client: DynamicClient to query the cluster
         namespace: Namespace to look in
         label_selector: Kubernetes label selector
 
     Returns:
-        A ready Pod, or None if no pod is ready yet
+        A ready Pod with instance data loaded, or None if no pod is ready yet
     """
     # raw=True reads pod data from a single list call, so a pod deleted mid-check
     # can't raise NotFoundError on a per-pod fetch.
@@ -499,5 +502,12 @@ def get_ready_nemo_guardrails_pod(client: DynamicClient, namespace: str, label_s
             continue
         container_statuses = pod.status.containerStatuses or []
         if container_statuses and all(status.ready for status in container_statuses):
-            return Pod(client=client, namespace=namespace, name=pod.metadata.name)
+            pod_wrapper = Pod(client=client, namespace=namespace, name=pod.metadata.name)
+            # Load instance data now so validation uses this snapshot
+            try:
+                _ = pod_wrapper.instance
+            except NotFoundError:
+                # Pod was deleted between list and GET; continue to next candidate
+                continue
+            return pod_wrapper
     return None
