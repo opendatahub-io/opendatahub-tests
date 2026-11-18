@@ -525,8 +525,17 @@ def tenant_gateway_external_route(
     teardown: bool,
     gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
 ) -> Generator[Route, Any, Any]:
-    """Expose a tenant Gateway externally via an edge-terminated OpenShift Route to HTTP port 80."""
+    """Expose a tenant Gateway externally via an OpenShift Route aligned with listener mode."""
     route_host = tenant_gateway_hostname(gateway_name=gateway_name, maas_host=maas_host)
+    if isolation_gateway_https_only_listeners():
+        route_port = GATEWAY_HTTPS_PORT
+        route_tls = {"termination": "passthrough"}
+    else:
+        route_port = GATEWAY_HTTP_PORT
+        route_tls = {
+            "termination": "edge",
+            "insecureEdgeTerminationPolicy": "Redirect",
+        }
     with Route(
         client=admin_client,
         name=tenant_gateway_route_name(gateway_name=gateway_name),
@@ -539,11 +548,8 @@ def tenant_gateway_external_route(
             ),
             "weight": 100,
         },
-        port={"targetPort": GATEWAY_HTTP_PORT},
-        tls={
-            "termination": "edge",
-            "insecureEdgeTerminationPolicy": "Redirect",
-        },
+        port={"targetPort": route_port},
+        tls=route_tls,
         teardown=teardown,
         wait_for_resource=True,
     ) as route:
@@ -665,6 +671,22 @@ def tenant_gateway_maas_auth_policy_name(gateway_name: str) -> str:
     return f"{gateway_name}{TENANT_GATEWAY_MAAS_AUTH_POLICY_SUFFIX}"
 
 
+def _auth_policy_status_conditions(status: object) -> list[object]:
+    """Return Kuadrant AuthPolicy status.conditions from dict or attribute-backed status."""
+    if isinstance(status, dict):
+        raw_conditions = status.get("conditions") or []
+    else:
+        raw_conditions = getattr(status, "conditions", None) or []
+    return raw_conditions if isinstance(raw_conditions, list) else []
+
+
+def _kuadrant_condition_fields(condition: object) -> tuple[Any, Any]:
+    """Return (type, status) from a dict or attribute-backed condition entry."""
+    if isinstance(condition, dict):
+        return condition.get("type"), condition.get("status")
+    return getattr(condition, "type", None), getattr(condition, "status", None)
+
+
 def _auth_policy_generation_synced(*, auth_policy: AuthPolicy) -> bool:
     """True when Kuadrant has applied the current AuthPolicy spec (status.observedGeneration == metadata.generation)."""
     auth_policy.get()
@@ -695,19 +717,15 @@ def _gateway_auth_policy_reconciled(
     if not _auth_policy_generation_synced(auth_policy=auth_policy):
         return False
     status = auth_policy.instance.status or {}
-    conditions: list[dict[str, Any]] = status.get("conditions") or [] if isinstance(status, dict) else []
-    if not isinstance(conditions, list):
-        conditions = []
-    accepted_condition = next(
-        (condition for condition in conditions if condition.get("type") == "Accepted"),
-        None,
-    )
-    enforced_condition = next(
-        (condition for condition in conditions if condition.get("type") == "Enforced"),
-        None,
-    )
-    accepted = accepted_condition is not None and accepted_condition.get("status") == "True"
-    enforced = enforced_condition is not None and enforced_condition.get("status") == "True"
+    conditions = _auth_policy_status_conditions(status=status)
+    accepted = False
+    enforced = False
+    for condition in conditions:
+        condition_type, condition_status = _kuadrant_condition_fields(condition=condition)
+        if condition_type == "Accepted" and condition_status == "True":
+            accepted = True
+        if condition_type == "Enforced" and condition_status == "True":
+            enforced = True
     return accepted and enforced
 
 

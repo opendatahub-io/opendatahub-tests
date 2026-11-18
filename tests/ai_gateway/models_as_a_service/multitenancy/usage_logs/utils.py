@@ -20,7 +20,7 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.service import Service
 from pytest_testconfig import config as py_config
-from timeout_sampler import TimeoutSampler
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AIGATEWAY_BOOTSTRAPPED_TENANT_NAME
 from tests.ai_gateway.models_as_a_service.observability.constants import (
@@ -102,8 +102,8 @@ def _config_patch_apply_to(patch: Mapping[str, Any]) -> str | None:
 def _envoy_filter_config_patches(envoy_filter: EnvoyFilter) -> list[Mapping[str, Any]]:
     """Return spec.configPatches from a fetched EnvoyFilter."""
     envoy_filter.get()
-    spec = envoy_filter.instance.spec
-    raw_patches = getattr(spec, "configPatches", None) or getattr(spec, "config_patches", None) or []
+    spec = envoy_filter.instance.to_dict().get("spec") or {}
+    raw_patches = spec.get("configPatches") or spec.get("config_patches") or []
     patches: list[Mapping[str, Any]] = []
     for patch in raw_patches:
         mapping = _nested_mapping(value=patch)
@@ -193,14 +193,17 @@ def wait_for_tenant_usage_logs_envoy_filters_capture_user(
                 return False
         return True
 
-    for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=all_filters_ready):
-        if ready:
-            LOGGER.info(
-                "Per-tenant usage-logs EnvoyFilters have logs.captureUser wiring",
-                gateway_namespace=gateway_namespace,
-                aitenant_names=list(aitenant_names),
-            )
-            return
+    try:
+        for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=all_filters_ready):
+            if ready:
+                LOGGER.info(
+                    "Per-tenant usage-logs EnvoyFilters have logs.captureUser wiring",
+                    gateway_namespace=gateway_namespace,
+                    aitenant_names=list(aitenant_names),
+                )
+                return
+    except TimeoutExpiredError:
+        pass
 
     missing: list[str] = []
     for filter_name, tenant_name in pending_filters.items():
@@ -650,13 +653,16 @@ def wait_for_subscriptions_in_loki(
         subscriptions_from_last_poll = subscription_names_from_loki_response(payload=payload)
         return expected_subscriptions.issubset(subscriptions_from_last_poll)
 
-    for ready in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=USAGE_LOGS_PROPAGATION_SLEEP,
-        func=subscriptions_visible,
-    ):
-        if ready:
-            return subscriptions_from_last_poll
+    try:
+        for ready in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=USAGE_LOGS_PROPAGATION_SLEEP,
+            func=subscriptions_visible,
+        ):
+            if ready:
+                return subscriptions_from_last_poll
+    except TimeoutExpiredError:
+        pass
 
     missing = sorted(expected_subscriptions - subscriptions_from_last_poll)
     diagnostic_detail = ""
