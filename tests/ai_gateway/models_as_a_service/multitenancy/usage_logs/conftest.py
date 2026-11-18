@@ -7,12 +7,12 @@ import pytest
 from kubernetes.dynamic import DynamicClient
 
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import AITenantTestContext
-from tests.ai_gateway.models_as_a_service.observability.constants import USAGE_LOGS_PROPAGATION_TIMEOUT
 from tests.ai_gateway.models_as_a_service.multitenancy.usage_logs.utils import (
     maastenantconfig_for_namespace,
     patch_maastenantconfig_usage_telemetry,
     verify_usage_logs_multi_tenant_e2e_prerequisites,
 )
+from tests.ai_gateway.models_as_a_service.observability.constants import USAGE_LOGS_PROPAGATION_TIMEOUT
 from utilities.constants import ModelStorage
 
 

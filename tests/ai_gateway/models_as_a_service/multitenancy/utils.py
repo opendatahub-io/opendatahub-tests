@@ -679,11 +679,7 @@ def _auth_policy_generation_synced(*, auth_policy: AuthPolicy) -> bool:
         observed_generation = status.get("observedGeneration")
     else:
         observed_generation = getattr(status, "observedGeneration", None)
-    return (
-        generation is not None
-        and observed_generation is not None
-        and int(observed_generation) == int(generation)
-    )
+    return generation is not None and observed_generation is not None and int(observed_generation) == int(generation)
 
 
 def _gateway_auth_policy_reconciled(
@@ -1339,17 +1335,13 @@ def make_tenant_model_accessible(
     maas_cr_ready_timeout: int | None = None,
 ) -> Generator[MaaSSubscription, Any, Any]:
     """Create tenant MaaSAuthPolicy then MaaSSubscription for a tenant-local model (dev order)."""
-    resolved_gateway_auth_timeout = (
-        gateway_auth_timeout if gateway_auth_timeout is not None else ready_timeout
-    )
+    resolved_gateway_auth_timeout = gateway_auth_timeout if gateway_auth_timeout is not None else ready_timeout
     fallback_maas_ready = maas_cr_ready_timeout if maas_cr_ready_timeout is not None else ready_timeout
     resolved_maas_auth_ready_timeout = (
         maas_auth_ready_timeout if maas_auth_ready_timeout is not None else fallback_maas_ready
     )
     resolved_maas_subscription_ready_timeout = (
-        maas_subscription_ready_timeout
-        if maas_subscription_ready_timeout is not None
-        else fallback_maas_ready
+        maas_subscription_ready_timeout if maas_subscription_ready_timeout is not None else fallback_maas_ready
     )
     with ExitStack() as stack:
         auth_policy = stack.enter_context(

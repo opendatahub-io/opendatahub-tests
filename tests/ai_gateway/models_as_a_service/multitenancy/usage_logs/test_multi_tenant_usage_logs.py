@@ -11,6 +11,10 @@ import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 
+from tests.ai_gateway.models_as_a_service.multitenancy.usage_logs.utils import (
+    assert_expected_subscriptions_in_loki,
+    resolve_openshift_username,
+)
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import assert_tenant_inference_status
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     LOKI_GATEWAY_SERVICE_NAME,
@@ -19,10 +23,6 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
     USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
     USAGE_LOGS_TENANCY_PROXY_PORT,
-)
-from tests.ai_gateway.models_as_a_service.multitenancy.usage_logs.utils import (
-    assert_expected_subscriptions_in_loki,
-    resolve_openshift_username,
 )
 from utilities.logger import RedactedString
 
