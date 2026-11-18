@@ -1,5 +1,6 @@
 """Fixtures for multi-tenant usage-log E2E (RHOAIENG-99404)."""
 
+import time
 from collections.abc import Generator
 from contextlib import ExitStack
 
@@ -14,7 +15,10 @@ from tests.ai_gateway.models_as_a_service.multitenancy.usage_logs.utils import (
     verify_usage_logs_multi_tenant_e2e_prerequisites,
     wait_for_tenant_usage_logs_envoy_filters_capture_user,
 )
-from tests.ai_gateway.models_as_a_service.observability.constants import USAGE_LOGS_PROPAGATION_TIMEOUT
+from tests.ai_gateway.models_as_a_service.observability.constants import (
+    USAGE_LOGS_PROPAGATION_SLEEP,
+    USAGE_LOGS_PROPAGATION_TIMEOUT,
+)
 from utilities.constants import ModelStorage
 
 
@@ -69,6 +73,8 @@ def multitenancy_usage_logs_telemetry_enabled(
             admin_client=admin_client,
             aitenant_names=aitenant_names,
         )
+        # EnvoyFilter CR can lead gateway data plane; allow Istio xDS propagation before first inference.
+        time.sleep(USAGE_LOGS_PROPAGATION_SLEEP)
         yield
 
 

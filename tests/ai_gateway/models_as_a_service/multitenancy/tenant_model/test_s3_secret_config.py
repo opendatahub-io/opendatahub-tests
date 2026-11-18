@@ -1,7 +1,11 @@
 """Unit tests for tenant model S3 secret alignment."""
 
+import pytest
+
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import s3_secret_config_for_storage_uri
 from utilities.constants import ModelStorage
+
+pytestmark = pytest.mark.tier1
 
 
 def test_s3_secret_config_for_ods_ci_wisdom_uri_uses_us_east_2() -> None:
