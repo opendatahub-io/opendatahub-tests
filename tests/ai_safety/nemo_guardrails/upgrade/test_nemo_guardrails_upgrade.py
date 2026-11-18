@@ -1,10 +1,12 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.deployment import Deployment
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.nemo_guardrails import NemoGuardrails
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.nemo_guardrails.constants import (
     CHAT_ENDPOINT,
@@ -13,9 +15,11 @@ from tests.ai_safety.nemo_guardrails.constants import (
     SAFE_PROMPTS,
 )
 from tests.ai_safety.nemo_guardrails.utils import (
+    get_ready_nemo_guardrails_pod,
     send_request,
     validate_nemo_guardrails_images,
     verify_auth_required,
+    wait_for_deployment_rollout,
 )
 
 
@@ -168,6 +172,7 @@ class TestNemoGuardrailsLLMAsPreUpgrade:
     [pytest.param({"name": "test-nemo-guardrails-upgrade"})],
     indirect=True,
 )
+@pytest.mark.usefixtures("patched_dsc_kserve_headed")
 class TestNemoGuardrailsLLMAsPostUpgrade:
     """
     Tests for NeMo Guardrails server operations with LLM-as-a-Judge configuration (post upgrade).
@@ -194,18 +199,29 @@ class TestNemoGuardrailsLLMAsPostUpgrade:
         When: Pod images are inspected
         Then: Images match ConfigMap and are pinned with sha256 digest
         """
-        # Get NeMo Guardrails pod
-        pods = list(
-            Pod.get(
+        # Wait for deployment rollout to complete after upgrade
+        deployment = Deployment(
+            client=admin_client,
+            name=nemo_guardrails_llm_judge.name,
+            namespace=model_namespace.name,
+            wait_for_resource=True,
+        )
+        wait_for_deployment_rollout(deployment=deployment)
+
+        # Get a ready pod from the current ReplicaSet
+        label_selector = f"app={nemo_guardrails_llm_judge.name}"
+        for _ in TimeoutSampler(wait_timeout=120, sleep=5, func=lambda: None):
+            pod = get_ready_nemo_guardrails_pod(
                 client=admin_client,
                 namespace=model_namespace.name,
-                label_selector=f"app={nemo_guardrails_llm_judge.name}",
+                label_selector=label_selector,
             )
-        )
-        assert len(pods) > 0, f"No pods found for {nemo_guardrails_llm_judge.name}"
+            if pod is not None:
+                break
+        assert pod is not None, f"No ready pod found for {nemo_guardrails_llm_judge.name} after rollout"
 
         # Validate images (ignoring registry differences, checking image name + SHA256)
-        validate_nemo_guardrails_images(pod=pods[0], trustyai_operator_configmap=trustyai_operator_configmap)
+        validate_nemo_guardrails_images(pod=pod, trustyai_operator_configmap=trustyai_operator_configmap)
 
     @pytest.mark.post_upgrade
     def test_nemo_llm_judge_deployment_post_upgrade(

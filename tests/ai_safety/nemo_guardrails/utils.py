@@ -8,11 +8,13 @@ import requests
 import structlog
 import yaml
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from requests import Response
-from timeout_sampler import TimeoutSampler, retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from tests.ai_safety.nemo_guardrails.constants import (
     INPUT_PROMPT_TEMPLATE,
@@ -424,3 +426,78 @@ def nemo_cr_phase(nemo_cr: NemoGuardrails) -> str | None:
         The phase string, or None if the operator has not written it yet
     """
     return (nemo_cr.instance.status or {}).get("phase")
+
+
+def wait_for_deployment_rollout(
+    deployment: Deployment,
+    timeout: int = 300,
+) -> None:
+    """
+    Wait until the deployment rollout completes.
+
+    Waits for:
+    - Kubernetes to notice the latest change (observedGeneration >= generation)
+    - All new pods to be ready (updatedReplicas >= desired)
+    - No pods to be unavailable
+    - Old pods to be removed (total <= updated)
+
+    Args:
+        deployment: Deployment to wait for
+        timeout: Maximum wait time in seconds
+
+    Raises:
+        RuntimeError: If rollout does not finish within timeout
+    """
+    last_status: Any = None
+    try:
+        for instance in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=lambda: deployment.instance,
+            exceptions_dict={NotFoundError: []},
+        ):
+            status = instance.status
+            last_status = status
+            if status is None:
+                continue
+            desired = instance.spec.replicas or 1
+            generation = instance.metadata.generation or 0
+            observed = getattr(status, "observedGeneration", None) or 0
+            updated = getattr(status, "updatedReplicas", None) or 0
+            total = getattr(status, "replicas", None) or 0
+            unavailable = getattr(status, "unavailableReplicas", None) or 0
+            if observed >= generation and updated >= desired and total <= updated and unavailable == 0:
+                return
+    except TimeoutExpiredError as err:
+        raise RuntimeError(
+            f"Deployment {deployment.name} rollout did not finish within {timeout}s. Last status: {last_status}"
+        ) from err
+
+
+def get_ready_nemo_guardrails_pod(client: DynamicClient, namespace: str, label_selector: str) -> Pod | None:
+    """
+    Return a running, ready NeMo Guardrails pod that is not shutting down.
+
+    After a rollout, old pods can still be listed while they terminate, so this function
+    filters for pods that are:
+    - Running
+    - Not shutting down (no deletionTimestamp)
+    - All containers ready
+
+    Args:
+        client: DynamicClient to query the cluster
+        namespace: Namespace to look in
+        label_selector: Kubernetes label selector
+
+    Returns:
+        A ready Pod, or None if no pod is ready yet
+    """
+    # raw=True reads pod data from a single list call, so a pod deleted mid-check
+    # can't raise NotFoundError on a per-pod fetch.
+    for pod in Pod.get(client=client, namespace=namespace, label_selector=label_selector, raw=True):
+        if pod.metadata.deletionTimestamp or not pod.status or pod.status.phase != Pod.Status.RUNNING:
+            continue
+        container_statuses = pod.status.containerStatuses or []
+        if container_statuses and all(status.ready for status in container_statuses):
+            return Pod(client=client, namespace=namespace, name=pod.metadata.name)
+    return None
