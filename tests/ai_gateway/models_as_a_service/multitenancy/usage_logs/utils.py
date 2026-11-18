@@ -166,9 +166,7 @@ def wait_for_tenant_usage_logs_envoy_filters_capture_user(
     timeout: int = USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
 ) -> None:
     """Wait until each tenant's usage-logs EnvoyFilter reflects logs.captureUser."""
-    pending_filters = {
-        usage_logs_envoy_filter_name_for_aitenant(name): name for name in aitenant_names
-    }
+    pending_filters = {usage_logs_envoy_filter_name_for_aitenant(name): name for name in aitenant_names}
 
     def all_filters_ready() -> bool:
         for filter_name, tenant_name in pending_filters.items():
