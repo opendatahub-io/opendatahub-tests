@@ -978,7 +978,10 @@ def maas_api_endpoints_ready(
 
 
 @pytest.fixture(scope="session")
-def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+def authorino_tls_configured(
+    admin_client: DynamicClient,
+    request_session_http: requests.Session,
+) -> Generator[None, Any, Any]:
     """Configure Authorino TLS for MaaS API communication."""
     authorino_namespaces = ["rh-connectivity-link", "kuadrant-system", "openshift-operators"]
     authorino_namespace = next(
@@ -1061,7 +1064,10 @@ def authorino_tls_configured(admin_client: DynamicClient) -> Generator[None, Any
     ):
         authorino_deployment.wait_for_condition(condition="Available", status="True", timeout=120)
         LOGGER.info("authorino_tls_configured: TLS configuration applied, rollout complete")
-        wait_for_authorino_auth_path(admin_client=admin_client)
+        wait_for_authorino_auth_path(
+            admin_client=admin_client,
+            http_session=request_session_http,
+        )
         yield
 
     authorino_deployment.wait_for_condition(condition="Available", status="True", timeout=120)
