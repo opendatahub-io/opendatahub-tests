@@ -63,7 +63,7 @@ class TestMultiTenantUsageLogs:
         Maps to RHOAIENG-99404 acceptance criteria for administrator and personal usage dashboards
         (validated via Loki and usage-logs-tenancy-proxy LogQL, not Perses UI).
         """
-        user_token = str(current_client_token)
+        user_token = current_client_token
         user_id = resolve_openshift_username(admin_client=admin_client, bearer_token=user_token)
         expected_subscriptions = {tenant_a_subscription_name, tenant_b_subscription_name}
         monitoring_namespace = usage_logs_multi_tenant_e2e_monitoring_namespace

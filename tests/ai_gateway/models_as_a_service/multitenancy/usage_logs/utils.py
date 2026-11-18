@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Generator, Mapping
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
 from urllib.parse import urlencode
@@ -34,6 +34,8 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     MONITORING_LEGACY_LOKI_CONDITION,
     MONITORING_USAGE_LOGS_LOKI_CONDITION,
     OTEL_COLLECTOR_CRD_NAME,
+    USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
+    USAGE_LOGS_ENVOY_FILTER_NAME,
     USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
     USAGE_LOGS_PROPAGATION_SLEEP,
     USAGE_LOGS_SERVICE_NAME,
@@ -42,7 +44,9 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
 )
 from tests.ai_gateway.models_as_a_service.observability.utils import resolve_maas_monitoring_namespace
 from tests.ai_gateway.models_as_a_service.utils import endpoints_have_ready_addresses
+from utilities.constants import MAAS_GATEWAY_NAMESPACE
 from utilities.infra import get_dsci_monitoring_namespace
+from utilities.resources.envoy_filter import EnvoyFilter
 from utilities.resources.maastenantconfig import MaasTenantConfig
 from utilities.resources.monitoring import Monitoring
 
@@ -79,6 +83,146 @@ def patch_maastenantconfig_usage_telemetry(
         },
     ):
         yield maas_tenant_config
+
+
+def usage_logs_envoy_filter_name_for_aitenant(aitenant_name: str) -> str:
+    """Return the per-AITenant usage-logs EnvoyFilter name (maas-controller TenantIdentifierFor suffix)."""
+    return f"{USAGE_LOGS_ENVOY_FILTER_NAME}-{aitenant_name}"
+
+
+def _nested_mapping(value: object) -> Mapping[str, Any] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def _config_patch_apply_to(patch: Mapping[str, Any]) -> str | None:
+    apply_to = patch.get("applyTo") or patch.get("apply_to")
+    return str(apply_to) if apply_to is not None else None
+
+
+def _envoy_filter_config_patches(envoy_filter: EnvoyFilter) -> list[Mapping[str, Any]]:
+    """Return spec.configPatches from a fetched EnvoyFilter."""
+    envoy_filter.get()
+    spec = envoy_filter.instance.spec
+    raw_patches = getattr(spec, "configPatches", None) or getattr(spec, "config_patches", None) or []
+    patches: list[Mapping[str, Any]] = []
+    for patch in raw_patches:
+        mapping = _nested_mapping(patch)
+        if mapping is not None:
+            patches.append(mapping)
+    return patches
+
+
+def tenant_usage_logs_envoy_filter_capture_user_ready(envoy_filter: EnvoyFilter) -> bool:
+    """Return True when the filter includes OTel user_id capture (logs.captureUser reconcile)."""
+    has_user_id_attr = False
+    has_username_rule = False
+
+    for patch in _envoy_filter_config_patches(envoy_filter):
+        apply_to = _config_patch_apply_to(patch)
+        if apply_to == "NETWORK_FILTER":
+            patch_body = _nested_mapping(patch.get("patch"))
+            value = _nested_mapping(patch_body.get("value") if patch_body else None)
+            typed_config = _nested_mapping(value.get("typed_config") if value else None)
+            access_logs = typed_config.get("access_log") if typed_config else None
+            if not isinstance(access_logs, list):
+                continue
+            for access_log in access_logs:
+                access_log_map = _nested_mapping(access_log)
+                if access_log_map is None:
+                    continue
+                access_typed = _nested_mapping(access_log_map.get("typed_config"))
+                attrs = _nested_mapping(access_typed.get("attributes") if access_typed else None)
+                values = attrs.get("values") if attrs else None
+                if not isinstance(values, list):
+                    continue
+                for entry in values:
+                    entry_map = _nested_mapping(entry)
+                    if entry_map is not None and entry_map.get("key") == "user_id":
+                        has_user_id_attr = True
+                        break
+        elif apply_to == "HTTP_FILTER":
+            patch_body = _nested_mapping(patch.get("patch"))
+            value = _nested_mapping(patch_body.get("value") if patch_body else None)
+            if value is None or value.get("name") != "envoy.filters.http.header_to_metadata.identity":
+                continue
+            typed_config = _nested_mapping(value.get("typed_config"))
+            rules = typed_config.get("request_rules") if typed_config else None
+            if not isinstance(rules, list):
+                continue
+            for rule in rules:
+                rule_map = _nested_mapping(rule)
+                if rule_map is not None and rule_map.get("header") == "X-MaaS-Username":
+                    has_username_rule = True
+                    break
+
+    return has_user_id_attr and has_username_rule
+
+
+def wait_for_tenant_usage_logs_envoy_filters_capture_user(
+    *,
+    admin_client: DynamicClient,
+    aitenant_names: Sequence[str],
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    timeout: int = USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
+) -> None:
+    """Wait until each tenant's usage-logs EnvoyFilter reflects logs.captureUser."""
+    pending_filters = {
+        usage_logs_envoy_filter_name_for_aitenant(name): name for name in aitenant_names
+    }
+
+    def all_filters_ready() -> bool:
+        for filter_name, tenant_name in pending_filters.items():
+            envoy_filter = EnvoyFilter(
+                client=admin_client,
+                name=filter_name,
+                namespace=gateway_namespace,
+            )
+            if not envoy_filter.exists:
+                LOGGER.debug(
+                    "Usage-logs EnvoyFilter not present yet",
+                    filter_name=filter_name,
+                    gateway_namespace=gateway_namespace,
+                    aitenant_name=tenant_name,
+                )
+                return False
+            if not tenant_usage_logs_envoy_filter_capture_user_ready(envoy_filter=envoy_filter):
+                LOGGER.debug(
+                    "Usage-logs EnvoyFilter missing user_id capture",
+                    filter_name=filter_name,
+                    gateway_namespace=gateway_namespace,
+                    aitenant_name=tenant_name,
+                )
+                return False
+        return True
+
+    for ready in TimeoutSampler(wait_timeout=timeout, sleep=5, func=all_filters_ready):
+        if ready:
+            LOGGER.info(
+                "Per-tenant usage-logs EnvoyFilters have logs.captureUser wiring",
+                gateway_namespace=gateway_namespace,
+                aitenant_names=list(aitenant_names),
+            )
+            return
+
+    missing: list[str] = []
+    for filter_name, tenant_name in pending_filters.items():
+        envoy_filter = EnvoyFilter(
+            client=admin_client,
+            name=filter_name,
+            namespace=gateway_namespace,
+        )
+        if not envoy_filter.exists:
+            missing.append(f"{gateway_namespace}/{filter_name} (AITenant {tenant_name!r}): not found")
+            continue
+        if not tenant_usage_logs_envoy_filter_capture_user_ready(envoy_filter=envoy_filter):
+            missing.append(
+                f"{gateway_namespace}/{filter_name} (AITenant {tenant_name!r}): "
+                "exists but user_id / X-MaaS-Username capture not configured"
+            )
+    raise AssertionError(
+        "Timed out waiting for per-tenant usage-logs EnvoyFilters after enabling logs.captureUser. "
+        f"Still not ready: {'; '.join(missing)}"
+    )
 
 
 def usage_logs_tenancy_proxy_ready(
@@ -380,6 +524,19 @@ def subscription_count_logql(*, user_id: str, lookback: str = USAGE_LOGS_MULTITE
     )
 
 
+def subscription_count_logql_without_user_filter(
+    *,
+    lookback: str = USAGE_LOGS_MULTITENANT_QUERY_LOOKBACK,
+) -> str:
+    """Build LogQL that counts usage-log lines per subscription (no user_id filter)."""
+    return (
+        f"count by (subscription) (count_over_time("
+        f'{{service_name="{USAGE_LOGS_SERVICE_NAME}"}} '
+        f'| subscription!="" | subscription!="-" '
+        f"[{lookback}]))"
+    )
+
+
 def _query_range_params(*, logql: str, lookback: str) -> dict[str, str]:
     end_ns = time.time_ns()
     start_ns = end_ns - _lookback_to_nanoseconds(lookback)
@@ -502,9 +659,33 @@ def wait_for_subscriptions_in_loki(
     ):
         if ready:
             return subscriptions_from_last_poll
+
+    missing = sorted(expected_subscriptions - subscriptions_from_last_poll)
+    diagnostic_detail = ""
+    if not query_via_proxy:
+        try:
+            broad_logql = subscription_count_logql_without_user_filter(lookback=lookback)
+            broad_payload = query_loki_gateway_range(
+                http_session=http_session,
+                admin_token=admin_token,
+                logql=broad_logql,
+                lookback=lookback,
+            )
+            broad_subscriptions = sorted(subscription_names_from_loki_response(payload=broad_payload))
+            diagnostic_detail = (
+                f" Broad LogQL (no user_id filter) subscriptions: "
+                f"{broad_subscriptions or ['(none)']}. "
+                "If broad query has lines but user-filtered does not, check logs.captureUser / user_id attribution."
+            )
+        except (requests.RequestException, AssertionError, ValueError) as exc:
+            diagnostic_detail = f" Broad LogQL diagnostic query failed: {exc!s}."
+
     raise AssertionError(
         f"Timed out waiting for subscriptions {sorted(expected_subscriptions)} "
-        f"for user_id={user_id!r} (via_proxy={query_via_proxy})"
+        f"for user_id={user_id!r} (via_proxy={query_via_proxy}). "
+        f"Last poll found subscriptions: {sorted(subscriptions_from_last_poll) or ['(none)']}. "
+        f"Still missing: {missing or sorted(expected_subscriptions)}. "
+        f"LogQL: {logql!r}.{diagnostic_detail}"
     )
 
 

@@ -5,6 +5,11 @@ from utilities.constants import ModelStorage
 
 
 def test_s3_secret_config_for_ods_ci_wisdom_uri_uses_us_east_2() -> None:
+    """Given an ods-ci-wisdom model URI, when resolving S3 secret fields, then use us-east-2 CI bucket settings.
+
+    Jenkins often passes us-east-1 pytest flags for unrelated buckets; the helper must not apply those
+    to TinyLlama/Qwen URIs under ods-ci-wisdom.
+    """
     bucket, region, endpoint = s3_secret_config_for_storage_uri(
         storage_uri=ModelStorage.S3.TINYLLAMA,
         aws_s3_bucket="ods-ci-s3",
@@ -17,6 +22,7 @@ def test_s3_secret_config_for_ods_ci_wisdom_uri_uses_us_east_2() -> None:
 
 
 def test_s3_secret_config_for_other_uri_uses_pytest_flags() -> None:
+    """Given a non-ods-ci-wisdom URI, when resolving S3 secret fields, then keep pytest-supplied bucket settings."""
     bucket, region, endpoint = s3_secret_config_for_storage_uri(
         storage_uri="s3://my-bucket/some-model/",
         aws_s3_bucket="my-bucket",

@@ -12,6 +12,7 @@ from tests.ai_gateway.models_as_a_service.multitenancy.usage_logs.utils import (
     maastenantconfig_for_namespace,
     patch_maastenantconfig_usage_telemetry,
     verify_usage_logs_multi_tenant_e2e_prerequisites,
+    wait_for_tenant_usage_logs_envoy_filters_capture_user,
 )
 from tests.ai_gateway.models_as_a_service.observability.constants import USAGE_LOGS_PROPAGATION_TIMEOUT
 from utilities.constants import ModelStorage
@@ -54,6 +55,7 @@ def multitenancy_usage_logs_telemetry_enabled(
     two_aitenant_test_contexts: tuple[AITenantTestContext, AITenantTestContext],
 ) -> Generator[None]:
     """Enable telemetry and logs.captureUser on both isolation AITenant MaasTenantConfigs."""
+    aitenant_names = [context["aitenant_name"] for context in two_aitenant_test_contexts]
     with ExitStack() as stack:
         for test_context in two_aitenant_test_contexts:
             tenant_config = maastenantconfig_for_namespace(
@@ -63,6 +65,10 @@ def multitenancy_usage_logs_telemetry_enabled(
             stack.enter_context(
                 cm=patch_maastenantconfig_usage_telemetry(maas_tenant_config=tenant_config),
             )
+        wait_for_tenant_usage_logs_envoy_filters_capture_user(
+            admin_client=admin_client,
+            aitenant_names=aitenant_names,
+        )
         yield
 
 

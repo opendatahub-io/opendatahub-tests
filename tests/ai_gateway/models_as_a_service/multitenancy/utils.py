@@ -22,7 +22,6 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_gateway.models_as_a_service.maas_api_key.utils import (
     get_auth_policy_callback_url,
-    get_auth_policy_condition,
 )
 from tests.ai_gateway.models_as_a_service.maas_subscription.utils import create_maas_subscription
 from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
@@ -689,21 +688,23 @@ def _gateway_auth_policy_reconciled(
     namespace: str,
 ) -> bool:
     """Match maas-controller gatewayAuthPolicyReady: Accepted, Enforced, and observedGeneration caught up."""
-    if not _auth_policy_generation_synced(
-        auth_policy=AuthPolicy(client=admin_client, name=policy_name, namespace=namespace),
-    ):
+    auth_policy = AuthPolicy(client=admin_client, name=policy_name, namespace=namespace)
+    if not auth_policy.exists:
         return False
-    accepted_condition = get_auth_policy_condition(
-        admin_client=admin_client,
-        policy_name=policy_name,
-        namespace=namespace,
-        condition_type="Accepted",
+    auth_policy.get()
+    if not _auth_policy_generation_synced(auth_policy=auth_policy):
+        return False
+    status = auth_policy.instance.status or {}
+    conditions: list[dict[str, Any]] = status.get("conditions") or [] if isinstance(status, dict) else []
+    if not isinstance(conditions, list):
+        conditions = []
+    accepted_condition = next(
+        (condition for condition in conditions if condition.get("type") == "Accepted"),
+        None,
     )
-    enforced_condition = get_auth_policy_condition(
-        admin_client=admin_client,
-        policy_name=policy_name,
-        namespace=namespace,
-        condition_type="Enforced",
+    enforced_condition = next(
+        (condition for condition in conditions if condition.get("type") == "Enforced"),
+        None,
     )
     accepted = accepted_condition is not None and accepted_condition.get("status") == "True"
     enforced = enforced_condition is not None and enforced_condition.get("status") == "True"
