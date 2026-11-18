@@ -237,7 +237,10 @@ def host_from_ingress_domain(client) -> str:
     return f"maas.{domain}"
 
 
-def wait_for_authorino_auth_path(admin_client: DynamicClient) -> None:
+def wait_for_authorino_auth_path(
+    admin_client: DynamicClient,
+    http_session: requests.Session,
+) -> None:
     """Wait until gateway auth traffic works again after an Authorino rollout.
 
     Authorino restarts make its single endpoint flap for the gateway envoys
@@ -248,13 +251,12 @@ def wait_for_authorino_auth_path(admin_client: DynamicClient) -> None:
     """
     probe_url = f"https://{host_from_ingress_domain(client=admin_client)}/maas-api/v1/models"
     for sample in TimeoutSampler(
-        wait_timeout=120,
+        wait_timeout=300,
         sleep=5,
-        func=requests.get,
+        func=http_session.get,
         exceptions_dict={requests.RequestException: []},
         url=probe_url,
         timeout=15,
-        verify=False,
     ):
         if sample.status_code < 500:
             LOGGER.info(f"authorino auth path healthy ({probe_url} -> {sample.status_code})")
