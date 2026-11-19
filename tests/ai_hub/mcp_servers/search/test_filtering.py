@@ -73,6 +73,7 @@ class TestMCPServerFiltering:
         expected_filters = {
             "transports",
             "license",
+            "license_link",
             "provider",
             "architecture.array_value",
             "publishedDate",
