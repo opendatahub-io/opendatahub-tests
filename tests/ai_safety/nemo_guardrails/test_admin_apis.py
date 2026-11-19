@@ -63,7 +63,8 @@ def nemo_admin_api_caller_pod(
                 client=admin_client,
                 name=generate_random_name(prefix="nemo-admin-valid-token"),
                 namespace=namespace_name,
-                string_data={"token": current_client_token},
+                # str() unwraps RedactedString so Secret deepcopy can serialize it
+                string_data={"token": str(current_client_token)},
                 type="Opaque",
             )
         )
