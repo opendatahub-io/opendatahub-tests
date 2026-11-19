@@ -63,8 +63,8 @@ AUTHORINO_TLS_BOOTSTRAP_ANNOTATION = "security.opendatahub.io/authorino-tls-boot
 TENANT_GATEWAY_MAAS_AUTH_POLICY_SUFFIX = "-maas-auth"
 SHARED_MAAS_API_SERVICE_NAME = MAAS_API_DEPLOYMENT_NAME
 TENANT_ISOLATION_MODEL_NAME = "llm-s3-tinyllama-free"
-# Two-tenant isolation: tenant B follows A on a loaded cluster — allow longer Kuadrant gateway reconciliation.
-TENANT_ISOLATION_PRIMARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 300
+# Two-tenant isolation: Kuadrant gateway AuthPolicy can lag on loaded clusters (tenant B after A).
+TENANT_ISOLATION_PRIMARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 600
 TENANT_ISOLATION_SECONDARY_GATEWAY_AUTH_TIMEOUT_SECONDS = 600
 # After gateway AuthPolicy is enforced: shorter policy wait; subscription can lag on tenant B (Limitador/flow control).
 TENANT_ISOLATION_MAAS_AUTH_POLICY_READY_TIMEOUT_SECONDS = 180
