@@ -1,6 +1,7 @@
 """vLLM-Omni TTS endpoint, security, and RBAC tests using Qwen3-TTS."""
 
 import re
+import time
 from typing import Any
 
 import pytest
@@ -11,7 +12,6 @@ from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.resource import ResourceEditor
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.serving_runtime import ServingRuntime
@@ -26,6 +26,7 @@ from tests.model_serving.model_runtime.vllm_omni.constant import (
 from tests.model_serving.model_runtime.vllm_omni.utils import get_predictor_pods_or_fail, run_tts_inference
 from utilities.constants import Containers, KServeDeploymentType, RuntimeTemplates
 from utilities.plugins.constant import OpenAIEnpoints
+from utilities.resources.egress_firewall import EgressFirewall
 from utilities.resources.pod import Pod as ExtPod
 
 urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -88,6 +89,21 @@ _PICKLE_EXTENSIONS: list[str] = [".bin", ".pkl", ".pickle"]
 # External host probed to confirm egress blocking
 _EXTERNAL_EGRESS_IP: str = "1.1.1.1"
 _EGRESS_PROBE_CONNECT_TIMEOUT_S: int = 10
+# Exit code the probe script returns when the outbound connection is blocked by the policy
+_EGRESS_PROBE_BLOCKED_RC: int = 2
+# Budget for OVN-Kubernetes to enforce the EgressFirewall in the node data plane; enforcement
+# is asynchronous and can take several seconds after the resource object is created
+_EGRESS_ENFORCEMENT_TIMEOUT_S: int = 60
+_EGRESS_ENFORCEMENT_POLL_INTERVAL_S: int = 3
+# EgressFirewall rules: allow cluster-internal destinations, deny the public internet. The
+# allowed CIDRs are private address space covering the pod network (10/8), the service network
+# (172.16/12) and the OVN join subnet (100.64/16); none are routable on the public internet.
+_EGRESS_FIREWALL_RULES: list[dict[str, Any]] = [
+    {"type": "Allow", "to": {"cidrSelector": "10.0.0.0/8"}},
+    {"type": "Allow", "to": {"cidrSelector": "172.16.0.0/12"}},
+    {"type": "Allow", "to": {"cidrSelector": "100.64.0.0/16"}},
+    {"type": "Deny", "to": {"cidrSelector": "0.0.0.0/0"}},
+]
 
 
 pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "valid_aws_config")
@@ -121,6 +137,67 @@ def request_tts(
     )
 
 
+def _wait_for_external_egress_blocked(exec_pod: ExtPod) -> None:
+    """Poll the external-egress probe until the egress restriction blocks it.
+
+    OVN-Kubernetes enforces egress restrictions asynchronously (controller -> OVN
+    NBDB -> ovn-northd -> SBDB -> the node's ovn-controller -> OVS flows), so a rule
+    is not effective in the data plane the moment its object is created.
+
+    Args:
+        exec_pod: Predictor pod to run the probe in.
+
+    Raises:
+        AssertionError: If the probe fails with an unexpected exit code.
+        Failed: If external egress is still allowed after the enforcement timeout.
+    """
+    probe_command: list[str] = [
+        "python3",
+        "-c",
+        (
+            "import socket, sys\n"
+            "connection = socket.socket()\n"
+            f"connection.settimeout({_EGRESS_PROBE_CONNECT_TIMEOUT_S})\n"
+            "try:\n"
+            f"    connection.connect(('{_EXTERNAL_EGRESS_IP}', 443))\n"
+            "except OSError:\n"
+            f"    sys.exit({_EGRESS_PROBE_BLOCKED_RC})\n"
+            "sys.exit(0)\n"
+        ),
+    ]
+    enforcement_start = time.monotonic()
+    enforcement_deadline = enforcement_start + _EGRESS_ENFORCEMENT_TIMEOUT_S
+    while time.monotonic() < enforcement_deadline:
+        probe_result = exec_pod.execute(
+            command=probe_command,
+            container=Containers.KSERVE_CONTAINER_NAME,
+            timeout=_EGRESS_PROBE_CONNECT_TIMEOUT_S + 15,
+        )
+        if probe_result.rc == _EGRESS_PROBE_BLOCKED_RC:
+            LOGGER.info(
+                event="egress restriction enforced in the data plane",
+                external_ip=_EXTERNAL_EGRESS_IP,
+                enforced_after_s=round(time.monotonic() - enforcement_start, 1),
+            )
+            return
+        assert probe_result.rc == 0, (
+            f"Egress probe returned unexpected exit code {probe_result.rc} "
+            f"(stdout={probe_result.stdout!r}, stderr={probe_result.stderr!r}); "
+            "expected a successful or a blocked external connection"
+        )
+        LOGGER.debug(
+            event="egress NetworkPolicy not enforced yet, retrying probe",
+            external_ip=_EXTERNAL_EGRESS_IP,
+            enforcement_timeout_s=_EGRESS_ENFORCEMENT_TIMEOUT_S,
+        )
+        time.sleep(_EGRESS_ENFORCEMENT_POLL_INTERVAL_S)
+    pytest.fail(
+        f"Outbound TCP connection to {_EXTERNAL_EGRESS_IP}:443 was still allowed "
+        f"{_EGRESS_ENFORCEMENT_TIMEOUT_S}s after the egress restriction was applied; "
+        "external internet access must be blocked"
+    )
+
+
 @pytest.mark.vllm_omni_nvidia_single_gpu
 @pytest.mark.parametrize(
     "model_namespace, s3_models_storage_uri, vllm_omni_serving_runtime, vllm_omni_inference_service",
@@ -145,8 +222,8 @@ class TestVllmOmniTtsQwen3:
 
     Covers multi-format TTS synthesis, single-word edge case, invalid payload
     handling, and consolidated security/RBAC tests: no PII in logs, safetensors-only
-    model format, egress NetworkPolicy, Cluster Admin CRUD, Namespace-Scoped User
-    read-only access, and Monitoring User metrics access.
+    model format, external egress isolation via EgressFirewall, Cluster Admin CRUD,
+    Namespace-Scoped User read-only access, and Monitoring User metrics access.
     """
 
     @pytest.mark.parametrize(
@@ -409,38 +486,43 @@ class TestVllmOmniTtsQwen3:
             safetensors_files=find_st_result.stdout.strip(),
         )
 
-    def test_vllm_omni_egress_network_policy_blocks_external(
+    def test_vllm_omni_egress_firewall_blocks_external(
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
         vllm_omni_inference_service: InferenceService,
         vllm_omni_isvc_url: str,
     ) -> None:
-        """Verify egress NetworkPolicy blocks external traffic while TTS inference continues.
+        """Verify an EgressFirewall blocks external traffic while TTS inference continues.
 
         Given a deployed vLLM-Omni InferenceService with weights already loaded from S3
-        When an egress NetworkPolicy is applied restricting outbound traffic to cluster-internal
-             pods on ports 443 and 6443 only
-        Then TTS inference via /v1/audio/speech returns HTTP 200 (weights are in pod memory,
-             served through the OpenShift Route), and a direct TCP connection from the predictor
-             pod to an external IP (1.1.1.1:443) fails with a timeout.
+        When an OVN EgressFirewall denying public-internet egress is applied to the model
+             namespace and OVN-Kubernetes has enforced it in the data plane
+        Then a direct TCP connection from the predictor pod to an external IP (1.1.1.1:443) is
+             blocked, and TTS inference via /v1/audio/speech returns HTTP 200 (weights are in
+             pod memory, served through the OpenShift Route).
         """
+        # An EgressFirewall is used instead of a NetworkPolicy because odh-model-controller
+        # creates a per-InferenceService NetworkPolicy that allows all egress, and
+        # NetworkPolicy rules are additive — a restrictive NetworkPolicy can never block a
+        # predictor pod that is also selected by the allow-all policy.
         isvc_url = vllm_omni_isvc_url
         model_name = vllm_omni_inference_service.name
 
-        with NetworkPolicy(
+        with EgressFirewall(
             client=admin_client,
-            name="vllm-omni-egress-restrict",
+            name="default",
             namespace=model_namespace.name,
-            pod_selector={},
-            policy_types=["Egress"],
-            egress=[
-                {
-                    "to": [{"namespaceSelector": {}}],
-                    "ports": [{"port": 443, "protocol": "TCP"}, {"port": 6443, "protocol": "TCP"}],
-                },
-            ],
+            egress=_EGRESS_FIREWALL_RULES,
         ):
+            predictor_pods = get_predictor_pods_or_fail(client=admin_client, isvc=vllm_omni_inference_service)
+            exec_pod = ExtPod(
+                client=admin_client,
+                name=predictor_pods[0].name,
+                namespace=predictor_pods[0].namespace,
+            )
+            _wait_for_external_egress_blocked(exec_pod=exec_pod)
+
             tts_payload: dict[str, str] = {
                 "model": model_name,
                 "input": "Egress policy verification.",
@@ -453,42 +535,14 @@ class TestVllmOmniTtsQwen3:
                 timeout=60,
             )
             assert inference_response.status_code == 200, (
-                f"TTS inference failed after egress NetworkPolicy applied: "
+                f"TTS inference failed after EgressFirewall applied: "
                 f"HTTP {inference_response.status_code}. "
                 "Weights are already in pod memory — inference must not require external access."
             )
 
-            predictor_pods = get_predictor_pods_or_fail(client=admin_client, isvc=vllm_omni_inference_service)
-
-            exec_pod = ExtPod(
-                client=admin_client,
-                name=predictor_pods[0].name,
-                namespace=predictor_pods[0].namespace,
+            LOGGER.info(
+                event="egress firewall blocks external traffic; inference continues",
             )
-
-            egress_probe = exec_pod.execute(
-                command=[
-                    "python3",
-                    "-c",
-                    (
-                        "import socket, sys; "
-                        f"s = socket.socket(); s.settimeout({_EGRESS_PROBE_CONNECT_TIMEOUT_S}); "
-                        f"s.connect(('{_EXTERNAL_EGRESS_IP}', 443)); "
-                        "sys.exit(0)"
-                    ),
-                ],
-                container=Containers.KSERVE_CONTAINER_NAME,
-                timeout=_EGRESS_PROBE_CONNECT_TIMEOUT_S + 15,
-            )
-            assert egress_probe.rc != 0, (
-                f"Outbound TCP connection to {_EXTERNAL_EGRESS_IP}:443 was NOT blocked by "
-                f"the egress NetworkPolicy (exit code {egress_probe.rc}). "
-                "The NetworkPolicy must restrict external internet access."
-            )
-
-        LOGGER.info(
-            event="egress NetworkPolicy blocks external traffic; inference continues",
-        )
 
     def test_vllm_omni_cluster_admin_crud_serving_runtime(
         self,

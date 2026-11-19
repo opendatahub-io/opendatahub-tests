@@ -1,5 +1,6 @@
 """vLLM-Omni end-to-end integration tests with Qwen3-Omni-30B-A3B."""
 
+import re
 from http import HTTPStatus
 from typing import Any
 
@@ -35,7 +36,7 @@ from tests.model_serving.model_runtime.vllm_omni.utils import (
     assert_openai_error_body,
     log_loop_progress,
 )
-from utilities.constants import Containers, KServeDeploymentType, Labels, Timeout
+from utilities.constants import KServeDeploymentType, Labels, Timeout
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.plugins.openai_plugin import OpenAIClient
 
@@ -62,14 +63,19 @@ MIN_VLLM_OMNI_METRIC_FAMILY_COUNT: int = 15
 MIN_VLLM_METRIC_FAMILY_COUNT: int = 30
 PROMETHEUS_VALIDATION_METRIC: str = "vllm:prompt_tokens_total"
 REQUIRED_KV_CACHE_LABEL_KEYS: tuple[str, ...] = ("stage", "replica")
-
-# Markers emitted during vLLM-Omni multi-stage initialization.
-# Verified against RHOAI build vLLM-Omni 0.26.0+rhaiv.0 pod logs.
-OMNI_STAGE_LOG_MARKERS: tuple[str, ...] = (
-    "[AsyncOmniEngine] Launching Orchestrator thread with 3 stages",
-    "[stage_init] Stage-0 set runtime devices",
-    "[stage_init] Stage-1 set runtime devices",
-)
+# Per-stage init evidence is verified through the documented vllm_omni:*/vllm:* Prometheus
+# contract instead of pod log lines: log wording changes between runtime releases (e.g.
+# [AsyncOmniEngine] was renamed to [OmniEngine] in v0.30.0), while metric and label names
+# are pinned in the upstream "single source of truth" (vllm_omni/metrics/definitions.py).
+# Verified against a live v0.30.0+rhaiv.2 deployment (2026-11-18): every wrapped vllm:*
+# family (e.g. kv_cache_usage_perc) carries a child series per (stage, replica) for ALL
+# pipeline stages, created at orchestrator startup before the pod reports Ready. The
+# vllm_omni:stage_post_warmup_memory family (decoder graph-warmup evidence) is absent in
+# v0.30.0+rhaiv.2 and appears in newer runtimes; the union tolerates absent families.
+STAGE_POST_WARMUP_MEMORY_METRIC: str = "vllm_omni:stage_post_warmup_memory_allocated_bytes"
+STAGE_EVIDENCE_METRICS: tuple[str, ...] = (PROMETHEUS_KV_CACHE_METRIC, STAGE_POST_WARMUP_MEMORY_METRIC)
+# Qwen3-Omni-30B-A3B pipeline stages: 0 = LLM, 1 = TTS talker, 2 = Code2Wav decoder.
+EXPECTED_PIPELINE_STAGES: frozenset[str] = frozenset({"0", "1", "2"})
 
 pytestmark = pytest.mark.usefixtures("skip_if_no_vllm_omni_multi_gpu", "valid_aws_config")
 
@@ -77,6 +83,18 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_vllm_omni_multi_gpu", "valid_aw
 def _find_metric_data_lines(metrics_text: str, metric_name: str) -> list[str]:
     """Return all non-comment data lines whose name starts with *metric_name*."""
     return [line for line in metrics_text.splitlines() if line.startswith(metric_name) and not line.startswith("#")]
+
+
+_STAGE_LABEL_PATTERN: re.Pattern[str] = re.compile(r'stage="([^"]+)"')
+
+
+def _extract_stage_labels(metrics_text: str, metric_name: str) -> set[str]:
+    """Return the distinct ``stage`` label values across a metric's data lines."""
+    stages: set[str] = set()
+    for line in _find_metric_data_lines(metrics_text=metrics_text, metric_name=metric_name):
+        if match := _STAGE_LABEL_PATTERN.search(line):
+            stages.add(match.group(1))
+    return stages
 
 
 @pytest.mark.vllm_omni_nvidia_multi_gpu
@@ -706,21 +724,39 @@ class TestVllmOmniFullE2E:
 
     def test_vllm_omni_three_stage_init_sequence(
         self,
-        vllm_omni_inference_service: InferenceService,
         vllm_omni_pod_resource: Pod,
     ) -> None:
-        """Three-stage init markers present and no CrashLoopBackOff.
+        """Every pipeline stage completed initialization; no CrashLoopBackOff.
 
         Given a vLLM-Omni ISVC with Qwen3-Omni-30B-A3B that has reached Ready,
-        When the predictor pod logs are inspected,
-        Then all three Orchestrator stage-ready markers are present and no
-        container is in CrashLoopBackOff state.
+        When the predictor pod's /metrics endpoint is queried,
+        Then stage-labeled metric families report all three pipeline stages (LLM,
+             TTS talker, Code2Wav decoder), proving every StageEngineCore finished
+             initialization, and no container is in CrashLoopBackOff state.
         """
-        pod_logs: str = vllm_omni_pod_resource.log(container=Containers.KSERVE_CONTAINER_NAME)
-        missing = [m for m in OMNI_STAGE_LOG_MARKERS if m not in pod_logs]
-        assert not missing, (
-            f"Stage markers missing from pod '{vllm_omni_pod_resource.name}' logs: "
-            f"{missing}. Expected all of: {list(OMNI_STAGE_LOG_MARKERS)}"
+        # The stage topology is verified through the documented vllm_omni:* Prometheus
+        # contract instead of pod log lines: log wording changes between runtime
+        # releases (e.g. [AsyncOmniEngine] renamed to [OmniEngine] in v0.30.0), while
+        # metric and label names are pinned in vllm_omni/metrics/definitions.py.
+        raw_metrics = _fetch_raw_metrics(pod=vllm_omni_pod_resource)
+        assert raw_metrics, (
+            f"Empty /metrics response from pod '{vllm_omni_pod_resource.name}'. "
+            "Verify the vLLM-Omni server started with metrics enabled (default) "
+            "and the pod's port 8080 is reachable via port-forward."
+        )
+
+        stage_evidence: dict[str, set[str]] = {
+            metric: _extract_stage_labels(metrics_text=raw_metrics, metric_name=metric)
+            for metric in STAGE_EVIDENCE_METRICS
+        }
+        observed_stages: set[str] = set().union(*stage_evidence.values())
+        coverage_description = {metric: sorted(stages) for metric, stages in stage_evidence.items()}
+        assert observed_stages == EXPECTED_PIPELINE_STAGES, (
+            f"Expected stage-labeled metric samples for pipeline stages "
+            f"{sorted(EXPECTED_PIPELINE_STAGES)} (LLM, TTS talker, Code2Wav decoder) on pod "
+            f"'{vllm_omni_pod_resource.name}', found {sorted(observed_stages)}; "
+            f"per-metric stage coverage: {coverage_description}; one or more pipeline stages "
+            "did not complete initialization"
         )
 
         for cs in vllm_omni_pod_resource.instance.status.containerStatuses or []:
