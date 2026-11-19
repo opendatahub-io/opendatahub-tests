@@ -484,6 +484,13 @@ def verify_usage_logs_multi_tenant_e2e_prerequisites(
     return monitoring_namespace, None
 
 
+def _token_review_field(source: object, key: str) -> object:
+    """Read a field from a TokenReview response dict or dynamic-client object."""
+    if isinstance(source, dict):
+        return source.get(key)
+    return getattr(source, key, None)
+
+
 def resolve_openshift_username(admin_client: DynamicClient, bearer_token: str) -> str:
     """Return the Kubernetes username for a bearer token via TokenReview."""
     token_review_api = admin_client.resources.get(
@@ -497,17 +504,12 @@ def resolve_openshift_username(admin_client: DynamicClient, bearer_token: str) -
             "spec": {"token": bearer_token},
         }
     )
-    status = review.get("status") if isinstance(review, dict) else getattr(review, "status", None)
+    status = _token_review_field(source=review, key="status")
     if status is None:
         raise ValueError("TokenReview returned no status")
-    authenticated = status.get("authenticated") if isinstance(status, dict) else getattr(status, "authenticated", None)
-    if authenticated is not True:
+    if _token_review_field(source=status, key="authenticated") is not True:
         raise ValueError("bearer token was not authenticated by TokenReview")
-    user = status.get("user") if isinstance(status, dict) else getattr(status, "user", None)
-    if isinstance(user, dict):
-        username = user.get("username")
-    else:
-        username = getattr(user, "username", None) if user is not None else None
+    username = _token_review_field(source=_token_review_field(source=status, key="user"), key="username")
     if not username:
         raise ValueError("TokenReview returned no authenticated username")
     return str(username)
