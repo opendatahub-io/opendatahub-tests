@@ -5,7 +5,6 @@ local runs do not need AWS credentials for ``ods-ci-wisdom``. Jenkins multitenan
 use S3 keep the default ``ModelStorage.S3.TINYLLAMA`` fixture in ``multitenancy/conftest.py``.
 """
 
-import portforward
 import pytest
 import requests
 import structlog
@@ -16,13 +15,8 @@ from tests.ai_gateway.models_as_a_service.multitenancy.usage_logs.utils import (
     resolve_openshift_username,
 )
 from tests.ai_gateway.models_as_a_service.multitenancy.utils import assert_tenant_inference_status
-from tests.ai_gateway.models_as_a_service.observability.constants import (
-    LOKI_GATEWAY_SERVICE_NAME,
-    LOKI_GATEWAY_SERVICE_PORT,
-    LOKI_QUERY_LOCAL_PORT,
-    USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
-    USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
-    USAGE_LOGS_TENANCY_PROXY_PORT,
+from tests.ai_gateway.models_as_a_service.observability.utils import (
+    usage_logs_admin_and_tenancy_proxy_port_forward,
 )
 from utilities.logger import RedactedString
 
@@ -88,22 +82,7 @@ class TestMultiTenantUsageLogs:
             subscriptions=sorted(expected_subscriptions),
         )
 
-        with (
-            portforward.forward(
-                pod_or_service=LOKI_GATEWAY_SERVICE_NAME,
-                namespace=monitoring_namespace,
-                from_port=LOKI_QUERY_LOCAL_PORT,
-                to_port=LOKI_GATEWAY_SERVICE_PORT,
-                waiting=20,
-            ),
-            portforward.forward(
-                pod_or_service=USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
-                namespace=monitoring_namespace,
-                from_port=USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
-                to_port=USAGE_LOGS_TENANCY_PROXY_PORT,
-                waiting=20,
-            ),
-        ):
+        with usage_logs_admin_and_tenancy_proxy_port_forward(namespace=monitoring_namespace):
             assert_expected_subscriptions_in_loki(
                 http_session=request_session_http,
                 admin_token=user_token,
