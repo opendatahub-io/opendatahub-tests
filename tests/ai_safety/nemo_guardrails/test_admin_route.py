@@ -17,6 +17,7 @@ from ocp_resources.service import Service
 from tests.ai_safety.nemo_guardrails.utils import get_nemo_guardrails_pod
 from utilities.general import generate_random_name
 from utilities.guardrails import get_auth_headers
+from utilities.image_constants import SharedImages
 from utilities.resources.nemo_guardrails import NemoGuardrails
 
 _ADMIN_TEST_PATH = "/healthz"
@@ -57,8 +58,8 @@ def nemo_admin_caller_pod(
                 containers=[
                     {
                         "name": pod_name,
-                        "image": "image-registry.openshift-image-registry.svc:5000/openshift/tools:latest",
-                        "imagePullPolicy": "Always",
+                        "image": SharedImages.OPENSHIFT_TOOLS,
+                        "imagePullPolicy": "IfNotPresent",
                         "args": ["sleep", "infinity"],
                         "securityContext": {
                             "allowPrivilegeEscalation": False,

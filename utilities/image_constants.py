@@ -25,6 +25,11 @@ class SharedImages:
 
     BUSYBOX: str = "quay.io/quay/busybox@sha256:92f3298bf80a1ba949140d77987f5de081f010337880cd771f7e7fc928f8c74d"
 
+    # Cluster-local OpenShift tools Imagestream used by in-cluster curl caller pods.
+    # :latest resolves to the cluster OCP release digest at pull time; a fixed
+    # @sha256 pin is not portable across OCP versions.
+    OPENSHIFT_TOOLS: str = "image-registry.openshift-image-registry.svc:5000/openshift/tools:latest"  # noqa: IMG002
+
     UBI_MINIMAL: str = "registry.access.redhat.com/ubi9/ubi-minimal:latest"
 
     MODELCAR_MNIST_8_1: str = "oci://quay.io/opendatahub/modelcar-openvino@sha256:c92d7d0cb4a1e798ab6a6c4370259a081c6f335bad26627a99046607873b0e42"  # noqa: E501

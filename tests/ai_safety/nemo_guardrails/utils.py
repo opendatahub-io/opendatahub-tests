@@ -15,6 +15,7 @@ from requests import Response
 from timeout_sampler import TimeoutSampler, retry
 
 from tests.ai_safety.nemo_guardrails.constants import (
+    ADMIN_SERVICE_PORT,
     INPUT_PROMPT_TEMPLATE,
     OUTPUT_PROMPT_TEMPLATE,
 )
@@ -198,6 +199,97 @@ def create_chat_completion_request(message: str, model: str, configuration: str 
         payload["guardrails"] = {"config_id": configuration}
 
     return payload
+
+
+def build_nemo_admin_service_url(nemo_cr: NemoGuardrails, path: str) -> str:
+    """
+    Build the in-cluster HTTPS URL for a NeMo Guardrails admin-service path.
+
+    Args:
+        nemo_cr: NemoGuardrails CR whose Service exposes the admin port
+        path: Admin API path (e.g. /admin/info)
+
+    Returns:
+        Cluster-local HTTPS URL targeting the admin service port
+    """
+    return f"https://{nemo_cr.name}.{nemo_cr.namespace}.svc.cluster.local:{ADMIN_SERVICE_PORT}{path}"
+
+
+def execute_admin_service_get(
+    pod: Pod,
+    service_url: str,
+    token_file: str | None = None,
+) -> tuple[int, str]:
+    """
+    GET an admin-service URL from an in-cluster caller pod.
+
+    Args:
+        pod: Ready caller Pod with curl available
+        service_url: Full HTTPS admin service URL
+        token_file: Absolute in-pod path to a bearer token file. None sends no
+            Authorization header. The token is read inside the pod so Pod.execute
+            logs never contain the credential value.
+
+    Returns:
+        Tuple of (HTTP status code, response body text)
+    """
+    curl_command = (
+        "curl --insecure --silent --show-error --connect-timeout 10 --max-time 30 --write-out '\\n%{http_code}'"
+    )
+    if token_file:
+        curl_command += ' --header "Authorization: Bearer $(cat "$2")"'
+        command = ["sh", "-c", f'{curl_command} "$1"', "sh", service_url, token_file]
+    else:
+        command = ["sh", "-c", f'{curl_command} "$1"', "sh", service_url]
+    output = pod.execute(command=command, ignore_rc=True)
+    body, status_text = output.rsplit("\n", 1)
+    return int(status_text.strip()), body
+
+
+def send_admin_get(
+    host: str,
+    path: str,
+    ca_bundle_file: str,
+    token: str | None = None,
+    timeout: int = 30,
+) -> Response:
+    """
+    Send a GET request to a NeMo Guardrails path via an OpenShift Route.
+
+    Used for user-route deny checks against /admin/* paths.
+
+    Args:
+        host: Route hostname
+        path: API path (e.g. /admin/info)
+        ca_bundle_file: Path to CA bundle file for TLS verification
+        token: Bearer token for kube-rbac-proxy (None for unauthenticated requests)
+        timeout: Request timeout in seconds
+
+    Returns:
+        Response object
+    """
+    headers = get_auth_headers(token=token) if token else {}
+    return requests.get(
+        url=f"https://{host}{path}",
+        headers=headers,
+        verify=ca_bundle_file,
+        timeout=timeout,
+    )
+
+
+def assert_admin_info_shape(body: dict[str, Any]) -> None:
+    """Assert GET /admin/info has the expected top-level capability document shape."""
+    for key in ("identity", "endpoints", "documentation", "integration", "rails", "actions"):
+        assert key in body, f"Missing '{key}' in /admin/info response: {list(body.keys())}"
+    assert "configs" not in body, "/admin/info must not include per-config payloads"
+
+    identity = body["identity"]
+    for key in ("name", "version", "upstream_delta_summary"):
+        assert identity.get(key), f"identity.{key} must be present and non-empty"
+
+    assert isinstance(body["endpoints"], list), "endpoints must be a list"
+    assert isinstance(body["rails"], list), "rails must be a list"
+    assert isinstance(body["actions"], list), "actions must be a list"
 
 
 def send_request(
