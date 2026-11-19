@@ -18,6 +18,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 
 from tests.ai_safety.nemo_guardrails.constants import (
+    NEMO_API_TOKEN_SECRET_VALUE,
     NEMO_DEFAULT_CONFIG_CM_PII,
     NEMO_DEFAULT_CONFIG_CM_PREFIX,
     PresidioEntity,
@@ -51,7 +52,7 @@ def nemo_api_token_secret(
         name="nemo-api-token",
         namespace=model_namespace.name,
         string_data={
-            "token": "test-token-123",  # pragma: allowlist secret
+            "token": NEMO_API_TOKEN_SECRET_VALUE,
         },
         type="Opaque",
     ) as secret:
