@@ -106,6 +106,10 @@ ADMIN_INFO_ACTIONS_ENDPOINT = "/admin/info/actions"
 ADMIN_INFO_UNKNOWN_SUBPATH = "/admin/info/does-not-exist"
 INVALID_BEARER_TOKEN = "totally-invalid"  # pragma: allowlist secret
 
+# In-pod token files mounted on the admin API caller pod (avoid logging bearer tokens)
+ADMIN_VALID_TOKEN_FILE = "/var/run/secrets/nemo-admin-tokens/valid/token"
+ADMIN_INVALID_TOKEN_FILE = "/var/run/secrets/nemo-admin-tokens/invalid/token"
+
 # Expected fork endpoint catalog entries exposed by GET /admin/info
 EXPECTED_ADMIN_CATALOG_PATHS = (
     ADMIN_INFO_ENDPOINT,

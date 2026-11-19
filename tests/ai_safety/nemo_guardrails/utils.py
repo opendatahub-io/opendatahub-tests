@@ -218,7 +218,7 @@ def build_nemo_admin_service_url(nemo_cr: NemoGuardrails, path: str) -> str:
 def execute_admin_service_get(
     pod: Pod,
     service_url: str,
-    token: str | None = None,
+    token_file: str | None = None,
 ) -> tuple[int, str]:
     """
     GET an admin-service URL from an in-cluster caller pod.
@@ -226,7 +226,9 @@ def execute_admin_service_get(
     Args:
         pod: Ready caller Pod with curl available
         service_url: Full HTTPS admin service URL
-        token: Bearer token (None for unauthenticated requests)
+        token_file: Absolute in-pod path to a bearer token file. None sends no
+            Authorization header. The token is read inside the pod so Pod.execute
+            logs never contain the credential value.
 
     Returns:
         Tuple of (HTTP status code, response body text)
@@ -234,9 +236,11 @@ def execute_admin_service_get(
     curl_command = (
         "curl --insecure --silent --show-error --connect-timeout 10 --max-time 30 --write-out '\\n%{http_code}'"
     )
-    if token:
-        curl_command += f' --header "Authorization: Bearer {token}"'
-    command = ["sh", "-c", f'{curl_command} "$1"', "sh", service_url]
+    if token_file:
+        curl_command += ' --header "Authorization: Bearer $(cat "$2")"'
+        command = ["sh", "-c", f'{curl_command} "$1"', "sh", service_url, token_file]
+    else:
+        command = ["sh", "-c", f'{curl_command} "$1"', "sh", service_url]
     output = pod.execute(command=command, ignore_rc=True)
     body, status_text = output.rsplit("\n", 1)
     return int(status_text.strip()), body
