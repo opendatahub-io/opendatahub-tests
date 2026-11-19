@@ -8,6 +8,10 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from pytest_testconfig import config as py_config
 
+from tests.ai_gateway.models_as_a_service.component_health.utils import (
+    verify_ai_gateway_controller_deployment_available,
+)
+from tests.ai_gateway.models_as_a_service.utils import dsc_uses_aigateway_maas_schema
 from utilities.constants import ApiGroups, DscComponents
 from utilities.general import wait_for_pods_running
 
@@ -55,9 +59,18 @@ class TestMaaSController:
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Verify maas-controller Deployment is Available."""
-        applications_namespace = py_config["applications_namespace"]
+        """Verify MaaS controller Deployment is Available using the schema-appropriate name.
 
+        Given MaaS is managed, when checking the applications namespace,
+        then the schema-appropriate controller deployment
+        (ai-gateway-controller for the aigateway MaaS schema,
+        maas-controller for the legacy schema) is Available.
+        """
+        if dsc_uses_aigateway_maas_schema(admin_client=admin_client):
+            verify_ai_gateway_controller_deployment_available(admin_client=admin_client)
+            return
+
+        applications_namespace = py_config["applications_namespace"]
         controller_deployment = Deployment(
             client=admin_client,
             name="maas-controller",
@@ -74,7 +87,7 @@ class TestMaaSController:
         self,
         admin_client: DynamicClient,
     ) -> None:
-        """Verify maas-controller pods are Running."""
+        """Verify all pods in the applications namespace are Running."""
         applications_namespace = py_config["applications_namespace"]
         LOGGER.info(f"Testing Pods in namespace {applications_namespace} for MaaS Controller health")
         wait_for_pods_running(admin_client=admin_client, namespace_name=applications_namespace)
