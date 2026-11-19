@@ -136,14 +136,14 @@ usage logs after real MaaS inference. It tests all four toggle combinations and
 restores the prior tenant configuration. The test creates and cleans up its model,
 subscription, auth policy, and API keys.
 
-Run it on a dedicated test cluster with MaaS and the Loki and OpenTelemetry
-operators installed. It temporarily enables user identity capture on the default
-tenant. The shared usage-logs fixtures provision SeaweedFS S3 storage, configure
-the DSCI usage-log pipeline, wait for Loki and the collector, and restore the
+Run it on a dedicated test cluster with MaaS, a default StorageClass, and the Loki
+and OpenTelemetry operators installed. It temporarily changes identity capture on
+the default tenant. The shared usage-logs fixtures provision SeaweedFS S3 storage,
+configure the DSCI usage-log pipeline, wait for Loki and the collector, and restore the
 previous monitoring configuration on teardown.
 
 ```bash
-uv run pytest -v -s tests/ai_gateway/models_as_a_service/observability/test_usage_log_capture.py
+uv run pytest -v -s tests/ai_gateway/models_as_a_service/observability/test_maas_usage_logs.py::TestMaaSUsageLogIdentityCapture::test_identity_capture_follows_tenant_settings
 ```
 
 ## Additional Resources

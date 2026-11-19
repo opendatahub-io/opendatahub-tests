@@ -1,64 +1,18 @@
-"""Read MaaS usage logs through the product Loki gateway."""
+"""Query and parse MaaS identity fields in Loki usage logs."""
 
 import json
-import ssl
-from dataclasses import dataclass, field
-from http.client import HTTPSConnection
 from time import monotonic, sleep, time_ns
 from typing import Any
-from urllib.parse import urlencode
 
-LOKI_QUERY_PATH = "/api/logs/v1/application/loki/api/v1/query_range"
+import requests
+
+from tests.ai_gateway.models_as_a_service.observability.constants import LOKI_QUERY_TENANT, LOKI_QUERY_URL
+
 POLL_INTERVAL_SECONDS = 10
 LOG_WAIT_SECONDS = 180
 
 
-@dataclass(frozen=True)
-class LokiUsageLogClient:
-    """Query the application tenant over a loopback Kubernetes port-forward."""
-
-    port: int
-    tls_context: ssl.SSLContext = field(repr=False)
-    bearer_token: str = field(repr=False)
-
-    def query(self, subscription: str, key_name: str, start_ns: int) -> list[dict[str, str]]:
-        """Return only log fields for one test API key within the request window.
-
-        Args:
-            subscription: Unique MaaSSubscription name used by the test.
-            key_name: Unique API key name used for the traffic phase.
-            start_ns: Loki range start in Unix nanoseconds.
-
-        Returns:
-            Parsed stream labels and structured log fields for matching records.
-        """
-        selector = f'{{service_name="models-as-a-service",subscription="{subscription}"}} | key_name="{key_name}"'
-        params = urlencode(query={"query": selector, "start": start_ns, "end": time_ns(), "limit": 100})
-        connection = HTTPSConnection(host="127.0.0.1", port=self.port, context=self.tls_context, timeout=30)
-        try:
-            connection.request(
-                method="GET",
-                url=f"{LOKI_QUERY_PATH}?{params}",
-                headers={"Authorization": f"Bearer {self.bearer_token}", "Accept": "application/json"},
-            )
-            response = connection.getresponse()
-            body = response.read()
-        finally:
-            connection.close()
-        if response.status != 200:
-            raise AssertionError(f"Loki query failed with HTTP {response.status}")
-        try:
-            payload: Any = json.loads(body)
-        except (TypeError, ValueError) as error:
-            raise AssertionError("Loki query returned invalid JSON") from error
-        if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
-            raise TypeError("Loki query returned an unexpected response shape")
-        if payload.get("status") != "success" or payload["data"].get("resultType") != "streams":
-            raise AssertionError("Loki query did not return successful log streams")
-        return extract_log_fields(payload=payload)
-
-
-def extract_log_fields(payload: dict[str, Any]) -> list[dict[str, str]]:
+def extract_log_fields(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Read stream labels, JSON line fields, and Loki structured metadata.
 
     Args:
@@ -67,32 +21,37 @@ def extract_log_fields(payload: dict[str, Any]) -> list[dict[str, str]]:
     Returns:
         One merged field mapping for each log entry.
     """
-    records: list[dict[str, str]] = []
+    records: list[dict[str, Any]] = []
     for stream in payload["data"]["result"]:
         stream_labels = stream.get("stream", {})
         for entry in stream.get("values", []):
-            fields = {str(key): str(value) for key, value in stream_labels.items()}
+            fields: dict[str, Any] = dict(stream_labels)
             if len(entry) > 1:
                 try:
                     line = json.loads(entry[1])
                 except TypeError, ValueError:
                     line = None
                 if isinstance(line, dict):
-                    fields.update({str(key): str(value) for key, value in line.items()})
+                    fields.update(line)
             if len(entry) > 2 and isinstance(entry[2], dict):
-                fields.update({str(key): str(value) for key, value in entry[2].items()})
+                fields.update(entry[2])
             records.append(fields)
     return records
 
 
 def wait_for_usage_log(
-    client: LokiUsageLogClient, subscription: str, key_name: str, start_ns: int
-) -> list[dict[str, str]]:
-    """Poll until traffic from one unique API key reaches Loki.
+    http_session: requests.Session,
+    admin_token: str,
+    subscription: str,
+    key_name: str,
+    start_ns: int,
+) -> list[dict[str, Any]]:
+    """Poll Loki until traffic from one unique API key arrives.
 
     Args:
-        client: Authenticated Loki gateway client.
-        subscription: Test subscription name.
+        http_session: HTTP session used by the shared Loki query helpers.
+        admin_token: OpenShift token authorized for Loki application logs.
+        subscription: Test MaaSSubscription name.
         key_name: Test API key name.
         start_ns: Loki range start in Unix nanoseconds.
 
@@ -102,9 +61,22 @@ def wait_for_usage_log(
     Raises:
         AssertionError: If the log does not arrive within the ingestion window.
     """
+    selector = f'{{service_name="models-as-a-service",subscription="{subscription}"}} | key_name="{key_name}"'
     deadline = monotonic() + LOG_WAIT_SECONDS
     while monotonic() < deadline:
-        records = client.query(subscription=subscription, key_name=key_name, start_ns=start_ns)
+        response = http_session.get(
+            url=f"{LOKI_QUERY_URL}_range",
+            headers={"Authorization": f"Bearer {admin_token}", "X-Scope-OrgID": LOKI_QUERY_TENANT},
+            params={"query": selector, "start": start_ns, "end": time_ns(), "limit": 100},
+            timeout=30,
+        )
+        assert response.status_code == 200, f"Loki query failed with HTTP {response.status_code}"
+        payload: Any = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
+            raise TypeError("Loki query returned an unexpected response shape")
+        if payload.get("status") != "success" or payload["data"].get("resultType") != "streams":
+            raise AssertionError("Loki query did not return successful log streams")
+        records = extract_log_fields(payload=payload)
         if records:
             return records
         sleep(POLL_INTERVAL_SECONDS)

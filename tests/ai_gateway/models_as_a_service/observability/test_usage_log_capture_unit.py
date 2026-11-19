@@ -52,3 +52,20 @@ def test_extract_log_fields_keeps_disabled_fields_absent() -> None:
     assert extract_log_fields(payload=payload) == [
         {"subscription": "sub-a", "key_name": "test-key", "response_type": "success"}
     ]
+
+
+@pytest.mark.tier1
+def test_extract_log_fields_does_not_turn_null_identity_into_a_string() -> None:
+    """A null identity must not look like a captured username to the E2E assertion."""
+    payload = {
+        "data": {
+            "result": [
+                {
+                    "stream": {"subscription": "sub-a"},
+                    "values": [["123", '{"user_id":null}', {"organization_id": None}]],
+                }
+            ]
+        }
+    }
+
+    assert extract_log_fields(payload=payload) == [{"subscription": "sub-a", "user_id": None, "organization_id": None}]
