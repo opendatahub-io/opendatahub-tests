@@ -119,6 +119,14 @@ def pytest_addoption(parser: Parser) -> None:
         help="Supported accelerator type: nvidia, amd, gaudi, spyre, cpu_x86, cpu_power, cpu_z",
     )
     runtime_group.addoption(
+        "--model-pvc-storage-class",
+        default=os.environ.get("MODEL_PVC_STORAGE_CLASS"),
+        help=(
+            "StorageClass for model PVCs. Defaults to the cluster default storage class, "
+            "except on amd where it defaults to lvms-vg1"
+        ),
+    )
+    runtime_group.addoption(
         "--vllm-runtime-image",
         default=os.environ.get("VLLM_RUNTIME_IMAGE"),
         help="Specify the runtime image to use for the tests",
