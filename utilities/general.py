@@ -530,7 +530,7 @@ def wait_for_pods_running(
     state too soon, use number_of_consecutive_checks with appropriate values.
     """
     samples = TimeoutSampler(
-        wait_timeout=180,
+        wait_timeout=300,
         sleep=5,
         func=lambda: get_not_running_pods(pods=list(Pod.get(client=admin_client, namespace=namespace_name))),
         exceptions_dict={NotFoundError: [], ResourceNotFoundError: []},
