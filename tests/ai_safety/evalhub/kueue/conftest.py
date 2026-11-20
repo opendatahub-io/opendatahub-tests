@@ -568,6 +568,7 @@ def evalhub_kueue_single_job_local_queue(
 def evalhub_kueue_tenant_rbac(
     admin_client: DynamicClient,
     evalhub_kueue_namespace: Namespace,
+    evalhub_kueue_cr: EvalHub,
     evalhub_kueue_deployment: Deployment,
 ) -> None:
     """Wait for operator to provision tenant RBAC in Kueue namespace."""
@@ -578,7 +579,7 @@ def evalhub_kueue_tenant_rbac(
             func=tenant_rbac_ready,
             admin_client=admin_client,
             namespace=evalhub_kueue_namespace.name,
-            evalhub_instance_name=EVALHUB_KUEUE_CR_NAME,
+            evalhub_instance_name=evalhub_kueue_cr.name,
         ):
             if ready:
                 LOGGER.info(f"Operator RBAC provisioned in {evalhub_kueue_namespace.name}")
