@@ -13,11 +13,13 @@ from tests.model_serving.model_server.kserve.storage.utils import assert_isvc_s3
 from utilities.constants import KServeDeploymentType, MinIo
 from utilities.inference_utils import create_isvc
 
+MODEL_ENV_VARIABLES = [{"name": key, "value": value} for key, value in MINIO_INFERENCE_CONFIG["env-vars"].items()]
+
 pytestmark = [pytest.mark.smoke]
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, minio_pod, unprivileged_minio_data_connection, ovms_kserve_serving_runtime",
+    "unprivileged_model_namespace, minio_pod, unprivileged_minio_data_connection, mlserver_kserve_serving_runtime",
     [
         pytest.param(
             {"name": f"{MinIo.Metadata.NAME}-connection-smoke"},
@@ -44,7 +46,7 @@ class TestS3ConnectionSmoke:
         unprivileged_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
         unprivileged_minio_data_connection: Secret,
-        ovms_kserve_serving_runtime: ServingRuntime,
+        mlserver_kserve_serving_runtime: ServingRuntime,
     ) -> None:
         """Test steps:
 
@@ -57,8 +59,9 @@ class TestS3ConnectionSmoke:
             namespace=unprivileged_model_namespace.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             model_format=MINIO_INFERENCE_CONFIG["model-format"],
-            runtime=ovms_kserve_serving_runtime.name,
+            runtime=mlserver_kserve_serving_runtime.name,
             model_version=MINIO_INFERENCE_CONFIG["model-version"],
+            model_env_variables=MODEL_ENV_VARIABLES,
             connections=unprivileged_minio_data_connection.name,
             connection_path=MINIO_INFERENCE_CONFIG["model-dir"],
             wait=False,

@@ -13,9 +13,9 @@ def oci_connection_secret(
     admin_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
 ) -> Generator[Secret]:
-    """`oci`-typed ConnectionsAPI connection Secret for the reused MNIST OCI modelcar image.
+    """`oci`-typed ConnectionsAPI connection Secret for the reused ONNX OCI modelcar image.
 
-    The referenced image (`ModelCarImage.MNIST_8_1`) is a public quay.io modelcar, so an empty
+    The referenced image (`ModelCarImage.MLSERVER_ONNX`) is a public quay.io modelcar, so an empty
     docker config is sufficient — the webhook still injects `imagePullSecrets` referencing this
     Secret regardless of its credential content.
     """

@@ -21,15 +21,15 @@ from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
 
 from tests.model_serving.model_server.kserve.negative.utils import (
-    VALID_OVMS_INFERENCE_BODY,
+    VALID_MLSERVER_INFERENCE_BODY,
 )
 
 pytestmark = [
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
+    pytest.mark.usefixtures("valid_aws_config"),
 ]
 
-_VALID_BODY: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
+_VALID_BODY: str = json.dumps(VALID_MLSERVER_INFERENCE_BODY)
 
 
 def _send_authed_request(
@@ -79,7 +79,7 @@ class TestAuthRecovery:
 
     def test_valid_request_succeeds_after_auth_failures(
         self,
-        negative_test_ovms_isvc_with_auth: InferenceService,
+        negative_test_mlserver_isvc_with_auth: InferenceService,
         valid_inference_token: str,
     ) -> None:
         """Verify that valid inference works immediately after auth failures.
@@ -91,14 +91,14 @@ class TestAuthRecovery:
         """
         for _ in range(5):
             status_code, _ = _send_authed_request(
-                inference_service=negative_test_ovms_isvc_with_auth,
+                inference_service=negative_test_mlserver_isvc_with_auth,
                 token="invalid-token-that-should-fail",
                 body=_VALID_BODY,
             )
             assert status_code == HTTPStatus.UNAUTHORIZED, f"Expected 401 for invalid token, got {status_code}"
 
         status_code, response_body = _send_authed_request(
-            inference_service=negative_test_ovms_isvc_with_auth,
+            inference_service=negative_test_mlserver_isvc_with_auth,
             token=valid_inference_token,
             body=_VALID_BODY,
         )

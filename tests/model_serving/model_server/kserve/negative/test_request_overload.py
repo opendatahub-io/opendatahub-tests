@@ -22,7 +22,7 @@ from ocp_resources.inference_service import InferenceService
 from pytest_testconfig import config as py_config
 
 from tests.model_serving.model_server.kserve.negative.utils import (
-    VALID_OVMS_INFERENCE_BODY,
+    VALID_MLSERVER_INFERENCE_BODY,
     assert_kserve_control_plane_stable,
     assert_pods_healthy,
     send_inference_requests_concurrently,
@@ -31,10 +31,10 @@ from tests.model_serving.model_server.kserve.negative.utils import (
 
 pytestmark = [
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
+    pytest.mark.usefixtures("valid_aws_config"),
 ]
 
-_VALID_BODY: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
+_VALID_BODY: str = json.dumps(VALID_MLSERVER_INFERENCE_BODY)
 
 OVERLOAD_REQUEST_COUNT: int = 30
 
@@ -53,7 +53,7 @@ class TestRequestOverload:
     """Single-replica ISVC gracefully handles concurrent request overload.
 
     Preconditions:
-        - OVMS RawDeployment InferenceService with 1 replica deployed and Ready
+        - MLServer RawDeployment InferenceService with 1 replica deployed and Ready
         - Valid ONNX inference body available
 
     Expected Results:
@@ -65,7 +65,7 @@ class TestRequestOverload:
 
     def test_overload_produces_acceptable_responses(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
     ) -> None:
         """Verify that overloading a single-replica ISVC produces graceful responses.
 
@@ -74,7 +74,7 @@ class TestRequestOverload:
         Then all responses must have acceptable status codes (no 500 Internal Server Error)
         """
         results = send_inference_requests_concurrently(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=_VALID_BODY,
             count=OVERLOAD_REQUEST_COUNT,
         )
@@ -93,7 +93,7 @@ class TestRequestOverload:
     def test_pod_survives_overload(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         initial_pod_state: dict[str, dict[str, Any]],
     ) -> None:
         """Verify that the predictor pod survives a request overload burst.
@@ -103,21 +103,21 @@ class TestRequestOverload:
         Then the pod must remain Running with no new restarts
         """
         send_inference_requests_concurrently(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=_VALID_BODY,
             count=OVERLOAD_REQUEST_COUNT,
         )
 
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc,
+            isvc=negative_test_mlserver_isvc,
             initial_pod_state=initial_pod_state,
         )
 
     def test_control_plane_stable_after_overload(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
     ) -> None:
         """Verify KServe control plane is unaffected by data-plane overload.
 
@@ -132,7 +132,7 @@ class TestRequestOverload:
         )
 
         send_inference_requests_concurrently(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=_VALID_BODY,
             count=OVERLOAD_REQUEST_COUNT,
         )
@@ -145,7 +145,7 @@ class TestRequestOverload:
 
     def test_inference_recovers_after_overload(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
     ) -> None:
         """Verify that normal inference succeeds after an overload burst clears.
 
@@ -154,7 +154,7 @@ class TestRequestOverload:
         Then the response must be HTTP 200 with valid outputs
         """
         send_inference_requests_concurrently(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=_VALID_BODY,
             count=OVERLOAD_REQUEST_COUNT,
         )
@@ -162,7 +162,7 @@ class TestRequestOverload:
         from tests.model_serving.model_server.kserve.negative.utils import send_inference_request
 
         status_code, response_body = send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=_VALID_BODY,
         )
 

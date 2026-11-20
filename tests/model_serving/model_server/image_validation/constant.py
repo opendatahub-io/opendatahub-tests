@@ -11,7 +11,7 @@ PLACEHOLDER_STORAGE_URI = "s3://dummy-bucket/dummy/"
 MODEL_SERVER_IMAGE_VALIDATION_NAMESPACE = "model-server-image-validation"
 
 # Model server runtime template used to create the InferenceService predictor pod.
-MODEL_SERVER_RUNTIME_TEMPLATE = RuntimeTemplates.OVMS_KSERVE
+MODEL_SERVER_RUNTIME_TEMPLATE = RuntimeTemplates.MLSERVER
 
 # Init container injected by the kserve controllers to download the model from storage;
 # its image is one of the images required to be validated by RHOAIENG-23498.

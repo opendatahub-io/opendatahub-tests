@@ -4,7 +4,6 @@ from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import (
     Annotations,
     KServeDeploymentType,
-    ModelAndFormat,
     ModelFormat,
     ModelInferenceRuntime,
     ModelStoragePath,
@@ -12,29 +11,30 @@ from utilities.constants import (
     Protocols,
 )
 from utilities.inference_utils import Inference
-from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.tier1, pytest.mark.rawdeployment]
 
 RUNTIME_PARAMS = {
-    "runtime-name": ModelInferenceRuntime.OPENVINO_KSERVE_RUNTIME,
-    "model-format": {ModelAndFormat.OPENVINO_IR: ModelVersion.OPSET1},
+    "runtime-name": ModelInferenceRuntime.MLSERVER_RUNTIME,
+    "model-format": {ModelFormat.ONNX: ModelVersion.V1},
 }
 INFERENCE_SERVICE_PARAMS = {
-    "model-version": ModelVersion.OPSET1,
-    "model-dir": ModelStoragePath.KSERVE_OPENVINO_EXAMPLE_MODEL,
+    "model-version": ModelVersion.V1,
+    "model-dir": ModelStoragePath.MNIST_ONNX,
 }
 
 
 @pytest.mark.parametrize(
-    "default_deployment_mode_in_dsc, unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_inference_service",
+    "default_deployment_mode_in_dsc, unprivileged_model_namespace, "
+    "mlserver_kserve_serving_runtime, dsc_mlserver_inference_service",
     [
         pytest.param(
             {"default-deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
             {"name": "dsc-raw"},
             RUNTIME_PARAMS,
             {
-                "name": f"{ModelFormat.OPENVINO}-{KServeDeploymentType.RAW_DEPLOYMENT.lower()}",
+                "name": f"{ModelFormat.ONNX}-{KServeDeploymentType.RAW_DEPLOYMENT.lower()}",
                 **INFERENCE_SERVICE_PARAMS,
             },
         )
@@ -46,23 +46,25 @@ class TestKServeDSCRawDefaultDeploymentMode:
 
     Steps:
         1. Set the DSC default deployment mode to RawDeployment.
-        2. Deploy an OVMS inference service without explicitly specifying a deployment mode.
+        2. Deploy an MLServer inference service without explicitly specifying a deployment mode.
         3. Verify the ISVC annotation reflects RawDeployment as the deployment mode.
         4. Send an inference request and verify a successful response over HTTPS.
     """
 
-    def test_isvc_contains_raw_deployment_mode(self, default_deployment_mode_in_dsc, ovms_inference_service):
+    def test_isvc_contains_raw_deployment_mode(self, default_deployment_mode_in_dsc, dsc_mlserver_inference_service):
         """Verify that default deployment mode is set to raw in inference service."""
-        actual_mode = ovms_inference_service.instance.metadata.annotations[Annotations.KserveIo.DEPLOYMENT_MODE]
+        actual_mode = dsc_mlserver_inference_service.instance.metadata.annotations[Annotations.KserveIo.DEPLOYMENT_MODE]
         assert actual_mode in KServeDeploymentType.RAW_DEPLOYMENT_MODES, (
             f"Expected one of {KServeDeploymentType.RAW_DEPLOYMENT_MODES}, got {actual_mode!r}"
         )
 
-    def test_kserve_dsc_raw_default_deployment_mode(self, default_deployment_mode_in_dsc, ovms_inference_service):
+    def test_kserve_dsc_raw_default_deployment_mode(
+        self, default_deployment_mode_in_dsc, dsc_mlserver_inference_service
+    ):
         """Verify that Raw deployment model can be deployed without specifying in isvc"""
         verify_inference_response(
-            inference_service=ovms_inference_service,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_service=dsc_mlserver_inference_service,
+            inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,

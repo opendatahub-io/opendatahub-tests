@@ -14,7 +14,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutSampler
 
 from tests.model_serving.model_server.kserve.ingress.utils import create_curl_pod
-from utilities.constants import KServeDeploymentType, Labels, ModelStoragePath
+from utilities.constants import KServeDeploymentType, Labels, ModelFormat, ModelStoragePath, ModelVersion
 from utilities.inference_utils import create_isvc
 from utilities.infra import create_ns
 
@@ -24,7 +24,7 @@ LOGGER = structlog.get_logger(name=__name__)
 @pytest.fixture()
 def patched_kserve_isvc_visibility_label(
     request: FixtureRequest,
-    ovms_kserve_inference_service: InferenceService,
+    mlserver_kserve_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     param = getattr(request, "param", None)
     if not isinstance(param, dict) or "visibility" not in param:
@@ -35,63 +35,63 @@ def patched_kserve_isvc_visibility_label(
 
     visibility = param["visibility"]
 
-    labels = ovms_kserve_inference_service.instance.metadata.labels
+    labels = mlserver_kserve_inference_service.instance.metadata.labels
     current_visibility = labels.get(Labels.Kserve.NETWORKING_KSERVE_IO) if labels else None
 
     if (current_visibility is None and visibility == "local-cluster") or current_visibility == visibility:
         LOGGER.info(f"Inference service visibility is set to {visibility}. Skipping update.")
-        yield ovms_kserve_inference_service
+        yield mlserver_kserve_inference_service
 
     else:
-        isvc_orig_url = ovms_kserve_inference_service.instance.status.url
+        isvc_orig_url = mlserver_kserve_inference_service.instance.status.url
 
         with ResourceEditor(
             patches={
-                ovms_kserve_inference_service: {
+                mlserver_kserve_inference_service: {
                     "metadata": {
                         "labels": {Labels.Kserve.NETWORKING_KSERVE_IO: visibility},
                     }
                 }
             }
         ):
-            LOGGER.info(f"Wait for inference service {ovms_kserve_inference_service.name} url update")
+            LOGGER.info(f"Wait for inference service {mlserver_kserve_inference_service.name} url update")
             for sample in TimeoutSampler(
                 wait_timeout=2 * 60,
                 sleep=1,
-                func=lambda: ovms_kserve_inference_service.instance.status.url,
+                func=lambda: mlserver_kserve_inference_service.instance.status.url,
             ):
                 if sample and sample != isvc_orig_url:
                     break
 
-            yield ovms_kserve_inference_service
+            yield mlserver_kserve_inference_service
 
-        LOGGER.info(f"Wait for inference service {ovms_kserve_inference_service.name} url restore to original one")
+        LOGGER.info(f"Wait for inference service {mlserver_kserve_inference_service.name} url restore to original one")
         for sample in TimeoutSampler(
             wait_timeout=2 * 60,
             sleep=1,
-            func=lambda: ovms_kserve_inference_service.instance.status.url,
+            func=lambda: mlserver_kserve_inference_service.instance.status.url,
         ):
             if sample and sample == isvc_orig_url:
                 break
 
-        LOGGER.info(f"Wait for inference service {ovms_kserve_inference_service.name} ready after label restore")
-        ovms_kserve_inference_service.wait_for_condition(
-            condition=ovms_kserve_inference_service.Condition.READY,
-            status=ovms_kserve_inference_service.Condition.Status.TRUE,
+        LOGGER.info(f"Wait for inference service {mlserver_kserve_inference_service.name} ready after label restore")
+        mlserver_kserve_inference_service.wait_for_condition(
+            condition=mlserver_kserve_inference_service.Condition.READY,
+            status=mlserver_kserve_inference_service.Condition.Status.TRUE,
             timeout=2 * 60,
         )
 
 
 @pytest.fixture()
-def ovms_raw_isvc_patched_annotations(
+def mlserver_raw_isvc_patched_annotations(
     request: FixtureRequest,
-    ovms_raw_inference_service: InferenceService,
+    mlserver_raw_inference_service: InferenceService,
 ) -> Generator[InferenceService, Any, Any]:
     """Patch ISVC annotations and restore after the test."""
     param = getattr(request, "param", None)
     if param is not None and not isinstance(param, dict):
         raise pytest.UsageError(
-            "Fixture 'ovms_raw_isvc_patched_annotations' requires indirect "
+            "Fixture 'mlserver_raw_isvc_patched_annotations' requires indirect "
             "parametrization with request.param['annotations']."
         )
 
@@ -99,14 +99,14 @@ def ovms_raw_isvc_patched_annotations(
     if annotations is not None:
         with ResourceEditor(
             patches={
-                ovms_raw_inference_service: {
+                mlserver_raw_inference_service: {
                     "metadata": {"annotations": annotations},
                 }
             }
         ):
-            yield ovms_raw_inference_service
+            yield mlserver_raw_inference_service
     else:
-        yield ovms_raw_inference_service
+        yield mlserver_raw_inference_service
 
 
 @pytest.fixture(scope="class")
@@ -127,8 +127,9 @@ def endpoint_isvc(
         namespace=serving_runtime_from_template.namespace,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         storage_key=ci_endpoint_s3_secret.name,
-        storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        storage_path=ModelStoragePath.MNIST_ONNX,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         runtime=serving_runtime_from_template.name,
         wait_for_predictor_pods=False,
     ) as isvc:

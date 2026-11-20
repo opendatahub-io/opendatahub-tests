@@ -22,11 +22,11 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
 
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, ovms_kserve_serving_runtime, ovms_kserve_inference_service",
+    "unprivileged_model_namespace, mlserver_kserve_serving_runtime, mlserver_kserve_inference_service",
     [
         pytest.param(
             {"name": "test-raw-isvc-replicas"},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+            RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
             {
                 **BASE_ISVC_CONFIG,
                 "min-replicas": 2,
@@ -41,7 +41,7 @@ class TestRawISVCReplicasUpdates:
     """Validate scaling replica count up and down on a KServe raw deployment ISVC.
 
     Steps:
-        1. Deploy an OVMS inference service with 2 min-replicas and 4 max-replicas.
+        1. Deploy an MLServer inference service with 2 min-replicas and 4 max-replicas.
         2. Verify that 2 predictor pods are running after deployment.
         3. Run inference to confirm the model responds correctly with multiple replicas.
         4. Patch the ISVC to scale down to 1 replica and verify only 1 pod remains.
@@ -49,15 +49,15 @@ class TestRawISVCReplicasUpdates:
     """
 
     @pytest.mark.dependency(name="test_raw_increase_isvc_replicas")
-    def test_raw_increase_isvc_replicas(self, isvc_pods, ovms_kserve_inference_service):
+    def test_raw_increase_isvc_replicas(self, isvc_pods, mlserver_kserve_inference_service):
         """Test replicas increase"""
         assert len(isvc_pods) == 2, "Expected 2 inference pods, existing pods: {pod.name for pod in isvc_pods}"
 
     @pytest.mark.dependency(depends=["test_raw_increase_isvc_replicas"])
-    def test_raw_increase_isvc_replicas_inference(self, ovms_kserve_inference_service):
+    def test_raw_increase_isvc_replicas_inference(self, mlserver_kserve_inference_service):
         """Verify inference after replicas increase"""
         verify_inference_response(
-            inference_service=ovms_kserve_inference_service,
+            inference_service=mlserver_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
@@ -92,10 +92,10 @@ class TestRawISVCReplicasUpdates:
             LOGGER.error(f"Expected 1 pod to be running, but got {[_pod.name for _pod in pods]}")
 
     @pytest.mark.dependency(depends=["test_raw_decrease_isvc_replicas"])
-    def test_raw_decrease_isvc_replicas_inference(self, ovms_kserve_inference_service):
+    def test_raw_decrease_isvc_replicas_inference(self, mlserver_kserve_inference_service):
         """Verify inference after replicas decrease"""
         verify_inference_response(
-            inference_service=ovms_kserve_inference_service,
+            inference_service=mlserver_kserve_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,

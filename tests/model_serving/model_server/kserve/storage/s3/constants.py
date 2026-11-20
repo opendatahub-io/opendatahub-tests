@@ -1,23 +1,19 @@
-from utilities.constants import MinIo, ModelAndFormat
+from utilities.constants import MinIo, ModelFormat, ModelVersion
 
 MINIO_DATA_CONNECTION_CONFIG = {"bucket": MinIo.Buckets.EXAMPLE_MODELS}
-# Same bucket, but signals `unprivileged_minio_data_connection` to create a ConnectionsAPI-typed
-# Secret (`opendatahub.io/connection-type-protocol: s3`) instead of the plain static one.
-MINIO_CONNECTION_DATA_CONNECTION_CONFIG = {**MINIO_DATA_CONNECTION_CONFIG, "storage-strategy": "connection"}
+MINIO_CONNECTION_DATA_CONNECTION_CONFIG = {"bucket": MinIo.Buckets.EXAMPLE_MODELS, "storage-strategy": "connection"}
 MINIO_RUNTIME_CONFIG = {
-    "runtime-name": f"{MinIo.Metadata.NAME}-ovms",
-    "supported-model-formats": [{"name": ModelAndFormat.OPENVINO_IR, "version": "1"}],
-    "runtime_image": MinIo.PodConfig.KSERVE_MINIO_IMAGE,
+    "runtime-name": f"{MinIo.Metadata.NAME}-mlserver",
 }
+# The MinIO example-models bucket has no `model.onnx` under a kserve layout; the
+# modelmesh ONNX MNIST model is a single S3 object. KServe's storage initializer
+# downloads the exact object to `/mnt/models/mnist.onnx`, so point MLServer at the
+# file explicitly via `MLSERVER_MODEL_URI` (KServe would otherwise default it to
+# the `/mnt/models` directory and fail the well-known-filename lookup).
 MINIO_INFERENCE_CONFIG = {
     "name": "loan-model",
-    "model-format": ModelAndFormat.OPENVINO_IR,
-    "model-version": "1",
-    "model-dir": "serving/kserve/openvino-age-gender-recognition",
+    "model-format": ModelFormat.ONNX,
+    "model-version": ModelVersion.V1,
+    "model-dir": "serving/modelmesh/onnx/mnist.onnx",
+    "env-vars": {"MLSERVER_MODEL_URI": "/mnt/models/mnist.onnx"},
 }
-KSERVE_MINIO_INFERENCE_CONFIG = {
-    "model-dir": "serving/kserve/openvino-age-gender-recognition",
-    **MINIO_INFERENCE_CONFIG,
-}
-
-AGE_GENDER_INFERENCE_TYPE = "age-gender-recognition"

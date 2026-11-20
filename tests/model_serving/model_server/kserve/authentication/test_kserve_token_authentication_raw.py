@@ -5,14 +5,13 @@ from utilities.constants import Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-# The auth tests deploy an OVMS runtime, whose image is not built for arm64
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
 @pytest.mark.smoke
 @pytest.mark.rawdeployment
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, http_s3_ovms_raw_inference_service",
+    "unprivileged_model_namespace, http_s3_mlserver_raw_inference_service",
     [
         pytest.param(
             {"name": "test-kserve-raw-token-authentication"},
@@ -25,7 +24,7 @@ class TestKserveTokenAuthenticationRawForRest:
     """Validate KServe raw deployment token-based authentication for REST inference.
 
     Steps:
-        1. Deploy an OVMS model with authentication enabled in a raw deployment namespace.
+        1. Deploy an MLServer model with authentication enabled in a raw deployment namespace.
         2. Query the model with a valid token and verify a successful REST inference response.
         3. Disable authentication and verify the model is still queryable without a token.
         4. Re-enable authentication and verify the model requires a valid token again.
@@ -35,10 +34,12 @@ class TestKserveTokenAuthenticationRawForRest:
     @pytest.mark.smoke
     @pytest.mark.ocp_interop
     @pytest.mark.dependency(name="test_model_authentication_using_rest_raw")
-    def test_model_authentication_using_rest_raw(self, http_s3_ovms_raw_inference_service, http_raw_inference_token):
+    def test_model_authentication_using_rest_raw(
+        self, http_s3_mlserver_raw_inference_service, http_raw_inference_token
+    ):
         """Verify RAW Kserve model query with token using REST"""
         verify_inference_response(
-            inference_service=http_s3_ovms_raw_inference_service,
+            inference_service=http_s3_mlserver_raw_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
@@ -57,10 +58,12 @@ class TestKserveTokenAuthenticationRawForRest:
             use_default_query=True,
         )
 
-    def test_re_enabled_raw_model_authentication(self, http_s3_ovms_raw_inference_service, http_raw_inference_token):
+    def test_re_enabled_raw_model_authentication(
+        self, http_s3_mlserver_raw_inference_service, http_raw_inference_token
+    ):
         """Verify model query after authentication is re-enabled"""
         verify_inference_response(
-            inference_service=http_s3_ovms_raw_inference_service,
+            inference_service=http_s3_mlserver_raw_inference_service,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
@@ -69,15 +72,15 @@ class TestKserveTokenAuthenticationRawForRest:
         )
 
     @pytest.mark.parametrize(
-        "http_s3_ovms_raw_inference_service_2",
+        "http_s3_mlserver_raw_inference_service_2",
         [pytest.param({"model-dir": "test-dir"})],
         indirect=True,
     )
     @pytest.mark.dependency(name="test_cross_model_authentication_raw")
-    def test_cross_model_authentication_raw(self, http_s3_ovms_raw_inference_service_2, http_raw_inference_token):
+    def test_cross_model_authentication_raw(self, http_s3_mlserver_raw_inference_service_2, http_raw_inference_token):
         """Verify model with another model token"""
         verify_inference_response(
-            inference_service=http_s3_ovms_raw_inference_service_2,
+            inference_service=http_s3_mlserver_raw_inference_service_2,
             inference_config=ONNX_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,

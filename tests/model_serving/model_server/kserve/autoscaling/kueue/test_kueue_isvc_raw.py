@@ -14,7 +14,7 @@ from utilities.kueue_utils import check_gated_pods_and_running_pods
 pytestmark = [
     pytest.mark.rawdeployment,
     pytest.mark.tier1,
-    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
+    pytest.mark.usefixtures("valid_aws_config"),
     pytest.mark.kueue,
 ]
 
@@ -43,7 +43,7 @@ EXPECTED_UPDATED_REPLICAS = 2
     [
         pytest.param(
             {"name": NAMESPACE_NAME, "add-kueue-label": True},
-            RunTimeConfigs.ONNX_OPSET13_RUNTIME_CONFIG,
+            RunTimeConfigs.MLSERVER_RUNTIME_CONFIG,
             {
                 "name": "kueue-isvc-raw",
                 "min-replicas": MIN_REPLICAS,
@@ -51,7 +51,7 @@ EXPECTED_UPDATED_REPLICAS = 2
                 "labels": {Labels.Kueue.QUEUE_NAME: LOCAL_QUEUE_NAME},
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "model-dir": "test-dir",
-                "model-version": ModelVersion.OPSET13,
+                "model-version": ModelVersion.V1,
                 "resources": ISVC_RESOURCES,
             },
             {
