@@ -47,7 +47,6 @@ from utilities.infra import create_inference_token, create_ns
 from utilities.kueue_utils import (
     KUEUE_OPERATOR_NAMESPACE,
     ClusterQueue,
-    Kueue,
     LocalQueue,
     ResourceFlavor,
     create_cluster_queue,
@@ -59,6 +58,7 @@ from utilities.kueue_utils import (
     wait_for_kueue_crds_available,
     wait_for_queue_active,
 )
+from utilities.resources.kueue import Kueue
 
 LOGGER = structlog.get_logger(name=__name__)
 
