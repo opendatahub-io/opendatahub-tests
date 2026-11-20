@@ -1,3 +1,5 @@
+import hashlib
+import json
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -6,6 +8,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.resource import NamespacedResource, Resource
+from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError
@@ -30,6 +33,104 @@ class MutatingWebhookConfiguration(Resource):
     """MutatingWebhookConfiguration resource (admissionregistration.k8s.io/v1)."""
 
     api_group: str = Resource.ApiGroup.ADMISSIONREGISTRATION_K8S_IO
+
+
+class OAuthClient(Resource):
+    """OAuthClient resource (oauth.openshift.io/v1). Not shipped by ocp_resources.
+
+    Old-style API: grantMethod, redirectURIs and secret are top-level fields,
+    not under .spec.
+    """
+
+    api_group: str = "oauth.openshift.io"
+
+
+def normalized_json(obj: Any) -> str:
+    """Return a stable JSON representation of a resource object.
+
+    Args:
+        obj (Any): Resource object (dict, list or attribute wrapper).
+
+    Returns:
+        str: Sorted-keys JSON string; non-serializable objects use str().
+    """
+    return json.dumps(obj, sort_keys=True, default=str)
+
+
+def sha256_digest(value: str) -> str:
+    """Return the sha256 hex digest of a secret value.
+
+    The value itself is never logged or stored; only the digest is.
+
+    Args:
+        value (str): Secret value to digest.
+
+    Returns:
+        str: Hex sha256 digest.
+    """
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def secret_data_digests(secret: Secret) -> dict[str, str]:
+    """Return per-key sha256 digests of a Secret's data values.
+
+    Values are digested base64-encoded, exactly as stored; only digests are
+    returned, never raw values.
+
+    Args:
+        secret (Secret): Secret resource to digest.
+
+    Returns:
+        dict[str, str]: Mapping of data key to hex sha256 digest.
+    """
+    return {key: sha256_digest(value=value) for key, value in (secret.instance.data or {}).items()}
+
+
+# Transport-level TLS args: their values are unordered lists and are allowed
+# to evolve between versions (cipher suite and curve hardening);
+# authentication-relevant args must not change across an upgrade.
+TRANSPORT_TLS_ARGS: frozenset[str] = frozenset((
+    "--tls-cipher-suite",
+    "--tls-curve-preferences",
+))
+
+
+def normalized_arg(arg: str) -> str:
+    """Return an argument with unordered TLS list values sorted for stable comparison.
+
+    Args:
+        arg (str): Container argument, e.g. "--flag=value".
+
+    Returns:
+        str: Normalized argument.
+    """
+    flag, separator, value = arg.partition("=")
+    if separator and flag in TRANSPORT_TLS_ARGS and "," in value:
+        value = ",".join(sorted(value.split(",")))
+    return f"{flag}={value}" if separator else flag
+
+
+def arg_digest_entries(args: list[str]) -> list[dict[str, str]]:
+    """Return flag-name and digest entries for container args.
+
+    Argument values are hashed, never stored or logged in clear text, so an
+    arg that evolves to carry credentials cannot leak through the baseline
+    ConfigMap or failure messages. Unordered TLS list values are sorted before
+    hashing so benign reordering compares equal.
+
+    Args:
+        args (list[str]): Container args.
+
+    Returns:
+        list[dict[str, str]]: Entries with "flag" and "digest" keys.
+    """
+    return [
+        {
+            "flag": arg.partition("=")[0],
+            "digest": sha256_digest(value=normalized_arg(arg=arg)),
+        }
+        for arg in args
+    ]
 
 
 class HardwareProfile(NamespacedResource):
