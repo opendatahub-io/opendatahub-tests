@@ -1244,23 +1244,35 @@ class TestEvalHubReconcileE2E:
         except TimeoutExpiredError:
             pytest.fail("Error metric not recorded for failed reconciliation")
 
-        logs = fetch_trace_collector_logs(trace_collector_pod=otel_trace_collector_pod)
-        spans = parse_trace_spans_from_logs(logs=logs)
+        # The operator restarts with tracing enabled, so spans can arrive after the metric
+        try:
+            for logs in TimeoutSampler(
+                wait_timeout=TRACE_POLL_TIMEOUT,
+                sleep=TRACE_POLL_INTERVAL,
+                func=fetch_trace_collector_logs,
+                trace_collector_pod=otel_trace_collector_pod,
+            ):
+                spans = parse_trace_spans_from_logs(logs=logs)
 
-        # Check all spans for error status (any span type)
-        error_spans = [span for span in spans if "error" in span.get("status", "").lower()]
+                # Check all spans for error status (any span type)
+                error_spans = [span for span in spans if "error" in span.get("status", "").lower()]
 
-        # If no global error spans, check child spans of reconcile parents
-        if not error_spans:
-            parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
-            for parent_span in parent_spans:
-                parent_span_id = parent_span["span_id"]
-                children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
-                error_spans = [child_span for child_span in children if "error" in child_span.get("status", "").lower()]
+                # If no global error spans, check child spans of reconcile parents
+                if not error_spans:
+                    parent_spans = filter_spans_by_name(spans=spans, name=SPAN_RECONCILE)
+                    for parent_span in parent_spans:
+                        parent_span_id = parent_span["span_id"]
+                        children = get_child_spans(spans=spans, parent_span_id=parent_span_id)
+                        error_spans = [
+                            child_span for child_span in children if "error" in child_span.get("status", "").lower()
+                        ]
+                        if error_spans:
+                            break
+
                 if error_spans:
-                    break
-
-        assert error_spans, "No error-status trace spans found for failed reconciliation"
+                    return
+        except TimeoutExpiredError:
+            pytest.fail("No error-status trace spans found for failed reconciliation")
 
     def test_sre_diagnosis_workflow(
         self,
