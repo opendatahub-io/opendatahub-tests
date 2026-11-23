@@ -37,6 +37,7 @@ MAAS_AUTH_POLICY_FIXTURE_NAMES = (
     "maas_auth_policy_tinyllama_load_balanced",
     "maas_auth_policy_tinyllama_premium",
     "maas_auth_policy_tinyllama_free",
+    "maas_auth_policy_tinyllama_modelcar",
     "oidc_auth_policy_patched",
 )
 

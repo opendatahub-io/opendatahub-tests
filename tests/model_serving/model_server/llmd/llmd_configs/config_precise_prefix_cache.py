@@ -224,9 +224,12 @@ class PrecisePrefixCacheProducerConfig(TinyLlamaOciGpuConfig):
                 parameters:
                   modelName: {cls.model_name}
                   vllm:
-                    url: https://{cls.name}-kserve-workload-svc.{{{{ .ObjectMeta.Namespace }}}}.svc:8000
+                    url: https://{cls.name}-tokenizer.{{{{ .ObjectMeta.Namespace }}}}.svc:8000
               - type: endpoint-notification-source
               - type: metrics-data-source
+                parameters:
+                  scheme: https
+                  insecureSkipVerify: true
               - type: core-metrics-extractor
               - type: precise-prefix-cache-producer
                 parameters:
@@ -287,9 +290,6 @@ class PrecisePrefixCacheProducerConfig(TinyLlamaOciGpuConfig):
                 "--grpc-health-port",
                 "9003",
                 "--secure-serving",
-                "--model-server-metrics-scheme",
-                "https",
-                "--model-server-metrics-https-insecure-skip-verify",
                 "--cert-path",
                 "/var/run/kserve/tls",
                 "--config-text",

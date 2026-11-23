@@ -15,6 +15,7 @@ from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.resource import ResourceEditor
+from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
@@ -53,7 +54,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 MAAS_API_DEPLOYMENT_NAME = "maas-api"
 MAAS_HOST_PREFIX = "maas."
-TENANT_GATEWAY_SERVICE_SUFFIX = "-openshift-default"
 TENANT_GATEWAY_ROUTE_SUFFIX = "-route"
 GATEWAY_ACCESS_LABEL_PREFIX = "maas.opendatahub.io/gateway-access-"
 GATEWAY_HTTP_PORT = 80
@@ -102,9 +102,57 @@ def ingress_domain_from_maas_host(maas_host: str) -> str:
     return maas_host.removeprefix(MAAS_HOST_PREFIX)
 
 
-def tenant_gateway_service_name(gateway_name: str) -> str:
-    """Return the OpenShift Service fronting a tenant Gateway."""
-    return f"{gateway_name}{TENANT_GATEWAY_SERVICE_SUFFIX}"
+def _tenant_gateway_service_candidate(
+    client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str,
+) -> str | None:
+    """Name of the Service fronting a tenant Gateway, or None when none exists yet.
+
+    A Service owned by the Gateway wins, the composed
+    ``<gateway-name>-<gateway-class>`` name is accepted when it exists, and a
+    unique ``<gateway-name>-`` prefixed Service is the last resort.
+    """
+    services = list(Service.get(client=client, namespace=gateway_namespace))
+    for service in services:
+        for owner_reference in service.instance.metadata.ownerReferences or []:
+            if owner_reference.kind == "Gateway" and owner_reference.name == gateway_name:
+                return service.name
+    service_names = {service.name for service in services}
+    composed = f"{gateway_name}-{AIGATEWAY_GATEWAY_CLASS_NAME}"
+    if composed in service_names:
+        return composed
+    prefixed = sorted(name for name in service_names if name.startswith(f"{gateway_name}-"))
+    if not prefixed:
+        return None
+    assert len(prefixed) == 1, f"Ambiguous Services for Gateway '{gateway_name}': {prefixed}"
+    return prefixed[0]
+
+
+def tenant_gateway_service_name(
+    client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+) -> str:
+    """Return the name of the OpenShift Service fronting a tenant Gateway.
+
+    The Gateway API does not guarantee the controller has created the Service
+    by the time the Gateway reports Programmed, so candidates are polled for
+    a bounded window instead of asserting on a single lookup.
+    """
+    for candidate in TimeoutSampler(
+        wait_timeout=60,
+        sleep=2,
+        func=_tenant_gateway_service_candidate,
+        client=client,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+    ):
+        if candidate is not None:
+            return candidate
+    raise TimeoutExpiredError(
+        f"No Service fronting Gateway '{gateway_name}' appeared in namespace '{gateway_namespace}' within 60 seconds"
+    )
 
 
 def tenant_gateway_route_name(gateway_name: str) -> str:
@@ -305,6 +353,23 @@ def gateway_access_namespace_labels(gateway_name: str) -> dict[str, str]:
     return {gateway_access_label_key(gateway_name=gateway_name): "true"}
 
 
+def admit_namespace_to_gateway(admin_client: DynamicClient, namespace: str, gateway_name: str) -> None:
+    """Label a namespace as admitted by a tenant Gateway's listeners (no undo).
+
+    Port of the source suite's ``apply_gateway_access_label``: the tenant
+    namespace itself must carry the per-gateway access label for
+    tenant-own models' HTTPRoutes to be admitted by the tenant Gateway —
+    the listeners select on the per-gateway label, not the generic one
+    maas-controller stamps on tenant namespaces. The label is not removed
+    on exit: the namespace is torn down with its tenant.
+    """
+    namespace_obj = Namespace(client=admin_client, name=namespace, ensure_exists=True)
+    assert namespace_obj.exists, f"namespace '{namespace}' not found"
+    ResourceEditor(
+        patches={namespace_obj: {"metadata": {"labels": gateway_access_namespace_labels(gateway_name=gateway_name)}}}
+    ).update()
+
+
 def tenant_gateway_hostname(gateway_name: str, maas_host: str) -> str:
     """Return the external hostname routed to a tenant Gateway."""
     ingress_domain = ingress_domain_from_maas_host(maas_host=maas_host)
@@ -448,7 +513,13 @@ def tenant_gateway_external_route(
         name=tenant_gateway_route_name(gateway_name=gateway_name),
         namespace=gateway_namespace,
         host=route_host,
-        to={"kind": "Service", "name": tenant_gateway_service_name(gateway_name=gateway_name), "weight": 100},
+        to={
+            "kind": "Service",
+            "name": tenant_gateway_service_name(
+                client=admin_client, gateway_name=gateway_name, gateway_namespace=gateway_namespace
+            ),
+            "weight": 100,
+        },
         port={"targetPort": GATEWAY_HTTP_PORT},
         tls={
             "termination": "edge",

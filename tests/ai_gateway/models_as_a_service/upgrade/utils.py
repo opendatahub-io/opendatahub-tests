@@ -79,7 +79,8 @@ from tests.ai_gateway.models_as_a_service.utils import (
     get_httproute,
     get_maas_models_response,
     verify_maas_tenant_config_ready,
-    wait_for_httproute,
+    wait_for_external_model_http_route_name,
+    wait_for_external_model_httproute,
 )
 from utilities.constants import MAAS_GATEWAY_NAME, MAAS_GATEWAY_NAMESPACE, ApiGroups
 from utilities.general import generate_random_name
@@ -575,34 +576,14 @@ def verify_inference_external_model_exists(external_model: ExternalModel) -> Non
     )
 
 
-def get_inference_http_route_name(external_model: ExternalModel) -> str:
-    """Read status.httpRouteName from an inference ExternalModel when programmed."""
-    external_model_status = external_model.instance.status
-    if external_model_status is None:
-        return ""
-    if hasattr(external_model_status, "httpRouteName"):
-        return external_model_status.httpRouteName or ""
-    return ""
-
-
 def wait_for_inference_external_model_programmed(
     external_model: ExternalModel,
     timeout: int = 300,
 ) -> str:
     """Poll until the inference ExternalModel reports a programmed HTTPRoute name."""
-    for _sample in TimeoutSampler(
-        wait_timeout=timeout,
-        sleep=5,
-        func=get_inference_http_route_name,
+    return wait_for_external_model_http_route_name(
         external_model=external_model,
-    ):
-        http_route_name = get_inference_http_route_name(external_model=external_model)
-        if http_route_name:
-            return http_route_name
-
-    raise TimeoutError(
-        f"Inference ExternalModel '{external_model.namespace}/{external_model.name}' "
-        f"did not report status.httpRouteName within {timeout}s"
+        timeout=timeout,
     )
 
 
@@ -619,17 +600,12 @@ def wait_for_inference_external_model_httproute(
     timeout: int = 300,
 ) -> str:
     """Poll until the inference ExternalModel is programmed and its HTTPRoute exists."""
-    http_route_name = wait_for_inference_external_model_programmed(
-        external_model=external_model,
-        timeout=timeout,
-    )
-    wait_for_httproute(
+    return wait_for_external_model_httproute(
         client=client,
-        name=http_route_name,
+        external_model=external_model,
         namespace=namespace,
         timeout=timeout,
     )
-    return http_route_name
 
 
 def capture_legacy_migration_baseline(
