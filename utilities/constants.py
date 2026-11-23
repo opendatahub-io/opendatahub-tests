@@ -351,6 +351,9 @@ class ModelStorage:
         QWEN_7B_INSTRUCT: str = "s3://ods-ci-wisdom/Qwen2.5-7B-Instruct/"
         TINYLLAMA: str = "s3://ods-ci-wisdom/TinyLlama-1.1B-Chat-v1.0/"
         OPT_125M: str = "s3://ods-ci-wisdom/opt-125m/"
+        ODS_CI_WISDOM_BUCKET: str = "ods-ci-wisdom"
+        ODS_CI_WISDOM_REGION: str = "us-east-2"
+        ODS_CI_WISDOM_ENDPOINT: str = "https://s3.us-east-2.amazonaws.com"
 
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
