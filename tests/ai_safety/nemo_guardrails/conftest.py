@@ -43,10 +43,12 @@ def _resource_name(resource: Namespace | InferenceService) -> str:
 @pytest.fixture(scope="class")
 def nemo_api_token_secret(
     admin_client: DynamicClient,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
     model_namespace: Namespace,
 ) -> Generator[Secret, Any, Any]:
     """Create a secret containing API token for model access."""
-    with Secret(
+    secret = Secret(
         client=admin_client,
         name="nemo-api-token",
         namespace=model_namespace.name,
@@ -54,8 +56,17 @@ def nemo_api_token_secret(
             "token": "test-token-123",  # pragma: allowlist secret
         },
         type="Opaque",
-    ) as secret:
+    )
+
+    if pytestconfig.option.post_upgrade:
         yield secret
+        if teardown_resources:
+            secret.clean_up()
+    else:
+        secret.deploy()
+        yield secret
+        if teardown_resources:
+            secret.clean_up()
 
 
 # ===========================
@@ -64,6 +75,8 @@ def nemo_api_token_secret(
 @pytest.fixture(scope="class")
 def nemo_llm_judge_configmap(
     admin_client: DynamicClient,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
     model_namespace: Namespace,
     llm_d_inference_sim_isvc: InferenceService,
 ) -> Generator[ConfigMap, Any, Any]:
@@ -74,13 +87,22 @@ def nemo_llm_judge_configmap(
         model_name=LLMdInferenceSimConfig.model_name,
     )
 
-    with ConfigMap(
+    cm = ConfigMap(
         client=admin_client,
         name="nemo-llm-judge-config",
         namespace=model_namespace.name,
         data=config_data,
-    ) as cm:
+    )
+
+    if pytestconfig.option.post_upgrade:
         yield cm
+        if teardown_resources:
+            cm.clean_up()
+    else:
+        cm.deploy()
+        yield cm
+        if teardown_resources:
+            cm.clean_up()
 
 
 @pytest.fixture(scope="class")
@@ -166,12 +188,14 @@ def nemo_multi_config_b(
 @pytest.fixture(scope="class")
 def nemo_guardrails_llm_judge(
     admin_client: DynamicClient,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
     model_namespace: Namespace,
     nemo_llm_judge_configmap: ConfigMap,
     nemo_api_token_secret: Secret,
 ) -> Generator[NemoGuardrails, Any, Any]:
     """NeMo Guardrails CR with LLM-as-a-judge config and auth enabled."""
-    with NemoGuardrails(
+    nemo_cr = NemoGuardrails(
         client=admin_client,
         name="nemo-llm-judge",
         namespace=model_namespace.name,
@@ -197,8 +221,9 @@ def nemo_guardrails_llm_judge(
                 },
             }
         ],
-    ) as nemo_cr:
-        # Wait for the deployment to be ready
+    )
+
+    if pytestconfig.option.post_upgrade:
         deployment = Deployment(
             client=admin_client,
             name=nemo_cr.name,
@@ -207,6 +232,20 @@ def nemo_guardrails_llm_judge(
         )
         deployment.wait_for_replicas()
         yield nemo_cr
+        if teardown_resources:
+            nemo_cr.clean_up()
+    else:
+        nemo_cr.deploy()
+        deployment = Deployment(
+            client=admin_client,
+            name=nemo_cr.name,
+            namespace=nemo_cr.namespace,
+            wait_for_resource=True,
+        )
+        deployment.wait_for_replicas()
+        yield nemo_cr
+        if teardown_resources:
+            nemo_cr.clean_up()
 
 
 @pytest.fixture(scope="class")
@@ -578,14 +617,21 @@ def create_nemo_guardrails_route(
 @pytest.fixture(scope="class")
 def nemo_guardrails_llm_judge_route(
     admin_client: DynamicClient,
+    pytestconfig: pytest.Config,
+    teardown_resources: bool,
     model_namespace: Namespace,
     nemo_guardrails_llm_judge: NemoGuardrails,
 ) -> Generator[Route, Any, Any]:
-    yield create_nemo_guardrails_route(
+    route = create_nemo_guardrails_route(
         admin_client=admin_client,
         model_namespace=model_namespace,
         nemo_cr=nemo_guardrails_llm_judge,
     )
+
+    yield route
+
+    if teardown_resources:
+        route.clean_up()
 
 
 @pytest.fixture(scope="class")
