@@ -109,7 +109,7 @@ def users_persistent_volume_claim(
         namespace=unprivileged_model_namespace.name,
         label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
         accessmodes=PersistentVolumeClaim.AccessMode.RWO,
-        size="10Gi",
+        size=request.param.get("size", "10Gi"),
         volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
     ) as pvc:
         yield pvc
