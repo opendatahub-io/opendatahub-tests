@@ -798,7 +798,13 @@ def build_n1_notebook_dict(
     pvc_name: str,
     image: ResolvedWorkbenchImage,
 ) -> dict[str, Any]:
-    """Build a dashboard-faithful Notebook CR for workbench upgrade tests."""
+    """Build a dashboard-faithful Notebook CR for workbench upgrade tests.
+
+    The container CPU request is 500m, the same size the controller upgrade
+    notebooks use. These tests need the pod Ready, an HTTP check, and at most
+    one kernel or an Elyra listing. Memory stays at 1Gi. Limits stay at the
+    dashboard Small ceiling (2 CPU / 4Gi); the scheduler uses the request.
+    """
     probe_path = f"/notebook/{namespace}/{notebook_name}/api"
     probe_config = {
         "failureThreshold": 3,
@@ -879,7 +885,7 @@ def build_n1_notebook_dict(
                             "readinessProbe": probe_config,
                             "resources": {
                                 "limits": {"cpu": "2", "memory": "4Gi"},
-                                "requests": {"cpu": "1", "memory": "1Gi"},
+                                "requests": {"cpu": "500m", "memory": "1Gi"},
                             },
                             "volumeMounts": [
                                 {"mountPath": "/opt/app-root/src", "name": pvc_name},
