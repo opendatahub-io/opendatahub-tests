@@ -537,6 +537,30 @@ def usage_logs_rate_limit_subscription(
 
 
 @pytest.fixture(scope="class")
+def usage_logs_capture_subscription(
+    admin_client: DynamicClient,
+    maas_subscription_namespace: Namespace,
+    maas_model_tinyllama_modelcar: MaaSModelRef,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """Subscription with a unique organization for identity capture checks."""
+    suffix = generate_random_name()
+    with create_maas_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_namespace.name,
+        subscription_name=f"usage-capture-{suffix}",
+        owner_group_name="system:authenticated",
+        model_name=maas_model_tinyllama_modelcar.name,
+        model_namespace=maas_model_tinyllama_modelcar.namespace,
+        tokens_per_minute=10000,
+        token_metadata={"organizationId": f"e2e-org-{suffix}"},
+        teardown=True,
+        wait_for_resource=True,
+    ) as subscription:
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield subscription
+
+
+@pytest.fixture(scope="class")
 def usage_logs_rate_limited_api_key(
     request_session_http: requests.Session,
     base_url: str,

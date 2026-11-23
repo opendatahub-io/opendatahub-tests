@@ -37,8 +37,11 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     LOKI_GATEWAY_SERVICE_NAME,
     LOKI_GATEWAY_SERVICE_PORT,
     LOKI_QUERY_LOCAL_PORT,
+    LOKI_QUERY_RANGE_WINDOW,
     LOKI_QUERY_TENANT,
     LOKI_QUERY_URL,
+    LOKI_SERVICE_NAME_LABEL,
+    LOKI_SUBSCRIPTION_LABEL,
     OTEL_COLLECTOR_CRD_NAME,
     USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
     USAGE_LOGS_COLLECTOR_NAME,
@@ -46,6 +49,7 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     USAGE_LOGS_ENVOY_FILTER_NAME,
     USAGE_LOGS_PROPAGATION_SLEEP,
     USAGE_LOGS_PROPAGATION_TIMEOUT,
+    USAGE_LOGS_SERVICE_NAME,
     loki_usage_rate_limited_requests_query,
     loki_usage_requests_query,
     loki_usage_successful_requests_query,
@@ -370,6 +374,80 @@ def wait_for_usage_logging_resources_absent(
             return
 
 
+def usage_logs_envoy_filter_capture_state(admin_client: DynamicClient) -> tuple[bool, bool, str | None] | None:
+    """Read identity fields and collector target from the generated access-log EnvoyFilter.
+
+    Args:
+        admin_client: Client used to read the Gateway namespace.
+
+    Returns:
+        User and organization field presence plus the collector target, or None before the filter exists.
+    """
+    envoy_filter = EnvoyFilter(
+        client=admin_client,
+        name=USAGE_LOGS_ENVOY_FILTER_NAME,
+        namespace=MAAS_GATEWAY_NAMESPACE,
+    )
+    if not envoy_filter.exists:
+        return None
+
+    fields: set[str] = set()
+    collector_address: str | None = None
+    for patch in envoy_filter.instance.to_dict().get("spec", {}).get("configPatches", []):
+        if (
+            patch.get("applyTo") == "CLUSTER"
+            and patch.get("patch", {}).get("value", {}).get("name") == "otel_als_cluster"
+        ):
+            endpoints = patch.get("patch", {}).get("value", {}).get("load_assignment", {}).get("endpoints", [])
+            if endpoints:
+                lb_endpoints = endpoints[0].get("lb_endpoints", [])
+                if lb_endpoints:
+                    collector_address = (
+                        lb_endpoints[0].get("endpoint", {}).get("address", {}).get("socket_address", {}).get("address")
+                    )
+        if patch.get("applyTo") != "NETWORK_FILTER":
+            continue
+        typed_config = patch.get("patch", {}).get("value", {}).get("typed_config", {})
+        for access_log in typed_config.get("access_log", []):
+            fields.update(
+                attribute.get("key", "")
+                for attribute in access_log.get("typed_config", {}).get("attributes", {}).get("values", [])
+            )
+    return "user_id" in fields, "organization_id" in fields, collector_address
+
+
+def wait_for_usage_logs_envoy_filter_capture(
+    admin_client: DynamicClient,
+    capture_user: bool,
+    capture_organization: bool,
+    monitoring_namespace: str,
+) -> None:
+    """Wait until the generated EnvoyFilter reflects capture settings and uses the ODH collector.
+
+    Args:
+        admin_client: Client used to read the EnvoyFilter.
+        capture_user: Expected user identity capture state.
+        capture_organization: Expected organization identity capture state.
+        monitoring_namespace: Namespace containing the ODH usage-log collector.
+    """
+    expected = (
+        capture_user,
+        capture_organization,
+        f"data-science-usage-logs-collector-headless.{monitoring_namespace}.svc.cluster.local",
+    )
+    try:
+        for observed in TimeoutSampler(
+            wait_timeout=USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,
+            sleep=5,
+            func=usage_logs_envoy_filter_capture_state,
+            admin_client=admin_client,
+        ):
+            if observed == expected:
+                return
+    except TimeoutExpiredError:
+        pytest.fail(f"Usage-log EnvoyFilter did not reconcile identity capture settings {expected}")
+
+
 def validate_usage_logging_resources(
     admin_client: DynamicClient,
     maas_config: MaaSConfig,
@@ -596,6 +674,8 @@ def query_loki_instant(
         },
         params={"query": logql_query},
         timeout=60,
+        # The Loki endpoint is a local port-forward; never send its bearer token to a runner proxy.
+        proxies={"http": "", "https": "", "all": ""},
     )
     assert response.status_code == 200, (
         f"Loki query failed: HTTP {response.status_code} {response.text[:200]} (query={logql_query})"
@@ -611,6 +691,81 @@ def loki_query_value(query_response: dict[str, Any]) -> int:
     if not results:
         return 0
     return int(float(results[0]["value"][1]))
+
+
+def get_loki_usage_record_count(
+    http_session: requests.Session,
+    admin_token: str,
+    subscription: str,
+    key_name: str,
+    identity_field: str | None = None,
+    identity_value: str | None = None,
+) -> int:
+    """Count usage logs for one API key, optionally filtered by a captured identity.
+
+    Args:
+        http_session: Shared HTTP session used to query Loki.
+        admin_token: OpenShift token authorized for application logs.
+        subscription: Name of the test subscription.
+        key_name: Unique API key name for this capture state.
+        identity_field: Optional identity field to filter by.
+        identity_value: Exact expected value, or None to match any nonempty value.
+
+    Returns:
+        Number of matching usage logs in the query window.
+    """
+    selector = (
+        f'{{{LOKI_SERVICE_NAME_LABEL}="{USAGE_LOGS_SERVICE_NAME}", '
+        f'{LOKI_SUBSCRIPTION_LABEL}="{subscription}"}} | key_name="{key_name}"'
+    )
+    if identity_field is not None:
+        if identity_field not in {"user_id", "organization_id"}:
+            raise ValueError(f"Unsupported identity field: {identity_field}")
+        identity_match = f'="{identity_value}"' if identity_value is not None else '=~".+"'
+        selector += f" | {identity_field}{identity_match}"
+    query = f"sum(count_over_time({selector} [{LOKI_QUERY_RANGE_WINDOW}]))"
+    return loki_query_value(
+        query_response=query_loki_instant(
+            http_session=http_session,
+            admin_token=admin_token,
+            logql_query=query,
+        )
+    )
+
+
+def wait_for_loki_usage_record(
+    http_session: requests.Session,
+    admin_token: str,
+    subscription: str,
+    key_name: str,
+) -> int:
+    """Poll Loki until a usage record for the unique API key is queryable.
+
+    Args:
+        http_session: Shared HTTP session used to query Loki.
+        admin_token: OpenShift token authorized for application logs.
+        subscription: Name of the test subscription.
+        key_name: Unique API key name for this capture state.
+
+    Returns:
+        Number of matching usage logs when the first record appears.
+    """
+    try:
+        for count in TimeoutSampler(
+            wait_timeout=USAGE_LOGS_PROPAGATION_TIMEOUT,
+            sleep=USAGE_LOGS_PROPAGATION_SLEEP,
+            func=get_loki_usage_record_count,
+            sensitive_keys=frozenset({"admin_token"}),
+            http_session=http_session,
+            admin_token=admin_token,
+            subscription=subscription,
+            key_name=key_name,
+        ):
+            if count > 0:
+                return count
+    except TimeoutExpiredError:
+        pytest.fail(f"No MaaS usage log arrived for API key {key_name!r}")
+    raise AssertionError("Loki usage record polling ended unexpectedly")
 
 
 def get_loki_usage_totals(

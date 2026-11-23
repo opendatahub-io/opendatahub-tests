@@ -1,7 +1,6 @@
 import base64
 import urllib.request
 from collections.abc import Generator
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -300,7 +299,7 @@ def maas_user_credentials_both() -> dict[str, str]:
 @pytest.fixture(scope="session")
 def maas_htpasswd_files(
     maas_user_credentials_both: dict[str, str],
-) -> Generator[tuple[Path, str, Path, str]]:
+) -> Generator[tuple[str, str, str, str]]:
     """
     Create per-user htpasswd files for FREE and PREMIUM users and return
     their file paths + base64 contents.
@@ -1141,11 +1140,16 @@ def maas_gateway_api(
 
     if gw.exists:
         LOGGER.info(f"Reusing existing gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
-        # The installed gateway already has a TLS certificate for its own Service.
-        # Replacing its listener with the data-science gateway certificate breaks
-        # re-encrypt routes to MaaS API and makes them return HTTP 503.
-        gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
-        yield
+        with ResourceEditor(
+            patches={
+                gw: {
+                    "metadata": {"annotations": {"security.opendatahub.io/authorino-tls-bootstrap": "true"}},
+                    "spec": {"listeners": maas_gateway_listeners(hostname=maas_gateway_api_hostname)},
+                }
+            }
+        ):
+            gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
+            yield
     else:
         LOGGER.info(f"Creating gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
         with Gateway(
