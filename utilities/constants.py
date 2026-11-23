@@ -211,6 +211,7 @@ class DscComponents:
     MODELMESHSERVING: str = "modelmeshserving"
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
+    AIPIPELINES: str = "aipipelines"
     OGX: str = "ogx"
     KUEUE: str = "kueue"
     AIGATEWAY: str = "aigateway"
@@ -223,6 +224,7 @@ class DscComponents:
 
     class ConditionType:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
+        AI_PIPELINES_READY: str = "AIPipelinesReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         OGX_READY: str = "OGXReady"
@@ -233,6 +235,7 @@ class DscComponents:
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
+        AIPIPELINES: ConditionType.AI_PIPELINES_READY,
         OGX: ConditionType.OGX_READY,
         AIGATEWAY: ConditionType.AIGATEWAY_READY,
     }
