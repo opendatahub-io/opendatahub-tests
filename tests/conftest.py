@@ -606,7 +606,19 @@ def enabled_kserve_in_dsc(
 def cluster_monitoring_config(
     admin_client: DynamicClient,
 ) -> Generator[ConfigMap, Any, Any]:
-    data = {"config.yaml": yaml.dump({"enableUserWorkload": True})}
+    config_map = ConfigMap(
+        client=admin_client,
+        name="cluster-monitoring-config",
+        namespace="openshift-monitoring",
+    )
+
+    # Keep any settings already in config.yaml and only add enableUserWorkload
+    existing_config: dict[str, Any] = {}
+    if config_map.exists:
+        existing_data = config_map.instance.to_dict().get("data") or {}
+        existing_config = yaml.safe_load(existing_data.get("config.yaml") or "") or {}
+
+    data = {"config.yaml": yaml.dump({**existing_config, "enableUserWorkload": True})}
 
     with update_configmap_data(
         client=admin_client,
