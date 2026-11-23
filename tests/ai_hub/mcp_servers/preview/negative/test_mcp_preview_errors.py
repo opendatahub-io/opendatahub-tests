@@ -36,7 +36,7 @@ class TestMCPPreviewErrorHandling:
                 "  yamlCatalogPath: /nonexistent/path.yaml\n"
                 "includedServers:\n"
                 '  - "*"\n',
-                "/nonexistent/path.yaml: no such file or directory",
+                "/nonexistent/path.yaml: yamlCatalogPath is not inside a catalog source directory",
                 id="test_nonexistent_path",
             ),
             pytest.param(
