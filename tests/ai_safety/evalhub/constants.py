@@ -237,18 +237,37 @@ RESULT_REQUEUE: str = "requeue"
 RESULT_ERROR: str = "error"
 
 # Metric label values — bounded error_type enumeration
-ERROR_TYPE_DEPLOYMENT_CREATE_FAILED: str = "deployment_create_failed"
-ERROR_TYPE_SERVICE_UPDATE_FAILED: str = "service_update_failed"
-ERROR_TYPE_OTHER: str = "other"
-ERROR_TYPE_CONFLICT: str = "conflict"
+# Must match the operator's fixed enum in controllers/evalhub/OTEL_METRICS.md
+ERROR_TYPE_GET: str = "get"
+ERROR_TYPE_VALIDATION: str = "validation"
+ERROR_TYPE_PLACEMENT: str = "placement"
 ERROR_TYPE_RBAC: str = "rbac"
+ERROR_TYPE_CONFIGMAP: str = "configmap"
+ERROR_TYPE_DEPLOYMENT: str = "deployment"
+ERROR_TYPE_SERVICE: str = "service"
+ERROR_TYPE_ROUTE: str = "route"
+ERROR_TYPE_STATUS: str = "status"
+ERROR_TYPE_JOB_FAILURE: str = "job_failure"
+ERROR_TYPE_NOT_FOUND: str = "not_found"
+ERROR_TYPE_CONFLICT: str = "conflict"
+ERROR_TYPE_TIMEOUT: str = "timeout"
+ERROR_TYPE_OTHER: str = "other"
 
 EVALHUB_ERROR_TYPES: tuple[str, ...] = (
-    ERROR_TYPE_DEPLOYMENT_CREATE_FAILED,
-    ERROR_TYPE_SERVICE_UPDATE_FAILED,
-    ERROR_TYPE_OTHER,
-    ERROR_TYPE_CONFLICT,
+    ERROR_TYPE_GET,
+    ERROR_TYPE_VALIDATION,
+    ERROR_TYPE_PLACEMENT,
     ERROR_TYPE_RBAC,
+    ERROR_TYPE_CONFIGMAP,
+    ERROR_TYPE_DEPLOYMENT,
+    ERROR_TYPE_SERVICE,
+    ERROR_TYPE_ROUTE,
+    ERROR_TYPE_STATUS,
+    ERROR_TYPE_JOB_FAILURE,
+    ERROR_TYPE_NOT_FOUND,
+    ERROR_TYPE_CONFLICT,
+    ERROR_TYPE_TIMEOUT,
+    ERROR_TYPE_OTHER,
 )
 
 # Controller label value used in all metrics
