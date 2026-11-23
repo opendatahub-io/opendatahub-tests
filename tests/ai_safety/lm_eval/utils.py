@@ -1,8 +1,6 @@
 import re
 import time
-from pathlib import Path
 
-import pandas as pd
 import structlog
 from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
@@ -55,63 +53,6 @@ def get_lmevaljob_pod(client: DynamicClient, lmevaljob: LMEvalJob, timeout: int 
     lmeval_pod.wait(timeout=timeout)
 
     return lmeval_pod
-
-
-def get_lmeval_tasks(
-    min_downloads: float, max_downloads: float | None = None, excluded_datasets: list[str] | None = None
-) -> list[str]:
-    """
-    Gets the list of supported LM-Eval tasks that have above a certain number of minimum downloads on HuggingFace.
-
-    Args:
-        min_downloads: The minimum number of downloads or the percentile of downloads to use as a minimum
-        max_downloads: The maximum number of downloads or the percentile of downloads to use as a maximum
-        excluded_datasets: Dataset labels to drop before picking one task per dataset. Download
-            percentiles are still computed from the full, unfiltered CSV.
-
-    Returns:
-        List of LM-Eval task names
-    """
-    if min_downloads <= 0:
-        raise ValueError("Minimum downloads must be greater than 0")
-
-    lmeval_tasks = pd.read_csv(filepath_or_buffer=Path(__file__).parent / "data" / "new_task_list.csv")
-
-    if isinstance(min_downloads, float):
-        if not 0 <= min_downloads <= 1:
-            raise ValueError("Minimum downloads as a percentile must be between 0 and 1")
-        min_downloads = lmeval_tasks["HF dataset downloads"].quantile(q=min_downloads)
-
-    # filter for tasks that either exceed min_downloads OR exist on the OpenLLM leaderboard
-    # AND exist on LMEval AND do not include image data
-    filtered_df = lmeval_tasks[
-        lmeval_tasks["Exists"]
-        & (lmeval_tasks["Dataset"] != "MMMU/MMMU")
-        & ((lmeval_tasks["HF dataset downloads"] >= min_downloads) | (lmeval_tasks["OpenLLM leaderboard"]))
-    ]
-
-    # if max_downloads is provided, filter for tasks that have less than
-    # or equal to the maximum number of downloads
-    if max_downloads is not None:
-        if max_downloads <= 0 or max_downloads > max(lmeval_tasks["HF dataset downloads"]):
-            raise ValueError("Maximum downloads must be greater than 0 and less than the maximum number of downloads")
-        if isinstance(max_downloads, float):
-            if not 0 <= max_downloads <= 1:
-                raise ValueError("Maximum downloads as a percentile must be between 0 and 1")
-            max_downloads = lmeval_tasks["HF dataset downloads"].quantile(q=max_downloads)
-        filtered_df = filtered_df[filtered_df["HF dataset downloads"] <= max_downloads]
-
-    if excluded_datasets:
-        filtered_df = filtered_df[~filtered_df["Dataset"].isin(excluded_datasets)]
-
-    # group tasks by dataset and extract the task with shortest name in the group
-    unique_tasks = filtered_df.loc[filtered_df.groupby("Dataset")["Name"].apply(lambda x: x.str.len().idxmin())]
-
-    unique_tasks = unique_tasks["Name"].tolist()
-
-    LOGGER.info(f"Number of unique LMEval tasks with more than {min_downloads} downloads: {len(unique_tasks)}")
-
-    return unique_tasks
 
 
 def get_lmeval_pod_log_tail(pod: Pod, lines: int) -> str:

@@ -21,9 +21,10 @@ from tests.ai_safety.lm_eval.constants import (
     LMEVAL_SHORT_JOB_TIMEOUT,
     LMEVALJOB_COMPLETE_STATE,
     ODH_TRUSTED_CA_BUNDLE_CONFIGMAP,
+    TIER1_LMEVAL_TASKS,
+    TIER2_LMEVAL_TASKS,
 )
 from tests.ai_safety.lm_eval.utils import (
-    get_lmeval_tasks,
     validate_ca_bundle_injected,
     validate_ca_bundle_not_injected,
     validate_lmeval_job_pod_and_logs,
@@ -33,21 +34,6 @@ from tests.ai_safety.lm_eval.utils import (
 from tests.ai_safety.utils import validate_tai_component_images
 from utilities.constants import OCIRegistry, SeaweedFs
 from utilities.registry_utils import pull_manifest_from_oci_registry
-
-LMEVAL_TASKS_EXCLUDED_IN_CI: dict[str, str] = {
-    "realtoxicityprompts": "metric raises KeyError without PERSPECTIVE_API_KEY",
-    "storycloze_2018": "datasets.exceptions.ManualDownloadError: requires manually downloaded data",
-    "wmt14-en-fr": "download is 7.8 GB",
-    "wmt14-fr-en": "download is 7.8 GB",
-}
-
-TIER1_LMEVAL_TASKS: list[str] = sorted(set(get_lmeval_tasks(min_downloads=10000)) - set(LMEVAL_TASKS_EXCLUDED_IN_CI))
-
-TIER2_LMEVAL_TASKS: list[str] = sorted(
-    set(get_lmeval_tasks(min_downloads=0.70, max_downloads=10000))
-    - set(TIER1_LMEVAL_TASKS)
-    - set(LMEVAL_TASKS_EXCLUDED_IN_CI)
-)
 
 TIER2_CHUNK_SIZE: int = 10
 TIER2_LMEVAL_TASK_CHUNKS: list[list[str]] = [
