@@ -216,7 +216,7 @@ includedModels:
   - "*"
 """,
                 422,
-                "/nonexistent/path/catalog.yaml: no such file or directory",
+                "/nonexistent/path/catalog.yaml: yamlCatalogPath is not inside a catalog source directory",
                 id="nonexistent_yaml_path",
             ),
             pytest.param(
@@ -253,7 +253,7 @@ properties:
         Test that the catalog preview API returns appropriate error codes and messages for invalid configurations.
 
         This test validates that the preview endpoint correctly handles:
-        - Nonexistent YAML file paths (returns 422 with file path error)
+        - YAML file paths outside the catalog source directories (returns 422 with path not allowed error)
         - Invalid YAML syntax (returns 422 with parse error)
         - Unsupported catalog types (returns 422 with type error)
         """
