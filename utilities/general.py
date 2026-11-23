@@ -273,21 +273,6 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
         raise ValueError(f"Unknown deployment mode {deployment_mode}")
 
 
-def get_pod_images(pod: Pod) -> list[str]:
-    """Get all container images from a pod.
-
-    Args:
-        pod: The pod to get images from
-
-    Returns:
-        List of container image strings
-    """
-    containers = [container.image for container in pod.instance.spec.containers]
-    if pod.instance.spec.initContainers:
-        containers.extend([init.image for init in pod.instance.spec.initContainers])
-    return containers
-
-
 def validate_image_format(image: str) -> tuple[bool, str]:
     """Validate image format according to requirements.
 
@@ -349,6 +334,7 @@ def validate_container_images(
     pod: Pod,
     valid_image_refs: set[str],
     skip_patterns: list[str] | None = None,
+    skip_container_names: set[str] | None = None,
 ) -> list[str]:
     """
     Validate all container images in a pod against a set of valid image references.
@@ -356,16 +342,24 @@ def validate_container_images(
     Args:
         pod: The pod whose images to validate
         valid_image_refs: Set of valid image references to check against
-        skip_patterns: List of patterns to skip validation for (e.g. ["openshift-service-mesh"])
+        skip_patterns: List of image substrings to skip (for example an injected mesh image path)
+        skip_container_names: Container names to skip, such as an injected istio-proxy sidecar
 
     Returns:
         List of validation error messages, empty if all validations pass
     """
     validation_errors = []
     skip_patterns = skip_patterns or []
+    skip_container_names = skip_container_names or set()
+    containers = list(pod.instance.spec.containers)
+    if pod.instance.spec.initContainers:
+        containers.extend(pod.instance.spec.initContainers)
 
-    pod_images = get_pod_images(pod=pod)
-    for image in pod_images:
+    for container in containers:
+        if container.name in skip_container_names:
+            LOGGER.warning(f"Skipping container {container.name} on pod {pod.name}")
+            continue
+        image = container.image
         # Skip images matching any skip patterns
         if any(pattern in image for pattern in skip_patterns):
             LOGGER.warning(f"Skipping image {image} as it matches skip patterns")

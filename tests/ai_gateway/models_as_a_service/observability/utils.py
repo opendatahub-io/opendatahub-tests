@@ -1,7 +1,7 @@
 """Utilities for MaaS observability integration tests."""
 
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime
 from typing import Any
 
@@ -46,6 +46,9 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     USAGE_LOGS_ENVOY_FILTER_NAME,
     USAGE_LOGS_PROPAGATION_SLEEP,
     USAGE_LOGS_PROPAGATION_TIMEOUT,
+    USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
+    USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
+    USAGE_LOGS_TENANCY_PROXY_PORT,
     loki_usage_rate_limited_requests_query,
     loki_usage_requests_query,
     loki_usage_successful_requests_query,
@@ -579,6 +582,23 @@ def loki_query_port_forward(namespace: str) -> Generator[None]:
         to_port=LOKI_GATEWAY_SERVICE_PORT,
         waiting=20,
     ):
+        yield
+
+
+@contextmanager
+def usage_logs_admin_and_tenancy_proxy_port_forward(*, namespace: str) -> Generator[None]:
+    """Forward admin Loki gateway and usage-logs-tenancy-proxy for multitenancy LogQL E2E."""
+    with ExitStack() as stack:
+        stack.enter_context(cm=loki_query_port_forward(namespace=namespace))
+        stack.enter_context(
+            cm=portforward.forward(
+                pod_or_service=USAGE_LOGS_TENANCY_PROXY_DEPLOYMENT,
+                namespace=namespace,
+                from_port=USAGE_LOGS_TENANCY_PROXY_LOCAL_PORT,
+                to_port=USAGE_LOGS_TENANCY_PROXY_PORT,
+                waiting=20,
+            ),
+        )
         yield
 
 
