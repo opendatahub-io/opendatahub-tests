@@ -145,7 +145,10 @@ def create_ogx_server(
         name: Name for the OGXServer resource.
         namespace: Target namespace.
         config: OGXServerSpec configuration dict as returned by ``build_ogx_server_config``
-            (keys: distribution, workload, tls, etc.).
+            (keys: distribution, workload, tls, etc.) or
+            ``build_genai_playground_server_config`` (keys: distribution,
+            overrideConfig, workload, network). When ``overrideConfig`` is set,
+            the referenced ConfigMap must already exist in the namespace.
         teardown: Whether to delete the resource on exit.
     """
 
@@ -157,6 +160,7 @@ def create_ogx_server(
         workload=config.get("workload"),
         network=config.get("network"),
         tls=config.get("tls"),
+        override_config=config.get("overrideConfig"),
         wait_for_resource=True,
         teardown=teardown,
     ) as ogx_server:
