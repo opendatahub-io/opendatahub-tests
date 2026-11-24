@@ -126,7 +126,12 @@ class TestRegRegression:
         assert k8s_job.exists, f"Batch Job {job_name} must exist in {ns} after completion"
 
         # The API reports completion before the Job controller sets terminal conditions
-        k8s_job.wait_for_condition(condition="Complete", status="True", timeout=Timeout.TIMEOUT_5MIN)
+        k8s_job.wait_for_condition(
+            condition="Complete",
+            status="True",
+            timeout=Timeout.TIMEOUT_5MIN,
+            stop_condition="Failed",
+        )
 
         conditions = k8s_job.instance.status.conditions or []
         complete_conditions = [c for c in conditions if c.get("type") == "Complete" and c.get("status") == "True"]
