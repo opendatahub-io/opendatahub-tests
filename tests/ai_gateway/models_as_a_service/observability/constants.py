@@ -29,6 +29,9 @@ METRICS_POLL_TIMEOUT: int = 240
 LIMITADOR_SERVICE_MONITOR_WAIT_TIMEOUT: int = 120
 USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT: int = 120
 LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE: str = "1m"
+# The RHOAI observability stack may still be rolling out when this test starts; bound the wait
+# instead of failing on the first check.
+THANOS_QUERIER_ROUTE_WAIT_TIMEOUT: int = 120
 
 # --- Usage logs stored in the odh-observability LokiStack ---
 MONITORING_CRD_NAME: str = "monitorings.services.platform.opendatahub.io"

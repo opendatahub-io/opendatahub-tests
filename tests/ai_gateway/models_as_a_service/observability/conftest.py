@@ -13,7 +13,6 @@ from ocp_resources.maas_model_ref import MaaSModelRef
 from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
-from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_monitor import ServiceMonitor
@@ -33,12 +32,14 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     OTEL_COLLECTOR_CRD_NAME,
     RHOAI_THANOS_QUERIER_ROUTE_NAME,
     SERVICE_MONITOR_CRD_NAME,
+    THANOS_QUERIER_ROUTE_WAIT_TIMEOUT,
     USAGE_LOGS_RATE_LIMIT_TOKENS_PER_MINUTE,
     USAGE_LOGS_SEAWEEDFS_CREDENTIALS_SECRET_NAME,
     USAGE_LOGS_SEAWEEDFS_FILER_CONFIG_NAME,
     USAGE_LOGS_SEAWEEDFS_NAME,
 )
 from tests.ai_gateway.models_as_a_service.observability.utils import (
+    RbacScopedPrometheus,
     get_maas_config_default,
     limitador_is_deployed,
     maas_config_usage_logging_disabled,
@@ -46,10 +47,12 @@ from tests.ai_gateway.models_as_a_service.observability.utils import (
     monitoring_namespace_exists,
     opentelemetry_collector_crd_installed,
     patch_maas_config_limitador_scrape_interval,
+    resolve_kuadrant_namespace,
     resolve_maas_monitoring_namespace,
     usage_logs_monitoring_spec,
     wait_for_dsci_usage_logs_conditions,
     wait_for_limitador_service_monitor,
+    wait_for_thanos_route,
 )
 from tests.ai_gateway.models_as_a_service.utils import (
     build_maas_headers,
@@ -154,17 +157,18 @@ def maas_observability_prometheus(
     maas_monitoring_namespace: str,
 ) -> Prometheus:
     """Return a Prometheus client for the RHOAI observability Thanos querier route."""
-    thanos_route = Route(
-        client=admin_client,
-        name=RHOAI_THANOS_QUERIER_ROUTE_NAME,
-        namespace=maas_monitoring_namespace,
-    )
-    if not thanos_route.exists:
+    thanos_route = wait_for_thanos_route(admin_client=admin_client, namespace=maas_monitoring_namespace)
+    if thanos_route is None:
         pytest.fail(
-            f"Route '{RHOAI_THANOS_QUERIER_ROUTE_NAME}' not found in '{maas_monitoring_namespace}'; "
-            "RHOAI observability stack is not deployed"
+            f"Route '{RHOAI_THANOS_QUERIER_ROUTE_NAME}' not found in '{maas_monitoring_namespace}' "
+            f"after {THANOS_QUERIER_ROUTE_WAIT_TIMEOUT}s; RHOAI observability stack is not deployed"
         )
-    return Prometheus(
+    try:
+        rbac_namespace = resolve_kuadrant_namespace(admin_client=admin_client)
+    except AssertionError as exc:
+        pytest.fail(str(exc))
+    return RbacScopedPrometheus(
+        rbac_namespace=rbac_namespace,
         client=admin_client,
         namespace=maas_monitoring_namespace,
         resource_name=RHOAI_THANOS_QUERIER_ROUTE_NAME,
