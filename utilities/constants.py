@@ -146,6 +146,10 @@ class HTTPRequest:
 
 class AcceleratorType:
     NVIDIA: str = "nvidia"
+    # ARM64 hosts with NVIDIA GPUs (for example Grace Hopper). The accelerator and
+    # the CUDA runtime template are the same as NVIDIA; the separate type exists so
+    # ARM-only coverage can be selected independently in CI.
+    NVIDIA_ARM: str = "nvidia_arm"
     AMD: str = "amd"
     GAUDI: str = "gaudi"
     SPYRE: str = "spyre"
@@ -153,7 +157,17 @@ class AcceleratorType:
     CPU_x86: str = "cpu_x86"
     CPU_POWER: str = "cpu_power"
     CPU_Z: str = "cpu_z"
-    SUPPORTED_LISTS: list[str] = [NVIDIA, AMD, GAUDI, SPYRE, SPYRE_PPC64LE, CPU_x86, CPU_POWER, CPU_Z]  # noqa: RUF012
+    SUPPORTED_LISTS: list[str] = [  # noqa: RUF012
+        NVIDIA,
+        NVIDIA_ARM,
+        AMD,
+        GAUDI,
+        SPYRE,
+        SPYRE_PPC64LE,
+        CPU_x86,
+        CPU_POWER,
+        CPU_Z,
+    ]
 
 
 class ApiGroups:
@@ -197,6 +211,7 @@ class DscComponents:
     MODELMESHSERVING: str = "modelmeshserving"
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
+    AIPIPELINES: str = "aipipelines"
     OGX: str = "ogx"
     KUEUE: str = "kueue"
     AIGATEWAY: str = "aigateway"
@@ -209,6 +224,7 @@ class DscComponents:
 
     class ConditionType:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
+        AI_PIPELINES_READY: str = "AIPipelinesReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         OGX_READY: str = "OGXReady"
@@ -219,6 +235,7 @@ class DscComponents:
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
+        AIPIPELINES: ConditionType.AI_PIPELINES_READY,
         OGX: ConditionType.OGX_READY,
         AIGATEWAY: ConditionType.AIGATEWAY_READY,
     }
@@ -337,6 +354,9 @@ class ModelStorage:
         QWEN_7B_INSTRUCT: str = "s3://ods-ci-wisdom/Qwen2.5-7B-Instruct/"
         TINYLLAMA: str = "s3://ods-ci-wisdom/TinyLlama-1.1B-Chat-v1.0/"
         OPT_125M: str = "s3://ods-ci-wisdom/opt-125m/"
+        ODS_CI_WISDOM_BUCKET: str = "ods-ci-wisdom"
+        ODS_CI_WISDOM_REGION: str = "us-east-2"
+        ODS_CI_WISDOM_ENDPOINT: str = "https://s3.us-east-2.amazonaws.com"
 
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"

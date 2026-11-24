@@ -729,6 +729,32 @@ def get_llmd_vllm_pods(
     return pods
 
 
+def get_llmd_tokenizer_pods(
+    client: DynamicClient,
+    llmisvc: LLMInferenceService,
+) -> list[Pod]:
+    """Get the tokenizer pods for an LLMInferenceService.
+
+    Args:
+        client: Kubernetes dynamic client.
+        llmisvc: The LLMInferenceService to get pods for.
+
+    Returns:
+        List of tokenizer Pod objects.
+    """
+    return list(
+        Pod.get(
+            client=client,
+            namespace=llmisvc.namespace,
+            label_selector=(
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/part-of=llminferenceservice,"
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/name={llmisvc.name},"
+                f"{Pod.ApiGroup.APP_KUBERNETES_IO}/component=tokenizer"
+            ),
+        )
+    )
+
+
 def get_llmd_router_scheduler_pod(
     client: DynamicClient,
     llmisvc: LLMInferenceService,

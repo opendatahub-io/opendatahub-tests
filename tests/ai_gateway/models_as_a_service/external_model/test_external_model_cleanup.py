@@ -6,9 +6,10 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.namespace import Namespace
 
 from tests.ai_gateway.models_as_a_service.external_model.utils import (
+    EXTERNAL_MODEL_HTTPROUTE_TIMEOUT,
     EXTERNAL_PROVIDER_NAME,
     external_provider_ref,
-    wait_for_httproute,
+    wait_for_external_model_httproute,
     wait_for_httproute_deleted,
 )
 from utilities.resources.external_model import ExternalModel
@@ -36,6 +37,7 @@ class TestExternalModelCleanup:
     ) -> None:
         """Given a temporary ExternalModel with an HTTPRoute, when the CR is deleted, then the HTTPRoute is removed."""
         namespace = maas_unprivileged_model_namespace.name
+        http_route_name = ""
 
         with ExternalModel(
             client=admin_client,
@@ -44,19 +46,19 @@ class TestExternalModelCleanup:
             external_provider_refs=[external_provider_ref(provider_name=EXTERNAL_PROVIDER_NAME)],
             teardown=True,
             wait_for_resource=True,
-        ):
-            wait_for_httproute(
+        ) as external_model:
+            http_route_name = wait_for_external_model_httproute(
                 client=admin_client,
-                name=CLEANUP_TEST_MODEL_NAME,
+                external_model=external_model,
                 namespace=namespace,
-                timeout=60,
+                timeout=EXTERNAL_MODEL_HTTPROUTE_TIMEOUT,
             )
-            LOGGER.info(f"HTTPRoute '{CLEANUP_TEST_MODEL_NAME}' confirmed before deletion")
+            LOGGER.info(f"HTTPRoute '{http_route_name}' confirmed before deletion")
 
         wait_for_httproute_deleted(
             client=admin_client,
-            name=CLEANUP_TEST_MODEL_NAME,
+            name=http_route_name,
             namespace=namespace,
-            timeout=60,
+            timeout=EXTERNAL_MODEL_HTTPROUTE_TIMEOUT,
         )
-        LOGGER.info(f"HTTPRoute '{CLEANUP_TEST_MODEL_NAME}' correctly garbage-collected after ExternalModel deletion")
+        LOGGER.info(f"HTTPRoute '{http_route_name}' correctly garbage-collected after ExternalModel deletion")

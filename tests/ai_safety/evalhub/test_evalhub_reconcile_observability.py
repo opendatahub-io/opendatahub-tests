@@ -22,6 +22,8 @@ from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import (
     ERROR_TYPE_OTHER,
+    ERROR_TYPE_RBAC,
+    ERROR_TYPE_VALIDATION,
     EVALHUB_CONTROLLER_LABEL_VALUE,
     EVALHUB_ERROR_TYPES,
     EVALHUB_RECONCILE_CHILD_SPANS,
@@ -55,6 +57,7 @@ from tests.ai_safety.evalhub.utils import (
     get_child_spans,
     get_metric_samples,
     metric_value_sum,
+    metric_values_by_label,
     parse_prometheus_text,
     parse_trace_spans_from_logs,
 )
@@ -638,42 +641,81 @@ class TestEvalHubReconcileErrors:
             f"Operator restarted {manager_container.restartCount} times — possible panic"
         )
 
-    def test_multiple_failure_types_same_cycle(
+    def test_multiple_failure_types_from_distinct_crs(
         self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
         operator_metrics_route: Route,
         operator_metrics_token: str,
-        evalhub_failure_cr: EvalHub,
     ) -> None:
-        """Given multiple error types in the same reconciliation, all are recorded.
+        """Given two new CRs that fail in different ways, both error types increase.
 
-        TC-ERR-002: Verify that multiple failure types within the same
-        reconciliation cycle are all recorded in the errors metric.
+        TC-ERR-002: The errors metric is a cumulative counter with no CR name or
+        namespace label, so the per-error_type counts are recorded before the CRs
+        are created. The overlong-name CR must then increase the "rbac" count and
+        the missing-database CR must increase the "validation" count. Each CR
+        reconciles in its own cycle, so this does not test multiple failures
+        within the same cycle.
         """
-        try:
-            for raw_metrics in TimeoutSampler(
-                wait_timeout=METRICS_POLL_TIMEOUT,
-                sleep=METRICS_POLL_INTERVAL,
-                func=fetch_operator_metrics,
-                exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
-                operator_metrics_route_host=operator_metrics_route.host,
-                operator_metrics_token=operator_metrics_token,
-            ):
-                metrics = parse_prometheus_text(text=raw_metrics)
-                samples = get_metric_samples(
-                    metrics=metrics,
-                    metric_name=RECONCILE_ERRORS_METRIC,
-                    label_filter={METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE},
+        errors_label_filter = {METRIC_LABEL_CONTROLLER: EVALHUB_CONTROLLER_LABEL_VALUE}
+        errors_before = metric_values_by_label(
+            metrics=parse_prometheus_text(
+                text=fetch_operator_metrics(
+                    operator_metrics_route_host=operator_metrics_route.host,
+                    operator_metrics_token=operator_metrics_token,
                 )
-                if samples:
-                    error_types_seen = {
-                        sample["labels"].get(METRIC_LABEL_ERROR_TYPE)
-                        for sample in samples
-                        if float(sample["value"]) > 0
+            ),
+            metric_name=RECONCILE_ERRORS_METRIC,
+            label_name=METRIC_LABEL_ERROR_TYPE,
+            label_filter=errors_label_filter,
+        )
+        expected_error_types = {ERROR_TYPE_RBAC, ERROR_TYPE_VALIDATION}
+        increased_error_types: set[str] = set()
+        overlong_name = "evalhub-err-002-" + "x" * (65 - len("evalhub-err-002-"))
+
+        with (
+            EvalHub(
+                client=admin_client,
+                name=overlong_name,
+                namespace=model_namespace.name,
+                database={"type": "sqlite"},
+                wait_for_resource=True,
+            ),
+            EvalHub(
+                client=admin_client,
+                name="evalhub-err-002-no-database",
+                namespace=model_namespace.name,
+                wait_for_resource=True,
+            ),
+        ):
+            try:
+                for raw_metrics in TimeoutSampler(
+                    wait_timeout=METRICS_POLL_TIMEOUT,
+                    sleep=METRICS_POLL_INTERVAL,
+                    func=fetch_operator_metrics,
+                    exceptions_dict=_TRANSIENT_METRICS_EXCEPTIONS,
+                    operator_metrics_route_host=operator_metrics_route.host,
+                    operator_metrics_token=operator_metrics_token,
+                ):
+                    errors_after = metric_values_by_label(
+                        metrics=parse_prometheus_text(text=raw_metrics),
+                        metric_name=RECONCILE_ERRORS_METRIC,
+                        label_name=METRIC_LABEL_ERROR_TYPE,
+                        label_filter=errors_label_filter,
+                    )
+                    increased_error_types = {
+                        error_type
+                        for error_type in expected_error_types
+                        if errors_after.get(error_type, 0.0) > errors_before.get(error_type, 0.0)
                     }
-                    if len(error_types_seen) >= 2:
+                    if increased_error_types == expected_error_types:
                         return
-        except TimeoutExpiredError:
-            pytest.fail("No error types recorded in errors metric")
+            except TimeoutExpiredError:
+                pytest.fail(
+                    f"Expected {RECONCILE_ERRORS_METRIC} to increase for error_type values "
+                    f"{sorted(expected_error_types)}; increased: {sorted(increased_error_types)}, "
+                    f"before: {errors_before}"
+                )
 
     @pytest.mark.skip(reason="Requires a job-failure fixture that submits and awaits a failing evaluation job")
     def test_job_failure_produces_metric_and_trace(
@@ -1284,7 +1326,7 @@ class TestEvalHubReconcileE2E:
         assert job_failure_samples or failure_spans, "No job failure events detected in metrics or traces"
 
 
-# TC-UPG: Upgrade (3 tests)
+# TC-UPG: Upgrade (2 tests)
 
 
 @pytest.mark.parametrize(
@@ -1296,7 +1338,12 @@ class TestEvalHubReconcileE2E:
 @pytest.mark.tier1
 @pytest.mark.slow
 class TestEvalHubReconcileUpgrade:
-    """TC-UPG-001 through TC-UPG-003: Upgrade testing."""
+    """TC-UPG-001 and TC-UPG-002: Upgrade testing.
+
+    TC-UPG-003 (rollback removes new metrics) is not implemented: this suite only
+    distinguishes pre_upgrade/post_upgrade phases and has no rollback phase or
+    fixture, so the behavior cannot be verified here. Tracked under RHAI-241.
+    """
 
     @pytest.mark.post_upgrade
     def test_new_metrics_appear_after_upgrade(
@@ -1357,37 +1404,3 @@ class TestEvalHubReconcileUpgrade:
         assert "workqueue_depth" in raw_metrics or "controller_runtime_active_workers" in raw_metrics, (
             "Standard controller-runtime work metrics missing after upgrade"
         )
-
-    @pytest.mark.skip(
-        reason=(
-            "TC-UPG-003 requires observing state after an operator rollback, but this suite's "
-            "upgrade model only supports pre_upgrade/post_upgrade phases (no rollback phase or "
-            "fixture exists). As written (marked pre_upgrade), this test runs before the initial "
-            "upgrade and never exercises a real rollback, so it cannot validate the described "
-            "behavior. Skipping until rollback CI orchestration exists."
-        )
-    )
-    @pytest.mark.pre_upgrade
-    def test_rollback_removes_new_metrics(
-        self,
-        operator_metrics_route: Route,
-        admin_client: DynamicClient,
-        model_namespace: Namespace,
-        operator_metrics_token: str,
-    ) -> None:
-        """Given a rollback to the prior version, new metrics are cleanly removed.
-
-        TC-UPG-003: Verify rolling back the operator removes the new
-        evalhub_controller_* metrics without affecting existing ones.
-        """
-        raw_metrics = fetch_operator_metrics(
-            operator_metrics_route_host=operator_metrics_route.host,
-            operator_metrics_token=operator_metrics_token,
-        )
-        assert "controller_runtime_reconcile_total" in raw_metrics, (
-            "Base controller-runtime metrics should exist after rollback"
-        )
-        for metric_name in EVALHUB_RECONCILE_METRICS:
-            assert metric_name not in raw_metrics, (
-                f"Metric {metric_name} still present after rollback — expected clean removal"
-            )
