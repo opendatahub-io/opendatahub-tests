@@ -444,10 +444,9 @@ def wait_for_legacy_maas_networking_present(
         if resolved_name := networking_present():
             return resolved_name
 
-    candidates = legacy_external_model_resource_name_candidates(model_name=model_name)
     raise TimeoutError(
         f"Legacy networking for model '{model_name}' not fully present in '{namespace}' "
-        f"(checked {candidates}) within {timeout}s"
+        f"(ownership-based check for ExternalModel) within {timeout}s"
     )
 
 
