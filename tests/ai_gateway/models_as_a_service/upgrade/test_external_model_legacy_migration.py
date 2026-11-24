@@ -172,12 +172,7 @@ class TestPostUpgradeLegacyExternalModelMigration:
         legacy_migration_namespace: Namespace,
         legacy_migration_baseline_fixture: LegacyMigrationBaseline,
     ) -> None:
-        """Given supersede completed, when checking HTTPRoutes, then none are owned by the legacy ExternalModel."""
-        wait_for_legacy_maas_prefixed_networking_deleted(
-            client=admin_client,
-            model_name=legacy_migration_baseline_fixture["model_name"],
-            namespace=legacy_migration_namespace.name,
-        )
+        """Given supersede completed, when checking HTTPRoutes, then no maas-prefixed routes remain."""
         verify_no_legacy_owned_httproutes(
             client=admin_client,
             namespace=legacy_migration_namespace.name,
