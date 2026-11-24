@@ -19,6 +19,7 @@ class MaaSSubscription(NamespacedResource):
     def __init__(
         self,
         billing_metadata: dict[str, Any] | None = None,
+        guardrails: list[Any] | None = None,
         model_refs: list[Any] | None = None,
         owner: dict[str, Any] | None = None,
         priority: int | None = None,
@@ -27,6 +28,9 @@ class MaaSSubscription(NamespacedResource):
         r"""
         Args:
             billing_metadata (dict[str, Any]): BillingMetadata contains billing information
+
+            guardrails (list[Any]): Guardrails attaches AIGuardrail checks to every model in this
+              subscription.
 
             model_refs (list[Any]): ModelRefs defines which models are included with per-model token rate
               limits
@@ -40,6 +44,7 @@ class MaaSSubscription(NamespacedResource):
         super().__init__(**kwargs)
 
         self.billing_metadata = billing_metadata
+        self.guardrails = guardrails
         self.model_refs = model_refs
         self.owner = owner
         self.priority = priority
@@ -63,6 +68,9 @@ class MaaSSubscription(NamespacedResource):
 
             if self.billing_metadata is not None:
                 _spec["billingMetadata"] = self.billing_metadata
+
+            if self.guardrails is not None:
+                _spec["guardrails"] = self.guardrails
 
             if self.priority is not None:
                 _spec["priority"] = self.priority
