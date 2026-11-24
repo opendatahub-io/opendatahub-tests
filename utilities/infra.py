@@ -47,6 +47,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from ocp_resources.storage_class import StorageClass
 from ocp_resources.subscription import Subscription
 from ocp_resources.utils.constants import DEFAULT_CLUSTER_RETRY_EXCEPTIONS
 from ocp_utilities.exceptions import NodeNotReadyError, NodeUnschedulableError
@@ -907,6 +908,89 @@ def get_dsci_applications_namespace(client: DynamicClient) -> str:
             raise ValueError(f"DSCI applications namespace not found in {dsci_name}")
 
     raise MissingResourceError(f"DSCI {dsci_name} not found")
+
+
+def get_dsci_monitoring_namespace(client: DynamicClient) -> str:
+    """
+    Get the namespace where DSCI monitoring (odh-observability) resources are deployed.
+
+    The namespace is immutable in DSCI, so it is read, never written. Falls back to the
+    operator default (opendatahub for ODH, redhat-ods-monitoring for OpenShift AI).
+
+    Args:
+        client (DynamicClient): DynamicClient object
+
+    Returns:
+        str: Monitoring namespace name.
+
+    Raises:
+        MissingResourceError: If DSCI not found
+    """
+    dsci_name = py_config["dsci_name"]
+    dsci = DSCInitialization(client=client, name=dsci_name)
+
+    if not dsci.exists:
+        raise MissingResourceError(f"DSCI {dsci_name} not found")
+
+    if monitoring_namespace := dsci.instance.spec.get("monitoring", {}).get("namespace"):
+        return monitoring_namespace
+
+    return "opendatahub" if get_operator_distribution(client=client) == "Open Data Hub" else "redhat-ods-monitoring"
+
+
+def get_default_storage_class_name(client: DynamicClient) -> str:
+    """
+    Get the name of the cluster default StorageClass.
+
+    Args:
+        client (DynamicClient): DynamicClient object
+
+    Returns:
+        str: Name of the StorageClass annotated as the cluster default.
+
+    Raises:
+        ResourceNotReadyError: If no default StorageClass is found.
+    """
+    default_storage_classes = [
+        storage_class
+        for storage_class in StorageClass.get(client=client)
+        if (storage_class.instance.metadata.annotations or {}).get("storageclass.kubernetes.io/is-default-class")
+        == "true"
+    ]
+
+    if not default_storage_classes:
+        raise ResourceNotReadyError("No default StorageClass found; storageClassName cannot be discovered")
+
+    if len(default_storage_classes) > 1:
+        default_storage_class_names = [sc.name for sc in default_storage_classes]
+        LOGGER.warning(f"Multiple default StorageClasses found: {default_storage_class_names}")
+
+    return default_storage_classes[0].name
+
+
+@contextmanager
+def update_dsci_monitoring_spec(
+    dsci_resource: DSCInitialization,
+    monitoring_spec: dict[str, Any],
+    wait_timeout: int = Timeout.TIMEOUT_10MIN,
+) -> Generator[DSCInitialization, Any, Any]:
+    """
+    Temporarily patch DSCI spec.monitoring and restore the original spec on exit.
+
+    Args:
+        dsci_resource (DSCInitialization): DSCI resource to patch.
+        monitoring_spec (dict[str, Any]): Full spec.monitoring value to apply.
+        wait_timeout (int): Timeout for waiting DSCI Ready after patch and restore.
+
+    Yields:
+        DSCInitialization: The patched DSCI resource.
+    """
+    try:
+        with ResourceEditor(patches={dsci_resource: {"spec": {"monitoring": monitoring_spec}}}):
+            dsci_resource.wait_for_condition(condition="Ready", status="True", timeout=wait_timeout)
+            yield dsci_resource
+    finally:
+        dsci_resource.wait_for_condition(condition="Ready", status="True", timeout=wait_timeout)
 
 
 def get_operator_distribution(client: DynamicClient, dsc_name: str = "default-dsc") -> str:

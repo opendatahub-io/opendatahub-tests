@@ -80,6 +80,12 @@ class TestRhoaiMcpCapabilities:
             tools = await client.list_tools()
             assert tools, "Expected at least one tool"
             for tool in tools:
-                schema = tool.inputSchema
-                assert isinstance(schema, dict), f"Tool '{tool.name}' has no inputSchema"
-                assert "type" in schema, f"Tool '{tool.name}' inputSchema missing 'type': {schema}"
+                # MCP SDK v2 renamed inputSchema to input_schema. The declared
+                # fastmcp floor (3.4.0) is built on SDK v1 and exposes only the
+                # camelCase name, so prefer the v2 attribute and fall back to
+                # v1 — works on both client stacks.
+                schema = getattr(tool, "input_schema", None)
+                if schema is None:
+                    schema = tool.inputSchema
+                assert isinstance(schema, dict), f"Tool '{tool.name}' has no input schema"
+                assert "type" in schema, f"Tool '{tool.name}' input schema missing 'type': {schema}"

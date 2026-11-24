@@ -13,6 +13,7 @@ from tests.model_serving.model_server.llmd.utils import (
     assert_scheduler_routing,
     get_llmd_inference_pool_pods,
     get_llmd_router_scheduler_pod,
+    get_llmd_tokenizer_pods,
     get_llmd_vllm_pods,
     ns_from_file,
     send_prefix_cache_requests,
@@ -66,9 +67,10 @@ class TestSingleNodePrecisePrefixCache:
 
         1. Assert the router-scheduler pod exists and is Running.
         2. Assert exactly 2 workload pods are found.
-        3. Send identical chat completion requests with a shared long prompt.
-        4. Query Prometheus and assert all traffic was routed to a single pod with correct prefix cache hit counts.
-        5. Assert the scheduler made at least the expected number of routing decisions.
+        3. Assert that exactly one tokenizer pod exists.
+        4. Send identical chat completion requests with a shared long prompt.
+        5. Query Prometheus and assert all traffic was routed to a single pod with correct prefix cache hit counts.
+        6. Assert the scheduler made at least the expected number of routing decisions.
         """
         config = request.node.callspec.params["llmisvc"]
 
@@ -78,6 +80,8 @@ class TestSingleNodePrecisePrefixCache:
 
         vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
         inferencepool_pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
+        tokenizer_pods = get_llmd_tokenizer_pods(client=unprivileged_client, llmisvc=llmisvc)
+
         # Single-node: all vLLM pods are InferencePool members (no headless workers).
         assert len(vllm_pods) == config.expected_vllm_pod_count, (
             f"Expected {config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
@@ -86,6 +90,8 @@ class TestSingleNodePrecisePrefixCache:
             f"Expected {config.expected_inference_pool_pod_count} InferencePool pods, found {len(inferencepool_pods)}"
         )
         assert len(vllm_pods) == len(inferencepool_pods), "Single-node: all vLLM pods should be InferencePool members"
+
+        assert len(tokenizer_pods) == 1, f"Expected 1 tokenizer pod, found {len(tokenizer_pods)}"
 
         successful = send_prefix_cache_requests(
             llmisvc=llmisvc,

@@ -108,18 +108,37 @@ LOGGER = structlog.get_logger(name=__name__)
 
 @pytest.fixture(scope="class")
 def evalhub_cr(
+    request: pytest.FixtureRequest,
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[EvalHub, Any, Any]:
-    """Create an EvalHub custom resource and wait for it to be ready."""
-    with EvalHub(
+    """Create an EvalHub custom resource and wait for it to be ready.
+
+    Accepts an optional indirect param dict with an ``otel`` key to set spec.otel.
+    The CR is kept for --pre-upgrade runs unless --delete-pre-upgrade-resources is set.
+    """
+    evalhub = EvalHub(
         client=admin_client,
         name="evalhub",
         namespace=model_namespace.name,
-        database={"type": "sqlite"},
-        wait_for_resource=True,
-    ) as evalhub:
+    )
+
+    if pytestconfig.option.post_upgrade:
         yield evalhub
+        evalhub.clean_up()
+    else:
+        with EvalHub(
+            client=admin_client,
+            name="evalhub",
+            namespace=model_namespace.name,
+            database={"type": "sqlite"},
+            otel=getattr(request, "param", {}).get("otel"),
+            wait_for_resource=True,
+            teardown=teardown_resources,
+        ) as evalhub:
+            yield evalhub
 
 
 # Multi-tenancy EvalHub fixtures (shared by multitenancy/ and kueue/ tests)
@@ -133,9 +152,11 @@ def evalhub_mt_cr(
     """Create an EvalHub CR for multi-tenancy tests.
 
     Uses a distinct name ('evalhub-mt') to avoid RoleBinding name collisions
-    with the production EvalHub instance. The operator names tenant RoleBindings
-    as '{instance.Name}-{ns}-job-config-rb' and uses Get-or-Create (not Update),
-    so two instances named 'evalhub' would collide and the first one wins.
+    with the production EvalHub instance. The operator names some tenant RoleBindings
+    as '{instance.Name}-{tenant_ns}-job-config-rb' without the instance namespace, so
+    same-named instances in different namespaces that serve the same tenant namespace
+    overwrite each other's bindings there (the last one reconciled wins). Any other
+    EvalHub alive during these tests must use a different name.
 
     Note: This creates a Custom Resource (CR) instance, not the CustomResourceDefinition (CRD).
     The CRD must already be installed by the EvalHub/TrustyAI operator.
