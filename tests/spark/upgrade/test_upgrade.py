@@ -9,14 +9,18 @@ import json
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
 from timeout_sampler import TimeoutSampler
 
 from tests.spark.upgrade.utils import scheduled_running_execution, spark_running_execution
 from tests.spark.utils import (
+    SPARK_APPLICATION_EXECUTOR_POLICY_SUFFIX,
+    SPARK_CONNECT_EXECUTOR_POLICY_SUFFIX,
     run_spark_connect_query,
     scheduled_last_run_application,
+    verify_operand_network_policies,
     verify_spark_app_completed,
     verify_spark_connect_query,
     wait_for_spark_connect_ready,
@@ -68,6 +72,15 @@ def test_spark_job_in_progress_completes_post_upgrade(
     baseline = json.loads(control_data["baseline"])
     current = spark_running_execution(client=admin_client, spark_app=spark_continuity_application)
     assert current == baseline, f"Execution changed across upgrade: before={baseline}, after={current}"
+
+    # The upgraded operator (RHOAI 3.6+) reconciles its operand NetworkPolicies onto the running job.
+    verify_operand_network_policies(
+        client=admin_client,
+        namespace=spark_continuity_application.namespace,
+        workload_name=spark_continuity_application.name,
+        executor_policy_suffix=SPARK_APPLICATION_EXECUTOR_POLICY_SUFFIX,
+        owner_uid=spark_continuity_application.instance.metadata.uid,
+    )
 
     ResourceEditor(patches={spark_continuity_control: {"data": {"release": "true"}}}).update()
     verify_spark_app_completed(spark_app=spark_continuity_application)
@@ -121,6 +134,15 @@ def test_scheduled_spark_job_in_progress_completes_post_upgrade(
     current = {"run_name": child.name, **spark_running_execution(client=admin_client, spark_app=child)}
     assert current == baseline, f"Execution changed across upgrade: before={baseline}, after={current}"
 
+    # The scheduled child reconciles through the SparkApplication controller, so it gets the same policies.
+    verify_operand_network_policies(
+        client=admin_client,
+        namespace=child.namespace,
+        workload_name=child.name,
+        executor_policy_suffix=SPARK_APPLICATION_EXECUTOR_POLICY_SUFFIX,
+        owner_uid=child.instance.metadata.uid,
+    )
+
     ResourceEditor(patches={scheduled_spark_continuity_control: {"data": {"release": "true"}}}).update()
     verify_spark_app_completed(spark_app=child)
     assert child.instance.metadata.uid == baseline["uid"], "Scheduled run was replaced"
@@ -139,8 +161,13 @@ def test_spark_connect_serves_pre_upgrade(
     spark_connect_continuity_application: SparkConnect,
     spark_connect_client_pod: Pod,
     spark_connect_continuity_control: ConfigMap,
+    spark_connect_consumer_network_policy: NetworkPolicy | None,
 ) -> None:
-    """Given a running Spark Connect server, when a query succeeds, then record its server identity."""
+    """Given a running Spark Connect server, when a query succeeds, then record its server identity.
+
+    Also records whether the operator's operand NetworkPolicies are already active, so the post-upgrade
+    test knows whether the user-managed consumer policy should have survived or is newly created.
+    """
     service_name = wait_for_spark_connect_ready(client=admin_client, spark_connect=spark_connect_continuity_application)
     output = run_spark_connect_query(
         client_pod=spark_connect_client_pod,
@@ -154,7 +181,14 @@ def test_spark_connect_serves_pre_upgrade(
         name=spark_connect_continuity_application.instance.status.server.podName,
         namespace=spark_connect_continuity_application.namespace,
     )
-    baseline = {"pod_name": server_pod.name, "uid": server_pod.instance.metadata.uid}
+    baseline = {
+        "pod_name": server_pod.name,
+        "uid": server_pod.instance.metadata.uid,
+        "operand_policies_present": spark_connect_consumer_network_policy is not None,
+    }
+    if spark_connect_consumer_network_policy is not None:
+        # Record the policy identity so the post-upgrade test can prove it survived untouched.
+        baseline["consumer_policy_uid"] = spark_connect_consumer_network_policy.instance.metadata.uid
     ResourceEditor(patches={spark_connect_continuity_control: {"data": {"baseline": json.dumps(baseline)}}}).update()
 
 
@@ -164,11 +198,24 @@ def test_spark_connect_survives_post_upgrade(
     spark_connect_continuity_application: SparkConnect,
     spark_connect_client_pod: Pod,
     spark_connect_continuity_control: ConfigMap,
+    spark_connect_consumer_network_policy: NetworkPolicy | None,
 ) -> None:
-    """Given a pre-upgrade Spark Connect server, when the operator is upgraded, then it still serves queries."""
+    """Given a pre-upgrade Spark Connect server, when the operator is upgraded, then it still serves queries.
+
+    Also verifies the upgraded operator reconciled its operand NetworkPolicies onto the surviving server,
+    while the user-managed consumer policy (supplied by the fixture) keeps the client's gRPC access open.
+    """
     assert spark_connect_continuity_control.instance.data.get("baseline"), "The pre-upgrade baseline is missing"
     baseline = json.loads(spark_connect_continuity_control.instance.data["baseline"])
     service_name = wait_for_spark_connect_ready(client=admin_client, spark_connect=spark_connect_continuity_application)
+
+    verify_operand_network_policies(
+        client=admin_client,
+        namespace=spark_connect_continuity_application.namespace,
+        workload_name=spark_connect_continuity_application.name,
+        executor_policy_suffix=SPARK_CONNECT_EXECUTOR_POLICY_SUFFIX,
+        owner_uid=spark_connect_continuity_application.instance.metadata.uid,
+    )
 
     server_pod = Pod(
         client=admin_client,

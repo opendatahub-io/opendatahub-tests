@@ -1,3 +1,4 @@
+import json
 import math
 import re
 from datetime import UTC, datetime
@@ -9,6 +10,7 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.ai_hub.constants import (
@@ -193,8 +195,8 @@ class TestModelCatalogDBNetworkPolicy:
     ) -> None:
         """Given the model-catalog-https-route NetworkPolicy
         When inspecting its pod selector and ingress rules
-        Then it applies only to the model-catalog pods and allows only the OpenShift router/gateway namespaces,
-        on the kube-rbac-proxy port only
+        Then it applies only to the model-catalog pods and allows only the OpenShift router/gateway namespaces
+        and Model Registry UI BFF pods in the applications namespace, on the kube-rbac-proxy port only
         """
         pod_selector = get_network_policy_pod_selector_labels(network_policy=model_catalog_network_policy)
         pod_labels = Deployment(
@@ -209,9 +211,22 @@ class TestModelCatalogDBNetworkPolicy:
         )
         ingress_rules = get_network_policy_ingress_rules(network_policy=model_catalog_network_policy)
         assert len(ingress_rules) == 1, f"NetworkPolicy should have exactly one ingress rule: {ingress_rules}"
-        assert ingress_rules[0]["from"] == [ROUTER_INGRESS_PEER], (
-            "NetworkPolicy should allow traffic only from the OpenShift router/gateway namespaces, "
-            f"not the shared applications namespace: {ingress_rules[0]['from']}"
+        expected_peers = sorted(
+            [
+                ROUTER_INGRESS_PEER,
+                {
+                    "namespaceSelector": {
+                        "matchLabels": {"kubernetes.io/metadata.name": py_config["applications_namespace"]}
+                    },
+                    "podSelector": {"matchLabels": {"deployment": "model-registry-ui"}},
+                },
+            ],
+            key=lambda peer: json.dumps(peer, sort_keys=True),
+        )
+        assert sorted(ingress_rules[0]["from"], key=lambda peer: json.dumps(peer, sort_keys=True)) == expected_peers, (
+            "NetworkPolicy should allow traffic only from the OpenShift router/gateway namespaces and "
+            "Model Registry UI BFF pods in the applications namespace, "
+            f"not the whole applications namespace: {ingress_rules[0]['from']}"
         )
         assert ingress_rules[0]["ports"] == [{"port": KUBE_RBAC_PROXY_PORT, "protocol": "TCP"}], (
             f"NetworkPolicy should allow only TCP {KUBE_RBAC_PROXY_PORT}: {ingress_rules[0]['ports']}"

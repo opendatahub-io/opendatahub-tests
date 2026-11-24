@@ -16,13 +16,14 @@ from ocp_resources.secret import Secret
 from tests.ai_gateway.models_as_a_service.external_model.utils import (
     EXTERNAL_AUTH_POLICY_NAME,
     EXTERNAL_ENDPOINT,
+    EXTERNAL_MODEL_HTTPROUTE_TIMEOUT,
     EXTERNAL_MODEL_NAME,
     EXTERNAL_PROVIDER_NAME,
     EXTERNAL_SECRET_NAME,
     EXTERNAL_SUBSCRIPTION_NAME,
     INFERENCE_EXTERNAL_MODEL_API_GROUP,
     external_provider_ref,
-    wait_for_httproute,
+    wait_for_external_model_httproute,
 )
 from tests.ai_gateway.models_as_a_service.utils import create_api_key, revoke_api_key
 from utilities.general import generate_random_name
@@ -90,11 +91,11 @@ def external_model_cr(
         wait_for_resource=True,
     ) as external_model:
         external_model.wait_for_condition(condition="Ready", status="True", timeout=300)
-        wait_for_httproute(
+        wait_for_external_model_httproute(
             client=admin_client,
-            name=external_model.name,
+            external_model=external_model,
             namespace=maas_unprivileged_model_namespace.name,
-            timeout=120,
+            timeout=EXTERNAL_MODEL_HTTPROUTE_TIMEOUT,
         )
         yield external_model
 

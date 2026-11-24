@@ -3,7 +3,8 @@
 The Gemini tests reuse the standard OgxServer stack from ``tests/ogx/conftest.py``
 (namespace, secret, server, route, client). They enable the provider by
 parametrizing the ``ogx_server`` fixture indirectly with ``{"enable_gemini": True}``,
-which injects ``GEMINI_API_KEY`` into the pod (see ``build_ogx_server_config``).
+which sets ``ENABLE_GEMINI`` (the switch that activates the provider) and injects
+``GEMINI_API_KEY`` (which authenticates it) into the pod (see ``build_ogx_server_config``).
 
 The fixtures here add Gemini-specific concerns on top of that stack: failing the
 suite when no API key is configured, resolving Gemini model ids from the running
@@ -31,8 +32,8 @@ LOGGER = structlog.get_logger(name=__name__)
 def fail_if_no_gemini_api_key() -> None:
     """Fail the entire Gemini suite when no Gemini API key is configured.
 
-    Every remote::gemini test requires a real key so the provider activates and
-    can authenticate to the Gemini API. If no key is configured in the environment,
+    Every remote::gemini test requires a real key so the provider can
+    authenticate to the Gemini API. If no key is configured in the environment,
     the tests fail.
     """
     if not GEMINI_API_KEY:

@@ -75,7 +75,7 @@ class EstimatedPrefixCacheConfig(TinyLlamaS3GpuConfig):
                                 "--pool-namespace",
                                 "{{ .ObjectMeta.Namespace }}",
                                 "--pool-group",
-                                "inference.networking.x-k8s.io",
+                                "inference.networking.k8s.io",
                                 "--zap-encoder",
                                 "json",
                                 "--grpc-port",

@@ -8,6 +8,7 @@ import structlog
 from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
+from ocp_resources.cluster_operator import ClusterOperator
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -272,21 +273,6 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
         raise ValueError(f"Unknown deployment mode {deployment_mode}")
 
 
-def get_pod_images(pod: Pod) -> list[str]:
-    """Get all container images from a pod.
-
-    Args:
-        pod: The pod to get images from
-
-    Returns:
-        List of container image strings
-    """
-    containers = [container.image for container in pod.instance.spec.containers]
-    if pod.instance.spec.initContainers:
-        containers.extend([init.image for init in pod.instance.spec.initContainers])
-    return containers
-
-
 def validate_image_format(image: str) -> tuple[bool, str]:
     """Validate image format according to requirements.
 
@@ -348,6 +334,7 @@ def validate_container_images(
     pod: Pod,
     valid_image_refs: set[str],
     skip_patterns: list[str] | None = None,
+    skip_container_names: set[str] | None = None,
 ) -> list[str]:
     """
     Validate all container images in a pod against a set of valid image references.
@@ -355,16 +342,24 @@ def validate_container_images(
     Args:
         pod: The pod whose images to validate
         valid_image_refs: Set of valid image references to check against
-        skip_patterns: List of patterns to skip validation for (e.g. ["openshift-service-mesh"])
+        skip_patterns: List of image substrings to skip (for example an injected mesh image path)
+        skip_container_names: Container names to skip, such as an injected istio-proxy sidecar
 
     Returns:
         List of validation error messages, empty if all validations pass
     """
     validation_errors = []
     skip_patterns = skip_patterns or []
+    skip_container_names = skip_container_names or set()
+    containers = list(pod.instance.spec.containers)
+    if pod.instance.spec.initContainers:
+        containers.extend(pod.instance.spec.initContainers)
 
-    pod_images = get_pod_images(pod=pod)
-    for image in pod_images:
+    for container in containers:
+        if container.name in skip_container_names:
+            LOGGER.warning(f"Skipping container {container.name} on pod {pod.name}")
+            continue
+        image = container.image
         # Skip images matching any skip patterns
         if any(pattern in image for pattern in skip_patterns):
             LOGGER.warning(f"Skipping image {image} as it matches skip patterns")
@@ -555,26 +550,76 @@ def wait_for_pods_running(
 
 
 def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
+    """Wait for the oauth-openshift deployment to pick up an OAuth edit.
+
+    The authentication operator re-renders the deployment some time after the
+    edit, so a settled deployment may still run the old configuration: first
+    wait for the rollout to start (generation bump or the transient
+    ReplicaSetUpdated reason), then for the deployment to settle again. A
+    rollout that never starts raises TimeoutExpiredError.
+
+    A finished deployment rollout does not mean authentication works again
+    yet: the kube-apiserver authenticators keep failing TokenReview for a
+    short window after the oauth-openshift pods are updated (until the
+    authentication ClusterOperator reports Progressing=False and
+    Available=True again). Wait for that too, so callers do not race the
+    reconvergence with requests whose auth depends on TokenReview.
+    """
     deployment_obj = Deployment(
         client=client, name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True
     )
 
-    _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
+    def _progressing_reason() -> str | None:
+        for condition in deployment_obj.instance.status.conditions or []:
+            if condition.type == "Progressing":
+                return condition.reason
+        return None
 
-    def _wait_sampler(_reason: str) -> None:
-        sampler = TimeoutSampler(
-            wait_timeout=240,
-            sleep=5,
-            func=lambda: deployment_obj.instance.status.conditions,
+    def _settled() -> bool:
+        instance = deployment_obj.instance
+        status = instance.status
+        return (
+            status is not None
+            and status.observedGeneration == instance.metadata.generation
+            and _progressing_reason() == "NewReplicaSetAvailable"
         )
-        for sample in sampler:
-            for _spl in sample:
-                if _spl.type == "Progressing" and _spl.reason == _reason:
-                    return
 
-    for reason in ("ReplicaSetUpdated", "NewReplicaSetAvailable"):
-        LOGGER.info(f"{_log} {reason}")
-        _wait_sampler(_reason=reason)
+    entry_generation = deployment_obj.instance.metadata.generation
+
+    def _rollout_started() -> bool:
+        return deployment_obj.instance.metadata.generation > entry_generation or _progressing_reason() == (
+            "ReplicaSetUpdated"
+        )
+
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_rollout_started)
+    for sample in sampler:
+        if sample:
+            break
+
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_settled)
+    for sample in sampler:
+        if sample:
+            break
+
+    _wait_for_authentication_clusteroperator(client=client)
+
+
+def _wait_for_authentication_clusteroperator(client: DynamicClient) -> None:
+    """Wait until the authentication ClusterOperator is Available and not Progressing."""
+
+    def _auth_reconciled() -> bool:
+        conditions = {
+            condition.get("type"): condition.get("status")
+            for condition in cluster_operator.instance.status.conditions or []
+        }
+        return conditions.get("Progressing") == "False" and conditions.get("Available") == "True"
+
+    cluster_operator = ClusterOperator(client=client, name="authentication", ensure_exists=True)
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_auth_reconciled)
+    for sample in sampler:
+        if sample:
+            LOGGER.info("authentication ClusterOperator reconciled (Available=True, Progressing=False)")
+            return
 
 
 def collect_pod_information(pod: Pod) -> None:
