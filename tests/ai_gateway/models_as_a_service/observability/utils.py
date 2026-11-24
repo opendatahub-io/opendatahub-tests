@@ -374,14 +374,14 @@ def wait_for_usage_logging_resources_absent(
             return
 
 
-def usage_logs_envoy_filter_capture_state(admin_client: DynamicClient) -> tuple[bool, bool, str | None] | None:
-    """Read identity fields and collector target from the generated access-log EnvoyFilter.
+def usage_logs_envoy_filter_capture_state(admin_client: DynamicClient) -> tuple[bool, bool] | None:
+    """Read identity fields from the generated access-log EnvoyFilter.
 
     Args:
         admin_client: Client used to read the Gateway namespace.
 
     Returns:
-        User and organization field presence plus the collector target, or None before the filter exists.
+        User and organization field presence, or None before the filter exists.
     """
     envoy_filter = EnvoyFilter(
         client=admin_client,
@@ -392,19 +392,7 @@ def usage_logs_envoy_filter_capture_state(admin_client: DynamicClient) -> tuple[
         return None
 
     fields: set[str] = set()
-    collector_address: str | None = None
     for patch in envoy_filter.instance.to_dict().get("spec", {}).get("configPatches", []):
-        if (
-            patch.get("applyTo") == "CLUSTER"
-            and patch.get("patch", {}).get("value", {}).get("name") == "otel_als_cluster"
-        ):
-            endpoints = patch.get("patch", {}).get("value", {}).get("load_assignment", {}).get("endpoints", [])
-            if endpoints:
-                lb_endpoints = endpoints[0].get("lb_endpoints", [])
-                if lb_endpoints:
-                    collector_address = (
-                        lb_endpoints[0].get("endpoint", {}).get("address", {}).get("socket_address", {}).get("address")
-                    )
         if patch.get("applyTo") != "NETWORK_FILTER":
             continue
         typed_config = patch.get("patch", {}).get("value", {}).get("typed_config", {})
@@ -413,28 +401,22 @@ def usage_logs_envoy_filter_capture_state(admin_client: DynamicClient) -> tuple[
                 attribute.get("key", "")
                 for attribute in access_log.get("typed_config", {}).get("attributes", {}).get("values", [])
             )
-    return "user_id" in fields, "organization_id" in fields, collector_address
+    return "user_id" in fields, "organization_id" in fields
 
 
 def wait_for_usage_logs_envoy_filter_capture(
     admin_client: DynamicClient,
     capture_user: bool,
     capture_organization: bool,
-    monitoring_namespace: str,
 ) -> None:
-    """Wait until the generated EnvoyFilter reflects capture settings and uses the ODH collector.
+    """Wait until the generated EnvoyFilter reflects capture settings.
 
     Args:
         admin_client: Client used to read the EnvoyFilter.
         capture_user: Expected user identity capture state.
         capture_organization: Expected organization identity capture state.
-        monitoring_namespace: Namespace containing the ODH usage-log collector.
     """
-    expected = (
-        capture_user,
-        capture_organization,
-        f"data-science-usage-logs-collector-headless.{monitoring_namespace}.svc.cluster.local",
-    )
+    expected = (capture_user, capture_organization)
     try:
         for observed in TimeoutSampler(
             wait_timeout=USAGE_LOGGING_RESOURCES_WAIT_TIMEOUT,

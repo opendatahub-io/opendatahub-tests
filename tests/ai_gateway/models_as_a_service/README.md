@@ -134,17 +134,15 @@ RHOAIENG-99402 checks that `MaasTenantConfig.spec.telemetry.logs.captureUser` an
 `captureOrganization` control the `user_id` and `organization_id` fields in Loki
 usage logs after real MaaS inference. It tests all four toggle combinations and
 restores the prior tenant configuration. It waits for the generated EnvoyFilter to
-reflect each setting and target the ODH collector, then queries Loki for a unique
-API key and the expected identity fields. The test creates and cleans up its
-model, subscription, auth policy, and API keys.
+reflect each setting, then queries Loki for a unique API key and the expected
+identity fields. The test creates and cleans up its model, subscription, auth
+policy, and API keys.
 
 Run it on a dedicated test cluster with MaaS, a default StorageClass, and the Loki
 and OpenTelemetry operators installed. It temporarily changes identity capture on
 the default tenant. The shared usage-logs fixtures provision SeaweedFS S3 storage,
 configure the DSCI usage-log pipeline, wait for Loki and the collector, and restore the
-previous monitoring configuration on teardown. The test disables MaaS
-`Config/default.spec.usageLogging` and restores its previous value afterward,
-so the EnvoyFilter sends logs to the ODH collector queried by this test.
+previous monitoring configuration on teardown.
 
 ```bash
 uv run pytest -v -s tests/ai_gateway/models_as_a_service/observability/test_maas_usage_logs.py::TestMaaSUsageLogsInference::test_identity_capture_follows_tenant_settings

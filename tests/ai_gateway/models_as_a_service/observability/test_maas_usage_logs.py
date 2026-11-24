@@ -266,7 +266,6 @@ class TestMaaSUsageLogsInference:
                         admin_client=admin_client,
                         capture_user=capture_user,
                         capture_organization=capture_organization,
-                        monitoring_namespace=dsci_monitoring_namespace,
                     )
                     key_name = generate_random_name(prefix="usage-capture-key")
                     _, key = create_api_key(
