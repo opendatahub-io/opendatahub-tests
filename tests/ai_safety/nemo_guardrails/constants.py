@@ -13,6 +13,8 @@ NEMO_GUARDRAILS_PORT_NO_AUTH = 8000
 MODEL_NAME = LLMdInferenceSimConfig.model_name  # "Qwen2.5-1.5B-Instruct"
 ISVC_NAME = LLMdInferenceSimConfig.isvc_name  # "llm-d-inference-sim-isvc"
 PORT = LLMdInferenceSimConfig.port  # 8032
+NEMO_DEFAULT_CONFIG_CM_PII = "trustyai-service-operator-nemo-guardrails-default-pii"
+NEMO_DEFAULT_CONFIG_CM_PREFIX = "trustyai-service-operator-nemo-guardrails-default"
 
 
 # Presidio entity types

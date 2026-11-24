@@ -2,7 +2,7 @@
 
 from collections.abc import Generator
 from typing import Any
-
+import yaml
 import pytest
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -16,7 +16,11 @@ from ocp_resources.route import Route
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 
-from tests.ai_safety.nemo_guardrails.constants import PresidioEntity
+from tests.ai_safety.nemo_guardrails.constants import (
+    NEMO_DEFAULT_CONFIG_CM_PII,
+    NEMO_DEFAULT_CONFIG_CM_PREFIX,
+    PresidioEntity,
+)
 from tests.ai_safety.nemo_guardrails.utils import (
     create_llm_judge_config,
     create_presidio_config,
