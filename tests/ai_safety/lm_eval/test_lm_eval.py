@@ -411,9 +411,7 @@ def test_lmeval_rerun_after_spec_change(
         sleep=5,
         func=lambda: (
             lmevaljob_vllm_emulator.instance.status.state == LMEVALJOB_COMPLETE_STATE
-            and (lmevaljob_vllm_emulator.instance.metadata.annotations or {}).get(
-                LAST_SCHEDULED_GENERATION_ANNOTATION
-            )
+            and (lmevaljob_vllm_emulator.instance.metadata.annotations or {}).get(LAST_SCHEDULED_GENERATION_ANNOTATION)
             == expected_generation
         ),
     ):
