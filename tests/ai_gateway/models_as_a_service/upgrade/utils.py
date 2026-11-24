@@ -340,18 +340,6 @@ def cluster_has_inference_external_model_crd(admin_client: DynamicClient) -> boo
     return bool(inference_external_model_crd.exists)
 
 
-def legacy_external_model_resource_name_candidates(model_name: str) -> list[str]:
-    """Return possible legacy ExternalModel networking resource names.
-
-    RHOAI 3.4 maas-controller names children after the model directly. 3.5+ uses
-    ``maas-{model_name}`` via modelnaming.ExternalModelResourceName.
-    """
-    prefixed_name = f"maas-{model_name}"
-    if prefixed_name == model_name:
-        return [model_name]
-    return [prefixed_name, model_name]
-
-
 def legacy_external_model_resource_name(model_name: str) -> str:
     """Return the preferred legacy ExternalModel networking resource name (3.5+)."""
     return f"maas-{model_name}"
