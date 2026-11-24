@@ -798,7 +798,7 @@ def create_api_key(
     response: requests.Response | None = None
     try:
         for response in TimeoutSampler(
-            wait_timeout=90,
+            wait_timeout=240,
             sleep=5,
             func=request_session_http.post,
             url=api_keys_url,
@@ -818,7 +818,7 @@ def create_api_key(
             break
     except TimeoutExpiredError:
         LOGGER.info(
-            "create_api_key: timed out after 90s waiting for successful create (retryable empty 403 / AUTH_FAILURE)"
+            "create_api_key: timed out after 240s waiting for successful create (retryable empty 403 / AUTH_FAILURE)"
         )
 
     if response is None or response.status_code not in (200, 201):
