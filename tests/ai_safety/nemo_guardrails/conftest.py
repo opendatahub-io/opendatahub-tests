@@ -2,8 +2,9 @@
 
 from collections.abc import Generator
 from typing import Any
-import yaml
+
 import pytest
+import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
