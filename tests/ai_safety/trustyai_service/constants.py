@@ -3,6 +3,10 @@ from typing import Any
 from tests.ai_safety.image_constants import AiSafetyImages
 
 DRIFT_BASE_DATA_PATH: str = "./tests/ai_safety/trustyai_service/drift/model_data"
+EXPLAINABILITY_BASE_DATA_PATH: str = "./tests/ai_safety/trustyai_service/explainability/model_data"
+EXPLAINABILITY_TRAINING_DATA: str = f"{EXPLAINABILITY_BASE_DATA_PATH}/training_data.json"
+EXPLAINABILITY_N_TRAINING_ROWS: int = 20
+LOCAL_EXPLAINER_TIMEOUT: int = 120
 TAI_DATA_CONFIG: dict[str, str] = {"filename": "data.csv", "format": "CSV"}
 TAI_METRICS_CONFIG: dict[str, str] = {"schedule": "5s"}
 TAI_PVC_STORAGE_CONFIG: dict[str, str] = {"format": "PVC", "folder": "/inputs", "size": "1Gi"}
@@ -20,6 +24,9 @@ MLFLOW: str = "mlflow"
 
 GAUSSIAN_CREDIT_MODEL: str = "gaussian-credit-model"
 GAUSSIAN_CREDIT_MODEL_STORAGE_URI: str = AiSafetyImages.GAUSSIAN_CREDIT_MODEL
+GAUSSIAN_CREDIT_MODEL_INPUT_NAME: str = "credit_inputs"
+GAUSSIAN_CREDIT_MODEL_OUTPUT_NAME: str = "predict"
+GAUSSIAN_CREDIT_MODEL_FEATURE_COUNT: int = 4
 GAUSSIAN_CREDIT_MODEL_RESOURCES: dict[str, dict[str, str]] = {
     "requests": {"cpu": "1", "memory": "500Mi"},
     "limits": {"cpu": "1", "memory": "500Mi"},
