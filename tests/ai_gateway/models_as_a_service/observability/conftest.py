@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -8,6 +9,8 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.dsc_initialization import DSCInitialization
+from ocp_resources.maas_model_ref import MaaSModelRef
+from ocp_resources.maas_subscription import MaaSSubscription
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
@@ -16,6 +19,10 @@ from ocp_resources.service import Service
 from ocp_resources.service_monitor import ServiceMonitor
 from ocp_utilities.monitoring import Prometheus
 
+from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
+    create_maas_subscription,
+    maas_body_routed_model_name,
+)
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     LIMITADOR_SCRAPE_INTERVAL_TEST_VALUE,
     LIMITADOR_SERVICE_MONITOR_NAME,
@@ -26,6 +33,7 @@ from tests.ai_gateway.models_as_a_service.observability.constants import (
     OTEL_COLLECTOR_CRD_NAME,
     RHOAI_THANOS_QUERIER_ROUTE_NAME,
     SERVICE_MONITOR_CRD_NAME,
+    USAGE_LOGS_RATE_LIMIT_TOKENS_PER_MINUTE,
     USAGE_LOGS_SEAWEEDFS_CREDENTIALS_SECRET_NAME,
     USAGE_LOGS_SEAWEEDFS_FILER_CONFIG_NAME,
     USAGE_LOGS_SEAWEEDFS_NAME,
@@ -46,7 +54,6 @@ from tests.ai_gateway.models_as_a_service.observability.utils import (
 from tests.ai_gateway.models_as_a_service.utils import (
     build_maas_headers,
     create_api_key,
-    get_maas_models_response,
     revoke_api_key,
 )
 from utilities.certificates_utils import create_ca_bundle_file
@@ -382,25 +389,67 @@ def dsci_usage_logs_monitoring(
     admin_client: DynamicClient,
     dsci_resource: DSCInitialization,
     usage_logs_loki_s3_secret: Secret,
-) -> Generator[DSCInitialization, Any, Any]:
-    """Patch DSCI spec.monitoring to enable usage logs and restore the original spec on teardown."""
+) -> Generator[tuple[DSCInitialization, datetime], Any, Any]:
+    """Patch DSCI spec.monitoring to enable usage logs and restore the original spec on teardown.
+
+    Yields the patched DSCI together with the instant just before the patch was applied, so
+    consumers can tell conditions left over from the previous monitoring configuration from
+    conditions the operator reports for this one.
+    """
     monitoring_spec = usage_logs_monitoring_spec(
         secret_name=usage_logs_loki_s3_secret.name,
         storage_class_name=get_default_storage_class_name(client=admin_client),
     )
+    patched_at = datetime.now(tz=UTC)
     with update_dsci_monitoring_spec(
         dsci_resource=dsci_resource,
         monitoring_spec=monitoring_spec,
     ):
-        yield dsci_resource
+        yield dsci_resource, patched_at
 
 
 @pytest.fixture(scope="class")
 def usage_logs_monitoring_ready(
-    dsci_usage_logs_monitoring: DSCInitialization,
+    dsci_usage_logs_monitoring: tuple[DSCInitialization, datetime],
 ) -> None:
-    """Wait for DSCI to report the odh-observability usage-logs conditions as True."""
-    wait_for_dsci_usage_logs_conditions(dsci_resource=dsci_usage_logs_monitoring)
+    """Wait for DSCI to report the odh-observability usage-logs conditions as True.
+
+    Only transitions after the spec.monitoring patch count: DSCI.status still carries the
+    conditions of the previous monitoring configuration, and the operator needs minutes to
+    roll out the usage-logs collector and LokiStack for the spec patched above. The tests
+    would otherwise send traffic into a pipeline that is still restarting, and those usage
+    records would never reach Loki.
+    """
+    dsci_resource, patched_at = dsci_usage_logs_monitoring
+    wait_for_dsci_usage_logs_conditions(
+        dsci_resource=dsci_resource,
+        since=patched_at,
+    )
+
+
+@pytest.fixture(scope="class")
+def request_model_id(
+    maas_inference_service_tinyllama_modelcar: LLMInferenceService,
+) -> str:
+    """Model id sent in usage-logs inference requests.
+
+    Requests must identify the model by its MaaS body-routed identity. The gateway also
+    lists models owned by other workloads, so the id is derived from the LLMInferenceService
+    rather than taken from the first /v1/models entry.
+    """
+    return maas_body_routed_model_name(llmisvc=maas_inference_service_tinyllama_modelcar)
+
+
+@pytest.fixture(scope="class")
+def logged_model(
+    maas_inference_service_tinyllama_modelcar: LLMInferenceService,
+) -> str:
+    """Model name the usage-logs EnvoyFilter records and Loki queries filter by.
+
+    The access-log EnvoyFilter records `model` from the chat-completions response body,
+    which carries the vLLM-served model name rather than the body-routed request id.
+    """
+    return maas_inference_service_tinyllama_modelcar.name
 
 
 @pytest.fixture(scope="class")
@@ -420,18 +469,26 @@ def usage_logs_maas_api_key(
     base_url: str,
     current_client_token: str,
     maas_api_gateway_reachable: None,
+    minimal_subscription_for_modelcar: MaaSSubscription,
 ) -> Generator[str, Any, Any]:
     """Create a MaaS API key for the usage-logs test once per test class. Revoked on teardown.
 
     Uses POST /v1/api-keys rather than minted_token's POST /v1/tokens: the latter
     was removed from maas-api (opendatahub-io/models-as-a-service commit 535fab34,
     "feat: api-key management (#406)") in favor of /v1/api-keys.
+
+    The key is explicitly bound to this test's subscription: maas-api pins an unbound
+    key to the highest-priority subscription accessible to the user
+    (SelectHighestPriority in maas-api internal/api_keys/service.go), which on a shared
+    cluster is usually some other model's subscription, leaving TinyLlama unauthorized
+    at the gateway (HTTP 403 "Access denied").
     """
     _, body = create_api_key(
         base_url=base_url,
         ocp_user_token=current_client_token,
         request_session_http=request_session_http,
         api_key_name=f"e2e-usage-logs-{generate_random_name()}",
+        subscription=minimal_subscription_for_modelcar.name,
     )
     yield str(body["key"])
     revoke_response, _ = revoke_api_key(
@@ -451,24 +508,73 @@ def usage_logs_maas_headers(usage_logs_maas_api_key: str) -> dict:
 
 
 @pytest.fixture(scope="class")
-def usage_logs_maas_models(
+def usage_logs_rate_limit_subscription(
+    admin_client: DynamicClient,
+    maas_subscription_namespace: Namespace,
+    maas_model_tinyllama_modelcar: MaaSModelRef,
+) -> Generator[MaaSSubscription, Any, Any]:
+    """MaaSSubscription with a token quota small enough to exhaust within a few inference calls.
+
+    A dedicated subscription (rather than the shared minimal one) keeps the tiny quota scoped
+    to its own Limitador counters, so only traffic from the API key bound to this subscription
+    can be rate limited.
+    """
+    with create_maas_subscription(
+        admin_client=admin_client,
+        subscription_namespace=maas_subscription_namespace.name,
+        subscription_name=f"e2e-usage-logs-rate-limit-{generate_random_name()}",
+        owner_group_name="system:authenticated",
+        model_name=maas_model_tinyllama_modelcar.name,
+        model_namespace=maas_model_tinyllama_modelcar.namespace,
+        tokens_per_minute=USAGE_LOGS_RATE_LIMIT_TOKENS_PER_MINUTE,
+        window="1m",
+        priority=0,
+        teardown=True,
+        wait_for_resource=True,
+    ) as subscription:
+        subscription.wait_for_condition(condition="Ready", status="True", timeout=300)
+        yield subscription
+
+
+@pytest.fixture(scope="class")
+def usage_logs_rate_limited_api_key(
     request_session_http: requests.Session,
     base_url: str,
-    usage_logs_maas_headers: dict,
-    maas_inference_service_tinyllama_modelcar: LLMInferenceService,
-    maas_gateway_api: None,
-    maas_request_ratelimit_policy: None,
-    maas_token_ratelimit_policy: None,
-) -> list[dict]:
-    """Models listed by the MaaS gateway once the modelcar-backed model is deployed."""
-    resp = get_maas_models_response(
-        session=request_session_http,
+    current_client_token: str,
+    usage_logs_rate_limit_subscription: MaaSSubscription,
+    maas_api_gateway_reachable: None,
+) -> Generator[str, Any, Any]:
+    """Create a MaaS API key bound to the low-quota subscription once per test class. Revoked on teardown.
+
+    Binding the key to the subscription at mint time pins its inference traffic to the
+    subscription's token rate limit, without affecting the class' unbound API key.
+
+    Teardown revokes the key before the subscription is deleted: this fixture depends on
+    usage_logs_rate_limit_subscription, so pytest tears it down first.
+    """
+    _, body = create_api_key(
         base_url=base_url,
-        headers=usage_logs_maas_headers,
+        ocp_user_token=current_client_token,
+        request_session_http=request_session_http,
+        api_key_name=f"e2e-usage-logs-rate-limit-{generate_random_name()}",
+        subscription=usage_logs_rate_limit_subscription.name,
     )
-    models = resp.json().get("data", [])
-    assert models, "no models available"
-    return models
+    yield str(body["key"])
+    revoke_response, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=current_client_token,
+    )
+    assert revoke_response.status_code in (200, 404), (
+        f"Unexpected revocation status for key id={body['id']}: {revoke_response.status_code}"
+    )
+
+
+@pytest.fixture(scope="class")
+def usage_logs_rate_limited_headers(usage_logs_rate_limited_api_key: str) -> dict:
+    """Authorization headers of the API key bound to the low-quota subscription."""
+    return build_maas_headers(token=usage_logs_rate_limited_api_key)
 
 
 @pytest.fixture

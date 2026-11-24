@@ -1,6 +1,7 @@
 import base64
 import json
-from collections.abc import Generator
+import os
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from json import JSONDecodeError
 from typing import Any
@@ -30,6 +31,7 @@ from utilities.constants import (
 from utilities.llmd_utils import get_llm_inference_url
 from utilities.plugins.constant import OpenAIEnpoints, RestHeader
 from utilities.resources.aitenant import AITenant
+from utilities.resources.external_model import ExternalModel
 from utilities.resources.http_route import HTTPRoute
 from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.resources.maastenantconfig import MaasTenantConfig
@@ -46,7 +48,10 @@ DEFAULT_MAAS_TENANT_NAME = "default-tenant"
 MaaSTenantResource = MaasTenantConfig | Tenant
 
 AITENANT_INFRA_NAMESPACE: str = "ai-tenants"
-AIGATEWAY_GATEWAY_CLASS_NAME: str = "openshift-default"
+# Upper bound on pages fetched when searching active API keys (50 per page).
+MAX_API_KEY_SEARCH_PAGES: int = 20
+# OCP's built-in GatewayAPI class; override via AITENANT_GATEWAY_CLASS_NAME when absent.
+AIGATEWAY_GATEWAY_CLASS_NAME: str = os.environ.get("AITENANT_GATEWAY_CLASS_NAME") or "openshift-default"
 AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS: list[dict[str, Any]] = [
     {
         "name": "http",
@@ -232,6 +237,33 @@ def host_from_ingress_domain(client) -> str:
     return f"maas.{domain}"
 
 
+def wait_for_authorino_auth_path(
+    admin_client: DynamicClient,
+    http_session: requests.Session,
+) -> None:
+    """Wait until gateway auth traffic works again after an Authorino rollout.
+
+    Authorino restarts make its single endpoint flap for the gateway envoys
+    (outlier detection ejects it after consecutive gRPC failures), so requests
+    through the maas default gateway hang or 500 for a short window even though
+    the Authorino deployment already reports Available. Probe the unauthenticated
+    maas-api path until the gateway answers, so tests do not race that window.
+    """
+    probe_url = f"https://{host_from_ingress_domain(client=admin_client)}/maas-api/v1/models"
+    for sample in TimeoutSampler(
+        wait_timeout=300,
+        sleep=5,
+        func=http_session.get,
+        exceptions_dict={requests.RequestException: []},
+        url=probe_url,
+        timeout=15,
+    ):
+        if sample.status_code < 500:
+            LOGGER.info(f"authorino auth path healthy ({probe_url} -> {sample.status_code})")
+            return
+        LOGGER.info(f"authorino auth path still settling ({probe_url} -> {sample.status_code})")
+
+
 def _first_ready_llmisvc(
     client,
     namespace: str = "llm",
@@ -377,12 +409,27 @@ def patch_llmisvc_with_maas_router(
         yield
 
 
+def _resolve_request_model_id(models_list: list | None, model_id: str | None) -> str:
+    """Return the model id sent in the request body.
+
+    An explicit model id takes precedence; otherwise the first model listed by /v1/models is used.
+    """
+    if model_id:
+        return model_id
+
+    assert models_list, "No models returned from /v1/models"
+    first_model_id = models_list[0].get("id", "")
+    assert first_model_id, "First model from /v1/models has no 'id' field"
+    return first_model_id
+
+
 def verify_chat_completions(
     request_session_http: requests.Session,
     model_url: str,
     headers: dict,
-    models_list: list,
+    models_list: list | None = None,
     *,
+    model_id: str | None = None,
     prompt_text: str = "Hello from MaaS chat e2e test",
     max_tokens: int = 50,
     request_timeout_seconds: int = 60,
@@ -399,16 +446,15 @@ def verify_chat_completions(
     - For special tests (e.g. rate limiting) you can pass a tuple like
       expected_status_codes=(200, 429) and then inspect response.status_code
       in the test. Only HTTP 200 responses will have their body validated.
+
+    - Pass model_id to target a specific model instead of the first entry of models_list,
+      which matters when the gateway lists models owned by other workloads.
     """
 
-    assert models_list, "No models returned from /v1/models"
-    first_model = models_list[0]
-
-    model_id = first_model.get("id", "")
-    assert model_id, "First model from /v1/models has no 'id' field"
+    request_model_id = _resolve_request_model_id(models_list=models_list, model_id=model_id)
 
     payload_data = {
-        "model": model_id,
+        "model": request_model_id,
         "messages": [{"role": "user", "content": prompt_text}],
         "max_tokens": max_tokens,
     }
@@ -446,6 +492,125 @@ def verify_chat_completions(
         )
 
     return response
+
+
+def verify_streaming_chat_completions(
+    request_session_http: requests.Session,
+    model_url: str,
+    headers: dict,
+    models_list: list | None = None,
+    *,
+    model_id: str | None = None,
+    prompt_text: str = "Hello from MaaS streaming chat e2e test",
+    max_tokens: int = 50,
+    request_timeout_seconds: int = 60,
+    log_prefix: str = "MaaS streaming",
+    max_sse_lines: int = 1000,
+) -> tuple[str, int]:
+    """Verify a streaming (SSE) /v1/chat/completions call and return its reported usage.
+
+    Sends `stream: true` with `stream_options.include_usage: true` so the stream's terminal
+    event carries the token usage. This matters for usage logging: the MaaS gateway's
+    EnvoyFilter cannot parse text/event-stream bodies with json_to_metadata, so its companion
+    `sse_tokens` Lua filter reads the usage fields from the SSE chunks and records them. Without
+    include_usage the server reports no usage and the logged token count is zero.
+
+    Args:
+        request_session_http: HTTP session used to send the request.
+        model_url: Chat-completions URL of the model.
+        headers: Request headers, including the MaaS authorization header.
+        models_list: Models returned by /v1/models; the first model id is used when model_id
+            is not provided.
+        model_id: Explicit model id for the request body, overriding models_list.
+        prompt_text: User message sent to the model.
+        max_tokens: Maximum number of tokens to generate.
+        request_timeout_seconds: HTTP request timeout in seconds.
+        log_prefix: Prefix used in log messages.
+        max_sse_lines: Upper bound on SSE lines consumed, so a runaway stream fails loudly.
+
+    Returns:
+        The model name reported by the streamed chunks and the total tokens from the
+        terminal usage event.
+
+    Raises:
+        AssertionError: If the response is not a 200 event-stream, produces no content, or
+            reports no usage.
+    """
+    request_model_id = _resolve_request_model_id(models_list=models_list, model_id=model_id)
+
+    payload_data = {
+        "model": request_model_id,
+        "messages": [{"role": "user", "content": prompt_text}],
+        "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    LOGGER.info(f"{log_prefix}: POST {model_url} (stream=True) with payload keys={list(payload_data.keys())}")
+
+    streamed_model = ""
+    streamed_content = ""
+    usage_total_tokens: int | None = None
+    done_received = False
+
+    with request_session_http.post(
+        url=model_url,
+        headers=headers,
+        json=payload_data,
+        timeout=request_timeout_seconds,
+        stream=True,
+    ) as response:
+        LOGGER.info(f"{log_prefix}: POST {model_url} -> HTTP {response.status_code}")
+
+        assert response.status_code == 200, (
+            f"/v1/chat/completions streaming failed: HTTP {response.status_code} "
+            f"response={response.text[:200]} (url={model_url})"
+        )
+
+        content_type = response.headers.get("content-type", "")
+        assert "text/event-stream" in content_type, (
+            f"Expected text/event-stream content type for streaming response, got '{content_type}'"
+        )
+
+        for line_number, line in enumerate(response.iter_lines(), start=1):
+            assert line_number <= max_sse_lines, (
+                f"Streaming response exceeded {max_sse_lines} SSE lines without terminating"
+            )
+            if not line or not line.startswith(b"data:"):
+                continue
+
+            data = line.removeprefix(b"data:").strip()
+            if data == b"[DONE]":
+                done_received = True
+                break
+
+            chunk = json.loads(data)
+            streamed_model = chunk.get("model") or streamed_model
+            for choice in chunk.get("choices") or []:
+                streamed_content += (choice.get("delta") or {}).get("content") or ""
+
+            usage = chunk.get("usage")
+            if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int):
+                usage_total_tokens = usage["total_tokens"]
+                prompt_tokens = usage.get("prompt_tokens")
+                completion_tokens = usage.get("completion_tokens")
+                if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
+                    assert usage_total_tokens == prompt_tokens + completion_tokens, (
+                        f"Streaming usage total_tokens={usage_total_tokens} does not match "
+                        f"prompt_tokens={prompt_tokens} + completion_tokens={completion_tokens}"
+                    )
+
+    LOGGER.info(f"{log_prefix}: streaming model={streamed_model!r} total_tokens={usage_total_tokens}")
+
+    assert done_received, "Streaming response ended without a [DONE] event"
+    assert streamed_model, "Streaming response did not report a 'model' field"
+    assert streamed_content.strip(), "Streaming response produced no assistant content deltas"
+    assert usage_total_tokens is not None and usage_total_tokens > 0, (
+        "Streaming response did not report positive token usage; expected stream_options.include_usage "
+        f"to produce a terminal event with usage.total_tokens, got {usage_total_tokens!r}"
+    )
+
+    return streamed_model, usage_total_tokens
 
 
 def assert_mixed_200_and_429(
@@ -702,6 +867,123 @@ def revoke_token(
     return resp
 
 
+def _search_active_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    extra_headers: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Search all active API keys, paging until a short page is returned.
+
+    Raises:
+        RuntimeError: When a search page fails or the page cap is reached with
+            a full page, meaning the collected results may be incomplete.
+    """
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
+    items: list[dict[str, Any]] = []
+    limit = 50
+    for page_index in range(MAX_API_KEY_SEARCH_PAGES):
+        response = request_session_http.post(
+            url=f"{base_url}/v1/api-keys/search",
+            headers=request_headers,
+            json={
+                "filters": {"status": ["active"]},
+                "sort": {"by": "created_at", "order": "desc"},
+                "pagination": {"limit": limit, "offset": page_index * limit},
+            },
+            timeout=60,
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"active-key search failed with status={response.status_code}")
+        page_items = (response.json() or {}).get("items") or []
+        items.extend(page_items)
+        if len(page_items) < limit:
+            return items
+    raise RuntimeError(f"active-key search hit the {MAX_API_KEY_SEARCH_PAGES}-page cap; results may be incomplete")
+
+
+def _same_name_active_key_ids(
+    request_session_http: requests.Session,
+    base_url: str,
+    api_key_name: str,
+    ocp_user_token: str,
+    extra_headers: dict[str, str] | None = None,
+) -> set[str]:
+    """IDs of every active API key named ``api_key_name`` (empty on search failure)."""
+    items = _search_active_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        extra_headers=extra_headers,
+    )
+    return {str(item["id"]) for item in items if item.get("name") == api_key_name and item.get("id") is not None}
+
+
+def _revoke_orphaned_duplicate_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    api_key_name: str,
+    keep_key_id: str,
+    preexisting_key_ids: set[str],
+    ocp_user_token: str,
+    extra_headers: dict[str, str] | None = None,
+) -> None:
+    """Revoke duplicate keys a retried create may have orphaned (best-effort).
+
+    A plain proxy 5xx can hide a create that actually succeeded upstream, so
+    after a retried create every active key with the same name that this call
+    created (absent from ``preexisting_key_ids``, the same-name IDs snapshotted
+    before the first POST) and that is not the returned ``keep_key_id`` is
+    revoked. Inlined (not ``list_api_keys``) to avoid a circular import.
+    """
+    items = _search_active_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        extra_headers=extra_headers,
+    )
+    duplicates = [
+        item
+        for item in items
+        if item.get("name") == api_key_name
+        and str(item.get("id")) not in preexisting_key_ids
+        and str(item.get("id")) != keep_key_id
+    ]
+    if not keep_key_id and len(duplicates) > 1:
+        # The create failed (no returned key ID to keep), and more than one
+        # new same-name key exists: another caller may have created one of
+        # them after this call's snapshot, so ownership cannot be established
+        # and nothing is revoked.
+        LOGGER.warning(
+            f"orphan-key dedupe: {len(duplicates)} new same-name keys exist but no key ID "
+            "was returned by this call; skipping cleanup to avoid revoking another caller's key"
+        )
+        return
+    for duplicate in duplicates:
+        LOGGER.warning(f"orphan-key dedupe: revoking duplicate key id={duplicate.get('id')} name={api_key_name}")
+        try:
+            revoke_response, _ = revoke_api_key(
+                request_session_http=request_session_http,
+                base_url=base_url,
+                key_id=str(duplicate["id"]),
+                ocp_user_token=ocp_user_token,
+                extra_headers=extra_headers,
+            )
+            if revoke_response.status_code not in (200, 202, 204):
+                LOGGER.warning(
+                    f"orphan-key dedupe: revoking key id={duplicate.get('id')} failed with "
+                    f"status={revoke_response.status_code}"
+                )
+        except Exception as error:  # noqa: BLE001 - one duplicate must not stop the rest
+            LOGGER.warning(
+                f"orphan-key dedupe: revoking key id={duplicate.get('id')} raised, "
+                f"continuing with remaining duplicates",
+                error_type=type(error).__name__,
+            )
+
+
 def create_api_key(
     base_url: str,
     ocp_user_token: str,
@@ -728,6 +1010,12 @@ def create_api_key(
         subscription: Optional MaaSSubscription name to bind at mint time.
         ephemeral: When True, marks the key as short-lived/programmatic.
         extra_headers: Optional additional HTTP headers (for example X-MaaS-Tenant).
+
+    Retries responses that were provably rejected before maas-api saw the
+    request (empty 403, AUTH_FAILURE 500), plus plain-text proxy 5xx (maas-api
+    errors are JSON). A plain-5xx retry may hide a create that succeeded
+    upstream, so afterwards any duplicate active key with the same name that
+    this call created is revoked (see ``_revoke_orphaned_duplicate_keys``).
     """
     api_keys_url = f"{base_url}/v1/api-keys"
     payload: dict[str, Any] = {"name": api_key_name}
@@ -742,13 +1030,45 @@ def create_api_key(
     if extra_headers is not None:
         request_headers.update(extra_headers)
 
+    preexisting_key_ids: set[str] | None
+    try:
+        preexisting_key_ids = _same_name_active_key_ids(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            api_key_name=api_key_name,
+            ocp_user_token=ocp_user_token,
+            extra_headers=extra_headers,
+        )
+    except Exception as error:  # noqa: BLE001 - snapshot availability is best effort
+        LOGGER.warning(f"orphan-key dedupe: same-name key snapshot unavailable, skipping cleanup: {error}")
+        preexisting_key_ids = None
+
+    def revoke_keys_created_by_this_call(keep_key_id: str) -> None:
+        if preexisting_key_ids is None:
+            # Without a complete snapshot, same-name keys cannot be told apart
+            # from pre-existing ones, so cleanup is skipped entirely.
+            return
+        try:
+            _revoke_orphaned_duplicate_keys(
+                request_session_http=request_session_http,
+                base_url=base_url,
+                api_key_name=api_key_name,
+                keep_key_id=keep_key_id,
+                preexisting_key_ids=preexisting_key_ids,
+                ocp_user_token=ocp_user_token,
+                extra_headers=extra_headers,
+            )
+        except Exception as error:  # noqa: BLE001 - dedupe is best effort
+            LOGGER.warning(f"orphan-key dedupe failed: {error}")
+
     response: requests.Response | None = None
     last_response: requests.Response | None = None
     empty_403_retries = 0
     auth_failure_retries = 0
+    proxy_error_retries = 0
     try:
         for response in TimeoutSampler(
-            wait_timeout=30,
+            wait_timeout=240,
             sleep=5,
             func=request_session_http.post,
             url=api_keys_url,
@@ -768,25 +1088,44 @@ def create_api_key(
                 auth_failure_retries += 1
                 LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
                 continue
+            if response.status_code in (500, 502, 503, 504) and not (response.text or "").lstrip().startswith("{"):
+                proxy_error_retries += 1
+                LOGGER.info(
+                    f"create_api_key: {response.status_code} plain-text proxy/gateway error "
+                    "(maas-api errors are JSON, so this was rejected or reset in the middleware) — retrying"
+                )
+                continue
             break
     except TimeoutExpiredError:
         LOGGER.info(
-            "create_api_key: timed out after 30s waiting for successful create (retryable empty 403 / AUTH_FAILURE)"
+            "create_api_key: timed out after 240s waiting for successful create "
+            "(retryable empty 403 / AUTH_FAILURE / plain proxy 5xx)"
         )
 
     response = last_response if last_response is not None else response
     if response is None or response.status_code not in (200, 201):
         status = response.status_code if response is not None else "no response"
-        body = response.text[:500] if response is not None else "no HTTP response received"
-        retry_summary = f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries}"
+        retry_summary = (
+            f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries} "
+            f"proxy_error_retries={proxy_error_retries}"
+        )
+        if proxy_error_retries:
+            # A plain-5xx attempt can have created a key upstream that the
+            # caller never sees; revoke same-name keys this call created.
+            revoke_keys_created_by_this_call(keep_key_id="")
         if raise_on_error:
-            raise AssertionError(f"api-key create failed: status={status} body={body} {retry_summary}")
+            # No response body in the message: it can carry credentials or
+            # customer data into test logs.
+            raise AssertionError(f"api-key create failed: status={status} {retry_summary}")
         return response, {}  # type: ignore[return-value]
 
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
     except json.JSONDecodeError as error:
         raise AssertionError("API key creation returned non-JSON response") from error
+
+    if proxy_error_retries:
+        revoke_keys_created_by_this_call(keep_key_id=str(parsed_body.get("id", "")))
 
     api_key = parsed_body.get("key", "")
     if not isinstance(api_key, str) or not api_key.startswith("sk-"):
@@ -817,9 +1156,7 @@ def revoke_api_key(
     try:
         parsed_body: dict[str, Any] = json.loads(response.text)
     except json.JSONDecodeError as error:
-        raise AssertionError(
-            f"revoke_api_key returned non-JSON response: status={response.status_code} body={response.text[:200]}"
-        ) from error
+        raise AssertionError(f"revoke_api_key returned non-JSON response: status={response.status_code}") from error
     return response, parsed_body
 
 
@@ -920,6 +1257,116 @@ def wait_for_httproute(
     ):
         if route is not None:
             return route
+
+
+def _object_ref_name_and_namespace(ref: Any) -> tuple[str, str]:
+    """Return ``(name, namespace)`` from a Kubernetes object reference; namespace may be empty."""
+    name = ""
+    route_namespace = ""
+    if hasattr(ref, "name") and ref.name:
+        name = str(ref.name)
+    elif isinstance(ref, Mapping) and ref.get("name"):
+        name = str(ref["name"])
+    if hasattr(ref, "namespace") and ref.namespace:
+        route_namespace = str(ref.namespace)
+    elif isinstance(ref, Mapping) and ref.get("namespace"):
+        route_namespace = str(ref["namespace"])
+    return name, route_namespace
+
+
+def _gateway_attachment_http_route_ref(external_model_status: Any) -> tuple[str, str]:
+    """Read programmed HTTPRoute name/namespace from ExternalModel gateway attachments."""
+    if hasattr(external_model_status, "gateways"):
+        gateways = external_model_status.gateways or []
+    elif isinstance(external_model_status, Mapping) and "gateways" in external_model_status:
+        gateways = external_model_status["gateways"] or []
+    else:
+        return "", ""
+
+    for gateway in gateways:
+        route_ref = gateway.httpRouteRef if hasattr(gateway, "httpRouteRef") else None
+        if route_ref is None and isinstance(gateway, Mapping) and "httpRouteRef" in gateway:
+            route_ref = gateway["httpRouteRef"]
+        if route_ref is None:
+            continue
+        route_name, route_namespace = _object_ref_name_and_namespace(ref=route_ref)
+        if route_name:
+            return route_name, route_namespace
+    return "", ""
+
+
+def get_external_model_http_route_ref(external_model: ExternalModel) -> tuple[str, str]:
+    """Return the HTTPRoute name and namespace published on ExternalModel status, if programmed.
+
+    Namespace is empty when status only exposes ``httpRouteName`` (callers should use the
+    ExternalModel namespace for lookup).
+    """
+    external_model_status = external_model.instance.status
+    if external_model_status is None:
+        return "", ""
+    if hasattr(external_model_status, "httpRouteName") and external_model_status.httpRouteName:
+        return str(external_model_status.httpRouteName), ""
+    if isinstance(external_model_status, Mapping) and "httpRouteName" in external_model_status:
+        route_name = external_model_status["httpRouteName"]
+        if route_name:
+            return str(route_name), ""
+    return _gateway_attachment_http_route_ref(external_model_status=external_model_status)
+
+
+def get_external_model_http_route_name(external_model: ExternalModel) -> str:
+    """Return the HTTPRoute name published on ExternalModel status, if programmed."""
+    route_name, _route_namespace = get_external_model_http_route_ref(external_model=external_model)
+    return route_name
+
+
+def wait_for_external_model_http_route_name(
+    external_model: ExternalModel,
+    timeout: int = 300,
+) -> str:
+    """Poll until ExternalModel status reports an HTTPRoute name."""
+    for http_route_name in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=get_external_model_http_route_name,
+        external_model=external_model,
+    ):
+        if http_route_name:
+            return http_route_name
+
+
+def wait_for_external_model_httproute(
+    client: DynamicClient,
+    external_model: ExternalModel,
+    namespace: str,
+    timeout: int = 300,
+) -> str:
+    """Poll until ExternalModel is programmed and its HTTPRoute exists in the namespace."""
+
+    def external_model_httproute_ready() -> str:
+        http_route_name, http_route_namespace = get_external_model_http_route_ref(
+            external_model=external_model,
+        )
+        if not http_route_name:
+            return ""
+        lookup_namespace = http_route_namespace or namespace
+        if (
+            get_httproute(
+                client=client,
+                name=http_route_name,
+                namespace=lookup_namespace,
+            )
+            is None
+        ):
+            return ""
+        return http_route_name
+
+    for http_route_name in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=external_model_httproute_ready,
+    ):
+        if http_route_name:
+            return http_route_name
 
 
 def fresh_aitenant(aitenant: AITenant) -> AITenant:
