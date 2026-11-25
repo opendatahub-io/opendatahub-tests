@@ -345,16 +345,6 @@ def legacy_external_model_resource_name(model_name: str) -> str:
     return f"maas-{model_name}"
 
 
-def resolve_legacy_maas_networking_resource_name(
-    client: DynamicClient,
-    model_name: str,
-    namespace: str,
-) -> str | None:
-    """Return the legacy networking resource name present in the namespace, if any."""
-    if legacy_maas_networking_present(client=client, model_name=model_name, namespace=namespace):
-        return legacy_external_model_resource_name(model_name=model_name)
-    return None
-
 
 LEGACY_NETWORKING_KINDS: tuple[type[NamespacedResource], ...] = (
     HTTPRoute,
@@ -584,11 +574,7 @@ def capture_legacy_migration_baseline(
     subscription: MaaSSubscription,
 ) -> LegacyMigrationBaseline:
     """Snapshot legacy external model migration state before upgrade."""
-    legacy_resource_name = resolve_legacy_maas_networking_resource_name(
-        client=client,
-        model_name=model_name,
-        namespace=model_namespace,
-    ) or legacy_external_model_resource_name(model_name=model_name)
+    legacy_resource_name = legacy_external_model_resource_name(model_name=model_name)
     baseline: LegacyMigrationBaseline = {
         "model_name": model_name,
         "model_namespace": model_namespace,
