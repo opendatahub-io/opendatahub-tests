@@ -1,6 +1,5 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.nemo_guardrails import NemoGuardrails
@@ -18,6 +17,7 @@ from tests.ai_safety.nemo_guardrails.utils import (
     validate_nemo_guardrails_images,
     verify_auth_required,
 )
+
 
 @pytest.mark.tier1
 @pytest.mark.ai_safety
@@ -158,6 +158,7 @@ class TestNemoGuardrailsLLMAsPreUpgrade:
         )
 
         verify_auth_required(response=response)
+
 
 @pytest.mark.parametrize(
     "model_namespace",
