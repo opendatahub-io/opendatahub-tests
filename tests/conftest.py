@@ -612,7 +612,6 @@ def cluster_monitoring_config(
         namespace="openshift-monitoring",
     )
 
-    # Keep any settings already in config.yaml and only add enableUserWorkload
     existing_config: dict[str, Any] = {}
     if config_map.exists:
         existing_data = config_map.instance.to_dict().get("data") or {}
