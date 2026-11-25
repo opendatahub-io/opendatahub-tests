@@ -19,6 +19,7 @@ from tests.ai_safety.evalhub.utils import (
     assert_evalhub_workload_not_finished,
     cleanup_evalhub_job,
     cleanup_evalhub_jobs_and_workloads,
+    delete_leftover_if_exists,
     evalhub_runtime_label_selector,
     log_job_kueue_labels,
     submit_evalhub_kueue_job_and_get_id,
@@ -29,7 +30,9 @@ from tests.ai_safety.evalhub.utils import (
 )
 from utilities.constants import Timeout
 from utilities.kueue_utils import (
+    ClusterQueue,
     LocalQueue,
+    ResourceFlavor,
     Workload,
     build_resource_groups,
     create_cluster_queue,
@@ -41,6 +44,7 @@ from utilities.kueue_utils import (
     wait_for_workload_condition,
     workload_has_condition,
 )
+from utilities.resources.workload_priority_class import WorkloadPriorityClass
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -48,6 +52,7 @@ LOGGER = structlog.get_logger(name=__name__)
 PREEMPTION_QUOTAS = {"cpu": KUEUE_CPU_QUOTA, "memory": KUEUE_MEMORY_QUOTA, "pods": SINGLE_POD_QUOTA}
 
 
+@pytest.mark.ai_safety
 @pytest.mark.kueue
 @pytest.mark.tier2
 class TestEvalHubKueuePriority:
@@ -100,6 +105,7 @@ class TestEvalHubKueuePriority:
                 cleanup_evalhub_job(**common, job_id=job_id)
 
 
+@pytest.mark.ai_safety
 @pytest.mark.kueue
 @pytest.mark.tier2
 class TestEvalHubKueuePreemption:
@@ -123,6 +129,17 @@ class TestEvalHubKueuePreemption:
         """
         common = evalhub_kueue_request_common
         namespace = evalhub_kueue_namespace.name
+
+        delete_leftover_if_exists(
+            resource=ResourceFlavor(client=admin_client, name="tc-preempt-flavor"), timeout=Timeout.TIMEOUT_2MIN
+        )
+        delete_leftover_if_exists(
+            resource=ClusterQueue(client=admin_client, name="tc-preempt-cq"), timeout=Timeout.TIMEOUT_5MIN
+        )
+        delete_leftover_if_exists(
+            resource=WorkloadPriorityClass(client=admin_client, name="tc-preempt-high-priority"),
+            timeout=Timeout.TIMEOUT_2MIN,
+        )
 
         with (
             create_resource_flavor(name="tc-preempt-flavor", client=admin_client) as flavor,
@@ -241,6 +258,17 @@ class TestEvalHubKueuePreemption:
         """
         common = evalhub_kueue_request_common
         namespace = evalhub_kueue_namespace.name
+
+        delete_leftover_if_exists(
+            resource=ResourceFlavor(client=admin_client, name="tc-nopreempt-flavor"), timeout=Timeout.TIMEOUT_2MIN
+        )
+        delete_leftover_if_exists(
+            resource=ClusterQueue(client=admin_client, name="tc-nopreempt-cq"), timeout=Timeout.TIMEOUT_5MIN
+        )
+        delete_leftover_if_exists(
+            resource=WorkloadPriorityClass(client=admin_client, name="tc-nopreempt-high-priority"),
+            timeout=Timeout.TIMEOUT_2MIN,
+        )
 
         with (
             create_resource_flavor(name="tc-nopreempt-flavor", client=admin_client) as flavor,
