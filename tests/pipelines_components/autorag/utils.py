@@ -174,7 +174,9 @@ def submit_autorag_run(
     }
     parameters = {name: value for name, value in parameter_values.items() if name in parameter_definitions}
     required_parameters = {
-        name for name, definition in parameter_definitions.items() if not definition.get("isOptional", False)
+        name
+        for name, definition in parameter_definitions.items()
+        if not definition.get("isOptional", False) and definition.get("defaultValue") is None
     }
     missing_parameters = sorted(required_parameters - parameters.keys())
     if missing_parameters:
