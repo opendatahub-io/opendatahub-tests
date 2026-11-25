@@ -6,7 +6,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.config_map import ConfigMap
@@ -18,13 +17,15 @@ from tests.pipelines_components.constants import (
     AUTORAG_MAX_RAG_PATTERNS,
     AUTORAG_OPTIMIZATION_METRIC,
     AUTORAG_TEST_DATA_KEY,
+    AUTORAG_VECTOR_IO_PROVIDER_ID,
     DSPA_NAME,
     DSPA_S3_BUCKET,
     DSPA_S3_SECRET,
     MINIO_MC_IMAGE,
+    MINIO_UPLOADER_LABELS,
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
-from tests.pipelines_components.utils import create_pipeline_run_managed
+from tests.pipelines_components.utils import create_pipeline_run_managed, get_pipeline_version
 from utilities.general import collect_pod_information
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -69,6 +70,7 @@ def upload_autorag_data(client: DynamicClient, namespace: str | None) -> None:
             client=client,
             name=f"autorag-data-uploader-{uuid.uuid4().hex[:8]}",
             namespace=namespace,
+            label=MINIO_UPLOADER_LABELS,
             restart_policy="Never",
             volumes=[
                 {"name": "work", "emptyDir": {}},
@@ -134,46 +136,56 @@ def submit_autorag_run(
         The submitted KFP run ID.
     """
     assert s3_secret_name and maas_secret_name and db_secret_name, "AutoRAG connection Secrets must have names"
-    parameters: dict[str, Any] = {
+    pipeline_version = get_pipeline_version(
+        api_url=api_url,
+        headers=headers,
+        pipeline_id=pipeline["pipeline_id"],
+        pipeline_version_id=pipeline["pipeline_version_id"],
+        ca_bundle=ca_bundle,
+    )
+    parameter_definitions = (
+        pipeline_version
+        .get("pipeline_spec", {})
+        .get("pipeline_spec", {})
+        .get("root", {})
+        .get("inputDefinitions", {})
+        .get("parameters", {})
+    )
+    if not isinstance(parameter_definitions, dict) or not parameter_definitions:
+        raise ValueError(f"Pipeline version {pipeline['pipeline_version_id']} does not declare root parameters")
+
+    parameter_values: dict[str, Any] = {
         "input_data_secret_name": s3_secret_name,
         "input_data_bucket_name": DSPA_S3_BUCKET,
         "input_data_keys": [AUTORAG_INPUT_DATA_KEY],
+        "input_data_key": AUTORAG_INPUT_DATA_KEY,
         "test_data_secret_name": s3_secret_name,
         "test_data_bucket_name": DSPA_S3_BUCKET,
         "test_data_key": AUTORAG_TEST_DATA_KEY,
         "maas_secret_name": maas_secret_name,
+        "ogx_secret_name": maas_secret_name,
         "db_secret_name": db_secret_name,
+        "vector_db_secret_name": db_secret_name,
+        "vector_io_provider_id": AUTORAG_VECTOR_IO_PROVIDER_ID,
         "embedding_models": ["smoke-embedding-model"],
         "generation_models": ["smoke-generation-model"],
         "optimization_max_rag_patterns": AUTORAG_MAX_RAG_PATTERNS,
         "optimization_metric": AUTORAG_OPTIMIZATION_METRIC,
     }
-    fallback_parameters = {
-        "vector_db_secret_name": ("db_secret_name", db_secret_name),
-        "ogx_secret_name": ("maas_secret_name", maas_secret_name),
-        "input_data_key": ("input_data_keys", AUTORAG_INPUT_DATA_KEY),
+    parameters = {name: value for name, value in parameter_values.items() if name in parameter_definitions}
+    required_parameters = {
+        name for name, definition in parameter_definitions.items() if not definition.get("isOptional", False)
     }
-    for attempts_remaining in range(len(fallback_parameters), -1, -1):
-        try:
-            return create_pipeline_run_managed(
-                api_url=api_url,
-                headers=headers,
-                pipeline_id=pipeline["pipeline_id"],
-                pipeline_version_id=pipeline["pipeline_version_id"],
-                run_name=run_name,
-                parameters=parameters,
-                ca_bundle=ca_bundle,
-            )
-        except requests.HTTPError as error:
-            response = error.response
-            if response is None or response.status_code != 400 or not attempts_remaining:
-                raise
-            for required_name, (current_name, value) in fallback_parameters.items():
-                if f"parameter {required_name} is not optional" in response.text and current_name in parameters:
-                    parameters[required_name] = value
-                    del parameters[current_name]
-                    LOGGER.info(f"Managed pipeline requires {required_name}; retrying run submission")
-                    break
-            else:
-                raise
-    raise AssertionError("AutoRAG submission retries exhausted")
+    missing_parameters = sorted(required_parameters - parameters.keys())
+    if missing_parameters:
+        raise ValueError(f"AutoRAG smoke test does not provide required parameters: {', '.join(missing_parameters)}")
+
+    return create_pipeline_run_managed(
+        api_url=api_url,
+        headers=headers,
+        pipeline_id=pipeline["pipeline_id"],
+        pipeline_version_id=pipeline["pipeline_version_id"],
+        run_name=run_name,
+        parameters=parameters,
+        ca_bundle=ca_bundle,
+    )

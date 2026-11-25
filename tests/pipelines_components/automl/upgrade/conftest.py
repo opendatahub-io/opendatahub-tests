@@ -35,6 +35,7 @@ from tests.pipelines_components.constants import (
     MANAGED_PIPELINE_WAIT_TIMEOUT,
     MANAGED_PIPELINES_IMAGE,
     MINIO_MC_IMAGE,
+    MINIO_UPLOADER_LABELS,
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
 from tests.pipelines_components.utils import create_pipeline_run_managed, wait_for_managed_pipeline
@@ -238,6 +239,7 @@ def upgrade_train_data(
             client=admin_client,
             name=f"automl-upgrade-uploader-{uuid.uuid4().hex[:8]}",
             namespace=upgrade_namespace.name,
+            label=MINIO_UPLOADER_LABELS,
             restart_policy="Never",
             volumes=[
                 {"name": "work", "emptyDir": {}},

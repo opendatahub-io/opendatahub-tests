@@ -83,6 +83,7 @@ registration and startup only, not completed RAG optimization.
 | `AUTORAG_TEST_DATA_KEY` | Destination key for generated benchmark JSON | `autorag-smoke/benchmark_data.json` |
 | `AUTORAG_MAX_RAG_PATTERNS` | Maximum RAG patterns to evaluate | `4` |
 | `AUTORAG_OPTIMIZATION_METRIC` | Optimization metric | `unitxt:faithfulness` |
+| `AUTORAG_VECTOR_IO_PROVIDER_ID` | Vector I/O provider ID used by older OGX-backed pipelines | `milvus` |
 | `AUTORAG_PIPELINE_START_TIMEOUT` | Max wait for workflow progression (sec) | `300` |
 
 ### Managed pipeline overrides (optional)
