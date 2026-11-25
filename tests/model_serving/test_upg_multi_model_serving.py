@@ -39,10 +39,10 @@ MODEL_NAMES: list[str] = [
     "xgb-classifier-2",
     "lgbm-classifier-1",
     "lgbm-classifier-2",
-    "onnx-resnet-1",
-    "onnx-resnet-2",
+    "onnx-iris-1",
+    "onnx-iris-2",
     "sklearn-iris-3",
-    "onnx-resnet-3",
+    "onnx-iris-3",
 ]
 SKLEARN_IRIS_PAYLOAD: dict[str, Any] = {
     "inputs": [

@@ -1,5 +1,5 @@
 {
-  "name": "onnx-resnet-2",
+  "name": "onnx-iris-2",
   "implementation": "mlserver_onnx.OnnxModel",
   "parameters": {
     "uri": "./model.onnx"

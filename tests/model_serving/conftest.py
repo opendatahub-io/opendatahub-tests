@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 from collections.abc import Generator
-from contextlib import contextmanager
 from typing import Any
 
 import pytest
@@ -20,6 +20,7 @@ from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError
 
 from tests.model_serving.model_runtime.mlserver.constant import PREDICT_RESOURCES
+from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
@@ -144,52 +145,6 @@ def kserve_s3_secret(
         aws_secret_access_key=aws_secret_access_key,
         aws_s3_region=models_s3_bucket_region,
         aws_s3_endpoint=models_s3_bucket_endpoint,
-    ) as secret:
-        yield secret
-
-
-@contextmanager
-def kserve_s3_endpoint_secret(
-    admin_client: DynamicClient,
-    name: str,
-    namespace: str,
-    aws_access_key: str,
-    aws_secret_access_key: str,
-    aws_s3_endpoint: str,
-    aws_s3_region: str,
-) -> Generator[Secret, Any, Any]:
-    """
-    Context manager that creates a temporary Kubernetes Secret for KServe
-    to access an S3-compatible storage endpoint.
-
-    Args:
-        admin_client (DynamicClient): Kubernetes dynamic client for resource operations.
-        name (str): Name of the Secret resource.
-        namespace (str): Kubernetes namespace in which to create the Secret.
-        aws_access_key (str): AWS access key ID for authentication.
-        aws_secret_access_key (str): AWS secret access key for authentication.
-        aws_s3_endpoint (str): S3 endpoint URL (e.g., https://s3.example.com).
-        aws_s3_region (str): AWS region for the S3 service.
-
-    Yields:
-        Secret: The created Kubernetes Secret object within the context.
-    """
-    with Secret(
-        client=admin_client,
-        name=name,
-        namespace=namespace,
-        annotations={
-            "serving.kserve.io/s3-endpoint": (aws_s3_endpoint.replace("https://", "").replace("http://", "")),
-            "serving.kserve.io/s3-region": aws_s3_region,
-            "serving.kserve.io/s3-useanoncredential": "false",
-            "serving.kserve.io/s3-verifyssl": "0",
-            "serving.kserve.io/s3-usehttps": "1",
-        },
-        string_data={
-            "AWS_ACCESS_KEY_ID": aws_access_key,
-            "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
-        },
-        wait_for_resource=True,
     ) as secret:
         yield secret
 
@@ -1072,35 +1027,28 @@ def single_model_fleet(
     """Fleet of 50 single-model ISVCs for scalability comparison (TC-NFR-002).
 
     Creates 50 ISVCs sequentially with app=single-model-bench label.
+    Uses ExitStack so already-created ISVCs are cleaned up if setup fails mid-loop.
     """
-    fleet: list[InferenceService] = []
-    contexts: list[Any] = []
-
-    for i in range(50):
-        ctx = create_isvc(
-            client=admin_client,
-            name=f"single-bench-{i:03d}",
-            namespace=model_namespace.name,
-            runtime=mlserver_serving_runtime.name,
-            storage_uri=s3_models_storage_uri,
-            model_format=ModelFormat.SKLEARN,
-            model_service_account=multi_model_service_account.name,
-            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
-            labels={"app": "single-model-bench"},
-            wait_for_predictor_pods=True,
-        )
-        isvc = ctx.__enter__()
-        contexts.append(ctx)
-        fleet.append(isvc)
-
-    yield fleet
-
-    for ctx in reversed(contexts):
-        try:
-            ctx.__exit__(None, None, None)
-        except ApiException as exc:
-            LOGGER.warning("Single-model fleet teardown error", error=str(exc))
+    with contextlib.ExitStack() as stack:
+        fleet: list[InferenceService] = []
+        for i in range(50):
+            isvc = stack.enter_context(
+                create_isvc(
+                    client=admin_client,
+                    name=f"single-bench-{i:03d}",
+                    namespace=model_namespace.name,
+                    runtime=mlserver_serving_runtime.name,
+                    storage_uri=s3_models_storage_uri,
+                    model_format=ModelFormat.SKLEARN,
+                    model_service_account=multi_model_service_account.name,
+                    deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+                    resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+                    labels={"app": "single-model-bench"},
+                    wait_for_predictor_pods=True,
+                )
+            )
+            fleet.append(isvc)
+        yield fleet
 
 
 @pytest.fixture(scope="class")
@@ -1115,33 +1063,26 @@ def multi_model_fleet(
     """Fleet of 5 multi-model ISVCs for scalability comparison (TC-NFR-002).
 
     Each ISVC points to the same 10-model PVC repository.
+    Uses ExitStack so already-created ISVCs are cleaned up if setup fails mid-loop.
     """
     storage_uri = f"pvc://{multi_model_pvc.name}/{multi_model_staged_data}"
-    fleet: list[InferenceService] = []
-    contexts: list[Any] = []
-
-    for i in range(5):
-        ctx = create_isvc(
-            client=admin_client,
-            name=f"multi-bench-{i:03d}",
-            namespace=model_namespace.name,
-            runtime=mlserver_serving_runtime.name,
-            storage_uri=storage_uri,
-            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
-            model_service_account=multi_model_service_account.name,
-            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
-            labels={"app": "multi-model-bench"},
-            wait_for_predictor_pods=True,
-        )
-        isvc = ctx.__enter__()
-        contexts.append(ctx)
-        fleet.append(isvc)
-
-    yield fleet
-
-    for ctx in reversed(contexts):
-        try:
-            ctx.__exit__(None, None, None)
-        except ApiException as exc:
-            LOGGER.warning("Multi-model fleet teardown error", error=str(exc))
+    with contextlib.ExitStack() as stack:
+        fleet: list[InferenceService] = []
+        for i in range(5):
+            isvc = stack.enter_context(
+                create_isvc(
+                    client=admin_client,
+                    name=f"multi-bench-{i:03d}",
+                    namespace=model_namespace.name,
+                    runtime=mlserver_serving_runtime.name,
+                    storage_uri=storage_uri,
+                    model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+                    model_service_account=multi_model_service_account.name,
+                    deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+                    resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+                    labels={"app": "multi-model-bench"},
+                    wait_for_predictor_pods=True,
+                )
+            )
+            fleet.append(isvc)
+        yield fleet

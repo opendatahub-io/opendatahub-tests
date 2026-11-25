@@ -79,7 +79,12 @@ def _exec_in_pod(pod: Pod, command: list[str]) -> str:
 
 
 def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Send a V2 inference request via pod exec curl."""
+    """Send a V2 inference request via pod exec curl.
+
+    Raises RuntimeError when the HTTP status code cannot be parsed from the
+    curl output, so callers never confuse a transport failure with a real
+    server response.
+    """
     url = f"http://localhost:8080/v2/models/{model_name}/infer"
     result = _exec_in_pod(
         pod=pod,
@@ -98,8 +103,10 @@ def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, A
         ],
     )
     lines = result.strip().rsplit("\n", 1)
+    if not lines[-1].isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from curl: {result!r}")
     body_str = lines[0] if len(lines) > 1 else ""
-    http_code = int(lines[-1]) if lines[-1].isdigit() else 0
+    http_code = int(lines[-1])
     try:
         body = json.loads(body_str) if body_str else {}
     except json.JSONDecodeError:
@@ -108,17 +115,28 @@ def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, A
 
 
 def _v2_health(pod: Pod, endpoint: str) -> int:
-    """Query a V2 health endpoint and return the HTTP status code."""
+    """Query a V2 health endpoint and return the HTTP status code.
+
+    Raises RuntimeError when the HTTP status code cannot be parsed, so
+    callers never confuse a transport failure with a real probe result.
+    """
     url = f"http://localhost:8080{endpoint}"
     result = _exec_in_pod(
         pod=pod,
         command=["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
     )
-    return int(result.strip()) if result.strip().isdigit() else 0
+    status = result.strip()
+    if not status.isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from health probe: {result!r}")
+    return int(status)
 
 
 def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
-    """Query the V2 repository index and return the model list."""
+    """Query the V2 repository index and return the model list.
+
+    Raises RuntimeError when the response is not valid JSON, so callers
+    never confuse a failed request with an empty repository.
+    """
     result = _exec_in_pod(
         pod=pod,
         command=[
@@ -135,13 +153,19 @@ def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     )
     try:
         return json.loads(result.strip())
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Repository index returned invalid JSON: {result!r}") from exc
 
 
 def _get_pod_env_var(pod: Pod, var_name: str) -> str | None:
-    """Extract an environment variable value from the pod spec."""
+    """Extract an environment variable value from the pod spec.
+
+    Raises RuntimeError if the pod has no containers, so callers never
+    confuse an unreadable spec with 'env var not configured'.
+    """
     containers = pod.instance.spec.get("containers", [])
+    if not containers:
+        raise RuntimeError(f"Pod {pod.name} has no containers in its spec")
     for container in containers:
         for env in container.get("env", []):
             if env.get("name") == var_name:
@@ -150,11 +174,15 @@ def _get_pod_env_var(pod: Pod, var_name: str) -> str | None:
 
 
 def _get_pod_probe(pod: Pod, probe_type: str) -> dict[str, Any] | None:
-    """Extract a probe configuration from the pod spec."""
+    """Extract a probe configuration from the pod spec.
+
+    Raises RuntimeError if the pod has no containers, so callers never
+    confuse an unreadable spec with 'probe not configured'.
+    """
     containers = pod.instance.spec.get("containers", [])
-    if containers:
-        return containers[0].get(probe_type)
-    return None
+    if not containers:
+        raise RuntimeError(f"Pod {pod.name} has no containers in its spec")
+    return containers[0].get(probe_type)
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +203,7 @@ _NS_PARAM = pytest.mark.parametrize(
 class TestErrorIsolation:
     """Negative tests for error isolation between resident models."""
 
-    @pytest.mark.dependency(name="TC-NEG-001", depends=["TC-E2E-001"])
+    @pytest.mark.dependency(name="TC-NEG-001")
     def test_tc_neg_001(
         self,
         admin_client: DynamicClient,
@@ -194,15 +222,16 @@ class TestErrorIsolation:
         """
         pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
 
-        # Send malformed request
+        # Send malformed request — expect a 4xx client error with a body
         fail_result = _v2_infer(pod=pod, model_name="sklearn-iris-1", payload=MALFORMED_PAYLOAD)
-        assert fail_result["http_code"] != 200, (
-            f"Malformed request should not return 200, got HTTP {fail_result['http_code']}"
+        assert 400 <= fail_result["http_code"] < 500, (
+            f"Malformed request should return 4xx, got HTTP {fail_result['http_code']}"
         )
+        assert fail_result["body"], "Malformed request returned an empty body"
         LOGGER.info("Malformed request result", http_code=fail_result["http_code"], body=fail_result["body"])
 
         # Verify 3 other models are unaffected
-        isolation_models = ["xgb-classifier-1", "lgbm-classifier-1", "onnx-resnet-1"]
+        isolation_models = ["xgb-classifier-1", "lgbm-classifier-1", "onnx-iris-1"]
         for model_name in isolation_models:
             result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
             assert result["http_code"] == 200, (
