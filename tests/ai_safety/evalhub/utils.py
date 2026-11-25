@@ -14,6 +14,7 @@ from ocp_resources.evalhub import EvalHub
 from ocp_resources.job import Job
 from ocp_resources.mlflow import MLflow
 from ocp_resources.pod import ExecOnPodError, Pod
+from ocp_resources.resource import Resource
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.service import Service
 from ocp_resources.service_account import ServiceAccount
@@ -64,6 +65,21 @@ from utilities.kueue_utils import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+def delete_leftover_if_exists(resource: Resource, timeout: int) -> None:
+    """Delete a fixed-name resource left over from a previous run, if it still exists.
+
+    Based on _cleanup_ns_if_exists in k8s_lifecycle_signals/conftest.py, generalized to any
+    Resource since these fixtures also need to recover ClusterQueues and ResourceFlavors,
+    not just namespaces. resource.delete(wait=True) returns False on timeout instead of
+    raising, so the return value must be checked to catch a stuck delete.
+    """
+    if not resource.exists:
+        return
+    LOGGER.warning(f"{resource.kind} '{resource.name}' left over from a previous run, deleting before setup")
+    if not resource.delete(wait=True, timeout=timeout):
+        pytest.fail(f"{resource.kind} '{resource.name}' did not finish deleting within {timeout}s")
 
 
 def is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
