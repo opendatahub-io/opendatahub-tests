@@ -1666,3 +1666,26 @@ def verify_praxis_aitenant_without_maas_legacy_ipp_envoyfilter_post_upgrade(
         f"Praxis AITenant '{aitenant_name}' has no maas legacy IPP markers in '{gateway_namespace}' "
         "and Praxis payload processing is active"
     )
+
+
+def verify_no_maas_prefixed_httproutes(
+    client: DynamicClient,
+    namespace: str,
+) -> None:
+    """Assert no HTTPRoute with maas-* naming prefix exists in the namespace.
+
+    Args:
+        client: Kubernetes dynamic client.
+        namespace: Namespace to inspect.
+
+    Raises:
+        AssertionError: When any HTTPRoute with maas-* prefix is found.
+    """
+    maas_prefixed_routes: list[str] = []
+    for http_route in HTTPRoute.get(client=client, namespace=namespace):
+        if http_route.name.startswith("maas-"):
+            maas_prefixed_routes.append(http_route.name)
+
+    assert not maas_prefixed_routes, (
+        f"Legacy maas-prefixed HTTPRoutes still present in '{namespace}': {maas_prefixed_routes}"
+    )

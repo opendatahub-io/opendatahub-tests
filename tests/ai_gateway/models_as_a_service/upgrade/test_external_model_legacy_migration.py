@@ -13,6 +13,7 @@ from tests.ai_gateway.models_as_a_service.upgrade.utils import (
     verify_maas_model_ref_exists,
     verify_maas_subscription_ready,
     verify_no_legacy_owned_httproutes,
+    verify_no_maas_prefixed_httproutes,
     wait_for_inference_external_model_httproute,
     wait_for_legacy_maas_networking_present,
     wait_for_legacy_maas_prefixed_networking_deleted,
@@ -177,4 +178,8 @@ class TestPostUpgradeLegacyExternalModelMigration:
             client=admin_client,
             namespace=legacy_migration_namespace.name,
             model_name=legacy_migration_baseline_fixture["model_name"],
+        )
+        verify_no_maas_prefixed_httproutes(
+            client=admin_client,
+            namespace=legacy_migration_namespace.name,
         )
