@@ -345,7 +345,6 @@ def legacy_external_model_resource_name(model_name: str) -> str:
     return f"maas-{model_name}"
 
 
-
 LEGACY_NETWORKING_KINDS: tuple[type[NamespacedResource], ...] = (
     HTTPRoute,
     Service,
