@@ -176,6 +176,7 @@ class ApiGroups:
     KSERVE: str = "serving.kserve.io"
     KUADRANT_IO: str = "kuadrant.io"
     MAAS_IO: str = "maas.opendatahub.io"
+    AIGATEWAY_OPENDATAHUB_IO: str = "aigateway.opendatahub.io"
     INFERENCE_OPENDATAHUB_IO: str = "inference.opendatahub.io"
     AUTH_IO: str = "SERVICES_PLATFORM_OPENDATAHUB_IO"
     SPARKOPERATOR_K8S_IO: str = "sparkoperator.k8s.io"
@@ -211,6 +212,7 @@ class DscComponents:
     MODELMESHSERVING: str = "modelmeshserving"
     KSERVE: str = "kserve"
     MODELREGISTRY: str = "modelregistry"
+    AIPIPELINES: str = "aipipelines"
     OGX: str = "ogx"
     KUEUE: str = "kueue"
     AIGATEWAY: str = "aigateway"
@@ -223,6 +225,7 @@ class DscComponents:
 
     class ConditionType:
         MODEL_REGISTRY_READY: str = "ModelRegistryReady"
+        AI_PIPELINES_READY: str = "AIPipelinesReady"
         KSERVE_READY: str = "KserveReady"
         MODEL_MESH_SERVING_READY: str = "ModelMeshServingReady"
         OGX_READY: str = "OGXReady"
@@ -233,6 +236,7 @@ class DscComponents:
         MODELMESHSERVING: ConditionType.MODEL_MESH_SERVING_READY,
         KSERVE: ConditionType.KSERVE_READY,
         MODELREGISTRY: ConditionType.MODEL_REGISTRY_READY,
+        AIPIPELINES: ConditionType.AI_PIPELINES_READY,
         OGX: ConditionType.OGX_READY,
         AIGATEWAY: ConditionType.AIGATEWAY_READY,
     }
@@ -351,6 +355,9 @@ class ModelStorage:
         QWEN_7B_INSTRUCT: str = "s3://ods-ci-wisdom/Qwen2.5-7B-Instruct/"
         TINYLLAMA: str = "s3://ods-ci-wisdom/TinyLlama-1.1B-Chat-v1.0/"
         OPT_125M: str = "s3://ods-ci-wisdom/opt-125m/"
+        ODS_CI_WISDOM_BUCKET: str = "ods-ci-wisdom"
+        ODS_CI_WISDOM_REGION: str = "us-east-2"
+        ODS_CI_WISDOM_ENDPOINT: str = "https://s3.us-east-2.amazonaws.com"
 
     class HuggingFace:
         TINYLLAMA: str = "hf://TinyLlama/TinyLlama-1.1B-Chat-v1.0"
