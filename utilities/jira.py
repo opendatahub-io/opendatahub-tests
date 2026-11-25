@@ -11,11 +11,13 @@ from ocp_resources.exceptions import MissingResourceError
 from packaging.version import Version
 from pytest_testconfig import config as py_config
 from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import Timeout as RequestsTimeout
 from urllib3.exceptions import NewConnectionError
 
 LOGGER = structlog.get_logger(name=__name__)
 
 JIRA_CLOSED_STATUSES = ("closed", "resolved", "testing")
+JIRA_CONNECTION_TIMEOUT_SECONDS: tuple[float, float] = (10, 30)
 
 
 @cache
@@ -30,6 +32,7 @@ def get_jira_connection() -> JIRA:
     return JIRA(
         server=os.getenv("PYTEST_JIRA_URL"),
         basic_auth=(os.getenv("PYTEST_JIRA_USERNAME"), os.getenv("PYTEST_JIRA_TOKEN")),
+        timeout=JIRA_CONNECTION_TIMEOUT_SECONDS,
     )
 
 
@@ -106,7 +109,7 @@ def is_jira_issue_open(jira_id: str) -> bool:  # skip-unused-code
     """
     try:
         jira_status = get_jira_issue_fields(jira_id=jira_id).status.name.lower()
-    except NewConnectionError, JIRAError, RequestsConnectionError:
+    except NewConnectionError, JIRAError, RequestsConnectionError, RequestsTimeout:
         LOGGER.warning(f"Failed to get Jira issue {jira_id}, assuming it is open")
         return True
 
