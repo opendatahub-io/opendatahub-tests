@@ -54,10 +54,16 @@ def upload(source_dir: Path, bucket: str, prefix: str, endpoint_url: str | None)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--source-dir", type=Path, required=True, help="Local directory produced by generate_artifacts.py.")
+    parser.add_argument(
+        "--source-dir", type=Path, required=True, help="Local directory produced by generate_artifacts.py."
+    )
     parser.add_argument("--bucket", required=True, help="S3 bucket name.")
     parser.add_argument("--prefix", default="mlserver", help="S3 key prefix (default: mlserver).")
-    parser.add_argument("--endpoint-url", default=os.environ.get("AWS_ENDPOINT_URL"), help="S3 endpoint URL (default: AWS_ENDPOINT_URL env var).")
+    parser.add_argument(
+        "--endpoint-url",
+        default=os.environ.get("AWS_ENDPOINT_URL"),
+        help="S3 endpoint URL (default: AWS_ENDPOINT_URL env var).",
+    )
     args = parser.parse_args()
 
     if not args.source_dir.is_dir():

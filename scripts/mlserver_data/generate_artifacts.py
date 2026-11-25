@@ -187,7 +187,9 @@ def main() -> None:
     generate(args.output_dir)
     print("\nVerification:")
     verify(args.output_dir)
-    print(f"\nDone. Upload with:\n  python scripts/mlserver_data/upload_to_s3.py --source-dir {args.output_dir} --bucket <BUCKET>")
+    print(
+        f"\nDone. Upload with:\n  python scripts/mlserver_data/upload_to_s3.py --source-dir {args.output_dir} --bucket <BUCKET>"
+    )
 
 
 if __name__ == "__main__":

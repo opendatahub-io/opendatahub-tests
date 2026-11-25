@@ -127,10 +127,17 @@ def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, A
     result = _exec_in_pod(
         pod=pod,
         command=[
-            "curl", "-s", "-w", "\n%{http_code}",
-            "-X", "POST", url,
-            "-H", "Content-Type: application/json",
-            "-d", json.dumps(payload),
+            "curl",
+            "-s",
+            "-w",
+            "\n%{http_code}",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            json.dumps(payload),
         ],
     )
     lines = result.strip().rsplit("\n", 1)
@@ -173,11 +180,15 @@ def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     result = _exec_in_pod(
         pod=pod,
         command=[
-            "curl", "-s",
-            "-X", "POST",
+            "curl",
+            "-s",
+            "-X",
+            "POST",
             "http://localhost:8080/v2/repository/index",
-            "-H", "Content-Type: application/json",
-            "-d", "{}",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            "{}",
         ],
     )
     try:
@@ -298,12 +309,9 @@ class TestMultiModelDeployment:
         )
         route_body = route_response.json()
         assert route_body.get("model_name") == route_model, (
-            f"External route response model_name {route_body.get('model_name')} "
-            f"does not match {route_model}"
+            f"External route response model_name {route_body.get('model_name')} does not match {route_model}"
         )
-        assert len(route_body.get("outputs", [])) > 0, (
-            "External route response has empty outputs"
-        )
+        assert len(route_body.get("outputs", [])) > 0, "External route response has empty outputs"
 
     @pytest.mark.dependency(name="TC-E2E-002")
     def test_tc_e2e_002(
@@ -344,7 +352,11 @@ class TestMultiModelDeployment:
         # Verify MLServer discovered models via logs
         log_output = _exec_in_pod(
             pod=pod,
-            command=["sh", "-c", "cat /proc/1/fd/1 2>/dev/null | grep -iE 'Loading model|models found' | tail -20 || echo 'LOG_READ_SKIPPED'"],
+            command=[
+                "sh",
+                "-c",
+                "cat /proc/1/fd/1 2>/dev/null | grep -iE 'Loading model|models found' | tail -20 || echo 'LOG_READ_SKIPPED'",
+            ],
         )
         LOGGER.info("MLServer model discovery logs", output=log_output[:500])
 
@@ -393,14 +405,14 @@ class TestMultiModelDeployment:
         # Re-query and compare
         final_index = _v2_repository_index(pod=pod)
         final_names = sorted(entry.get("name", "") for entry in final_index)
-        assert initial_names == final_names, (
-            f"Model set changed: initial={initial_names}, final={final_names}"
-        )
+        assert initial_names == final_names, f"Model set changed: initial={initial_names}, final={final_names}"
 
         # Repeat inference
         for model_name in MODEL_NAMES:
             result = _v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
-            assert result["http_code"] == 200, f"Post-wait inference for {model_name} failed: HTTP {result['http_code']}"
+            assert result["http_code"] == 200, (
+                f"Post-wait inference for {model_name} failed: HTTP {result['http_code']}"
+            )
 
     @pytest.mark.dependency(name="TC-E2E-004", depends=["TC-E2E-001"])
     def test_tc_e2e_004(
@@ -445,9 +457,7 @@ class TestMultiModelDeployment:
 
         # Pod readiness
         conditions = pod.instance.status.get("conditions", [])
-        ready_condition = next(
-            (c for c in conditions if c.get("type") == "Ready"), None
-        )
+        ready_condition = next((c for c in conditions if c.get("type") == "Ready"), None)
         assert ready_condition is not None, "Pod has no Ready condition"
         assert ready_condition.get("status") == "True", (
             f"Pod Ready condition is {ready_condition.get('status')}, expected True"
@@ -544,9 +554,7 @@ class TestMultiModelConcurrency:
         results: dict[str, dict[str, Any]] = {}
         with ThreadPoolExecutor(max_workers=len(CONCURRENT_MODELS)) as executor:
             futures = {
-                executor.submit(
-                    _v2_infer, pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD
-                ): model_name
+                executor.submit(_v2_infer, pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD): model_name
                 for model_name in CONCURRENT_MODELS
             }
             for future in as_completed(futures, timeout=30):
@@ -625,9 +633,7 @@ class TestMultiModelStartup:
                     break
         except TimeoutExpiredError:
             repo_index = _v2_repository_index(pod=pod)
-            pytest.fail(
-                f"Only {len(repo_index)}/{EXPECTED_MODEL_COUNT} models loaded within timeout"
-            )
+            pytest.fail(f"Only {len(repo_index)}/{EXPECTED_MODEL_COUNT} models loaded within timeout")
 
         elapsed_seconds = time.monotonic() - start_time
         LOGGER.info("Startup time measured", elapsed_seconds=round(elapsed_seconds, 2))
@@ -638,9 +644,7 @@ class TestMultiModelStartup:
 
         # Record pod Ready timestamp
         conditions = pod.instance.status.get("conditions", [])
-        ready_condition = next(
-            (c for c in conditions if c.get("type") == "Ready"), None
-        )
+        ready_condition = next((c for c in conditions if c.get("type") == "Ready"), None)
         LOGGER.info(
             "Pod Ready condition",
             status=ready_condition.get("status") if ready_condition else "not found",
@@ -705,9 +709,7 @@ class TestMultiModelCUDA:
         # V2 inference
         onnx_model_name = model_names[0]
         result = _v2_infer(pod=pod, model_name=onnx_model_name, payload=SKLEARN_IRIS_PAYLOAD)
-        assert result["http_code"] == 200, (
-            f"CUDA inference returned HTTP {result['http_code']}, expected 200"
-        )
+        assert result["http_code"] == 200, f"CUDA inference returned HTTP {result['http_code']}, expected 200"
         assert result["body"].get("model_name") is not None
         assert len(result["body"].get("outputs", [])) > 0
 
@@ -767,9 +769,7 @@ class TestSingleModelRegression:
             model_name=single_model_inference_service.name,
             payload=SKLEARN_IRIS_PAYLOAD,
         )
-        assert result["http_code"] == 200, (
-            f"Single-model inference returned HTTP {result['http_code']}, expected 200"
-        )
+        assert result["http_code"] == 200, f"Single-model inference returned HTTP {result['http_code']}, expected 200"
         assert len(result["body"].get("outputs", [])) > 0
 
         # Record probe configuration
@@ -788,10 +788,6 @@ class TestSingleModelRegression:
 
         # Verify pod Ready
         conditions = pod.instance.status.get("conditions", [])
-        ready_condition = next(
-            (c for c in conditions if c.get("type") == "Ready"), None
-        )
+        ready_condition = next((c for c in conditions if c.get("type") == "Ready"), None)
         assert ready_condition is not None, "Pod has no Ready condition"
-        assert ready_condition.get("status") == "True", (
-            f"Single-model pod not Ready: {ready_condition.get('status')}"
-        )
+        assert ready_condition.get("status") == "True", f"Single-model pod not Ready: {ready_condition.get('status')}"

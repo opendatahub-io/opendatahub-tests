@@ -80,10 +80,17 @@ def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, A
     result = _exec_in_pod(
         pod=pod,
         command=[
-            "curl", "-s", "-w", "\n%{http_code}",
-            "-X", "POST", url,
-            "-H", "Content-Type: application/json",
-            "-d", json.dumps(payload),
+            "curl",
+            "-s",
+            "-w",
+            "\n%{http_code}",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            json.dumps(payload),
         ],
     )
     lines = result.strip().rsplit("\n", 1)
@@ -111,11 +118,15 @@ def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     result = _exec_in_pod(
         pod=pod,
         command=[
-            "curl", "-s",
-            "-X", "POST",
+            "curl",
+            "-s",
+            "-X",
+            "POST",
             "http://localhost:8080/v2/repository/index",
-            "-H", "Content-Type: application/json",
-            "-d", "{}",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            "{}",
         ],
     )
     try:
@@ -253,9 +264,7 @@ class TestServingRuntimeUpgrade:
 
         # Check ISVC Ready condition
         isvc_conditions = isvc.instance.get("status", {}).get("conditions", [])
-        isvc_ready = next(
-            (c for c in isvc_conditions if c.get("type") == "Ready"), None
-        )
+        isvc_ready = next((c for c in isvc_conditions if c.get("type") == "Ready"), None)
 
         # If not Ready, wait for pod recovery
         if not isvc_ready or isvc_ready.get("status") != "True":

@@ -645,24 +645,27 @@ def empty_storage_inference_service(
 
     Creates a dedicated PVC with no model data staged.
     """
-    with PersistentVolumeClaim(
-        name="empty-storage-pvc",
-        namespace=model_namespace.name,
-        client=admin_client,
-        size="1Gi",
-        accessmodes="ReadWriteOnce",
-    ) as pvc, create_isvc(
-        client=admin_client,
-        name="empty-storage-isvc",
-        namespace=model_namespace.name,
-        runtime=mlserver_serving_runtime.name,
-        storage_uri=f"pvc://{pvc.name}/",
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        model_service_account=multi_model_service_account.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
-        wait_for_predictor_pods=False,
-    ) as isvc:
+    with (
+        PersistentVolumeClaim(
+            name="empty-storage-pvc",
+            namespace=model_namespace.name,
+            client=admin_client,
+            size="1Gi",
+            accessmodes="ReadWriteOnce",
+        ) as pvc,
+        create_isvc(
+            client=admin_client,
+            name="empty-storage-isvc",
+            namespace=model_namespace.name,
+            runtime=mlserver_serving_runtime.name,
+            storage_uri=f"pvc://{pvc.name}/",
+            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+            model_service_account=multi_model_service_account.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+            wait_for_predictor_pods=False,
+        ) as isvc,
+    ):
         yield isvc
 
 
@@ -942,31 +945,35 @@ def invalid_credentials_inference_service(
     Creates a bad secret and SA in-line, then deploys the ISVC expecting
     storage initialization failure.
     """
-    with kserve_s3_endpoint_secret(
-        admin_client=admin_client,
-        name="bad-credentials-secret",
-        namespace=model_namespace.name,
-        aws_access_key="INVALID_KEY_ID",
-        aws_secret_access_key="INVALID_SECRET_KEY",
-        aws_s3_region=models_s3_bucket_region,
-        aws_s3_endpoint=models_s3_bucket_endpoint,
-    ) as bad_secret, ServiceAccount(
-        client=admin_client,
-        namespace=model_namespace.name,
-        name="bad-credentials-sa",
-        secrets=[{"name": bad_secret.name}],
-    ) as bad_sa, create_isvc(
-        client=admin_client,
-        name="invalid-creds-isvc",
-        namespace=model_namespace.name,
-        runtime=mlserver_serving_runtime.name,
-        storage_uri="s3://nonexistent-bucket/models/",
-        model_format=ModelFormat.SKLEARN,
-        model_service_account=bad_sa.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
-        wait_for_predictor_pods=False,
-    ) as isvc:
+    with (
+        kserve_s3_endpoint_secret(
+            admin_client=admin_client,
+            name="bad-credentials-secret",
+            namespace=model_namespace.name,
+            aws_access_key="INVALID_KEY_ID",
+            aws_secret_access_key="INVALID_SECRET_KEY",
+            aws_s3_region=models_s3_bucket_region,
+            aws_s3_endpoint=models_s3_bucket_endpoint,
+        ) as bad_secret,
+        ServiceAccount(
+            client=admin_client,
+            namespace=model_namespace.name,
+            name="bad-credentials-sa",
+            secrets=[{"name": bad_secret.name}],
+        ) as bad_sa,
+        create_isvc(
+            client=admin_client,
+            name="invalid-creds-isvc",
+            namespace=model_namespace.name,
+            runtime=mlserver_serving_runtime.name,
+            storage_uri="s3://nonexistent-bucket/models/",
+            model_format=ModelFormat.SKLEARN,
+            model_service_account=bad_sa.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+            wait_for_predictor_pods=False,
+        ) as isvc,
+    ):
         yield isvc
 
 

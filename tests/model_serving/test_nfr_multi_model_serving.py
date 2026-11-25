@@ -81,10 +81,17 @@ def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, A
     result = _exec_in_pod(
         pod=pod,
         command=[
-            "curl", "-s", "-w", "\n%{http_code}",
-            "-X", "POST", url,
-            "-H", "Content-Type: application/json",
-            "-d", json.dumps(payload),
+            "curl",
+            "-s",
+            "-w",
+            "\n%{http_code}",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            json.dumps(payload),
         ],
     )
     lines = result.strip().rsplit("\n", 1)
@@ -171,19 +178,32 @@ def _exec_curl_in_cluster(
         Dictionary with http_code and returncode.
     """
     curl_args = [
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-        "-X", method,
-        "-H", "Content-Type: application/json",
+        "curl",
+        "-s",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "-X",
+        method,
+        "-H",
+        "Content-Type: application/json",
     ]
     if data:
         curl_args.extend(["-d", data])
     curl_args.append(url)
 
     oc_cmd: list[str] = [
-        "oc", "run", "curl-boundary-test", "--rm", "-i", "--restart=Never",
+        "oc",
+        "run",
+        "curl-boundary-test",
+        "--rm",
+        "-i",
+        "--restart=Never",
         f"--namespace={namespace}",
         "--image=registry.access.redhat.com/ubi9/ubi-minimal:latest",
-        "--", *curl_args,
+        "--",
+        *curl_args,
     ]
 
     try:
@@ -218,10 +238,19 @@ def _exec_curl_external(
         Dictionary with http_code and returncode.
     """
     curl_cmd: list[str] = [
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-        "-X", method,
-        "-H", "Content-Type: application/json",
-        "--insecure", "--max-time", "10",
+        "curl",
+        "-s",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "-X",
+        method,
+        "-H",
+        "Content-Type: application/json",
+        "--insecure",
+        "--max-time",
+        "10",
     ]
     if data:
         curl_cmd.extend(["-d", data])
@@ -292,9 +321,7 @@ class TestPSAPBenchmark:
         for container in containers:
             for env in container.get("env", []):
                 if env.get("name") == "PARALLEL_WORKERS":
-                    assert env.get("value") == "1", (
-                        f"Expected PARALLEL_WORKERS=1, got {env.get('value')}"
-                    )
+                    assert env.get("value") == "1", f"Expected PARALLEL_WORKERS=1, got {env.get('value')}"
 
         # Record baseline resource usage
         baseline_resources = _collect_pod_resource_requests(
@@ -319,18 +346,14 @@ class TestPSAPBenchmark:
             model_name=baseline_inference_service.name,
             payload=SKLEARN_IRIS_PAYLOAD,
         )
-        assert baseline_result["http_code"] == 200, (
-            f"Baseline inference returned HTTP {baseline_result['http_code']}"
-        )
+        assert baseline_result["http_code"] == 200, f"Baseline inference returned HTTP {baseline_result['http_code']}"
 
         multi_result = _v2_infer(
             pod=multi_pod,
             model_name="sklearn-iris-1",
             payload=SKLEARN_IRIS_PAYLOAD,
         )
-        assert multi_result["http_code"] == 200, (
-            f"Multi-model inference returned HTTP {multi_result['http_code']}"
-        )
+        assert multi_result["http_code"] == 200, f"Multi-model inference returned HTTP {multi_result['http_code']}"
 
         LOGGER.info(
             "PSAP benchmark comparison recorded",

@@ -84,10 +84,17 @@ def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, A
     result = _exec_in_pod(
         pod=pod,
         command=[
-            "curl", "-s", "-w", "\n%{http_code}",
-            "-X", "POST", url,
-            "-H", "Content-Type: application/json",
-            "-d", json.dumps(payload),
+            "curl",
+            "-s",
+            "-w",
+            "\n%{http_code}",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            json.dumps(payload),
         ],
     )
     lines = result.strip().rsplit("\n", 1)
@@ -115,11 +122,15 @@ def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     result = _exec_in_pod(
         pod=pod,
         command=[
-            "curl", "-s",
-            "-X", "POST",
+            "curl",
+            "-s",
+            "-X",
+            "POST",
             "http://localhost:8080/v2/repository/index",
-            "-H", "Content-Type: application/json",
-            "-d", "{}",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            "{}",
         ],
     )
     try:
@@ -197,9 +208,7 @@ class TestErrorIsolation:
             assert result["http_code"] == 200, (
                 f"Isolation check: {model_name} returned HTTP {result['http_code']}, expected 200"
             )
-            assert len(result["body"].get("outputs", [])) > 0, (
-                f"Isolation check: {model_name} has empty outputs"
-            )
+            assert len(result["body"].get("outputs", [])) > 0, f"Isolation check: {model_name} has empty outputs"
 
         # Verify recovery with valid request
         recover_result = _v2_infer(pod=pod, model_name="sklearn-iris-1", payload=VALID_SKLEARN_PAYLOAD)
@@ -272,7 +281,7 @@ class TestHealthProbesDegraded:
             try:
                 value = _get_pod_env_var(pod=pod, var_name=var_name)
                 LOGGER.info("Empty storage env var", name=var_name, value=value)
-            except (AttributeError, TypeError):
+            except AttributeError, TypeError:
                 LOGGER.info("Could not read env var (container may not be running)", name=var_name)
 
         # Record probe config and pod conditions
@@ -332,7 +341,11 @@ class TestHealthProbesDegraded:
         try:
             log_output = _exec_in_pod(
                 pod=pod,
-                command=["sh", "-c", "cat /proc/1/fd/1 2>/dev/null | grep -iE 'error|failed|Error' | tail -20 || echo 'LOG_READ_SKIPPED'"],
+                command=[
+                    "sh",
+                    "-c",
+                    "cat /proc/1/fd/1 2>/dev/null | grep -iE 'error|failed|Error' | tail -20 || echo 'LOG_READ_SKIPPED'",
+                ],
             )
             LOGGER.info("One-failed-model error logs", output=log_output[:1000])
         except (ExecOnPodError, ApiException) as exc:
@@ -358,9 +371,7 @@ class TestHealthProbesDegraded:
         # Repository index should show 9 models (the failed one absent)
         repo_index = _v2_repository_index(pod=pod)
         LOGGER.info("One-failed-model repository index", count=len(repo_index))
-        assert len(repo_index) == 9, (
-            f"Expected 9 models in repository index (1 failed), got {len(repo_index)}"
-        )
+        assert len(repo_index) == 9, f"Expected 9 models in repository index (1 failed), got {len(repo_index)}"
 
 
 @pytest.mark.tier1
@@ -407,7 +418,11 @@ class TestMalformedConfiguration:
         try:
             log_output = _exec_in_pod(
                 pod=pod,
-                command=["sh", "-c", "cat /proc/1/fd/1 2>/dev/null | grep -iE 'JSON|json|parse|malformed' | tail -10 || echo 'LOG_READ_SKIPPED'"],
+                command=[
+                    "sh",
+                    "-c",
+                    "cat /proc/1/fd/1 2>/dev/null | grep -iE 'JSON|json|parse|malformed' | tail -10 || echo 'LOG_READ_SKIPPED'",
+                ],
             )
             LOGGER.info("Malformed settings error logs", output=log_output[:500])
         except (ExecOnPodError, ApiException) as exc:
@@ -422,9 +437,7 @@ class TestMalformedConfiguration:
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
             if model_name in model_names:
                 result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
-                assert result["http_code"] == 200, (
-                    f"{model_name} inference returned HTTP {result['http_code']}"
-                )
+                assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Pod should still be running
         pod.reload()
@@ -471,7 +484,11 @@ class TestMalformedConfiguration:
         try:
             log_output = _exec_in_pod(
                 pod=pod,
-                command=["sh", "-c", "cat /proc/1/fd/1 2>/dev/null | grep -iE 'implementation|custom.MyModel|reject' | tail -10 || echo 'LOG_READ_SKIPPED'"],
+                command=[
+                    "sh",
+                    "-c",
+                    "cat /proc/1/fd/1 2>/dev/null | grep -iE 'implementation|custom.MyModel|reject' | tail -10 || echo 'LOG_READ_SKIPPED'",
+                ],
             )
             LOGGER.info("Unsupported impl rejection logs", output=log_output[:500])
         except (ExecOnPodError, ApiException) as exc:
@@ -486,9 +503,7 @@ class TestMalformedConfiguration:
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
             if model_name in model_names:
                 result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
-                assert result["http_code"] == 200, (
-                    f"{model_name} inference returned HTTP {result['http_code']}"
-                )
+                assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Pod should still be running
         pod.reload()
@@ -556,10 +571,7 @@ class TestResourceExhaustion:
         LOGGER.info("Resource exhaustion observed states", states=observed_states)
 
         # Classify failure mode
-        oom_killed = any(
-            s.get("reason") == "OOMKilled" or s.get("last_reason") == "OOMKilled"
-            for s in observed_states
-        )
+        oom_killed = any(s.get("reason") == "OOMKilled" or s.get("last_reason") == "OOMKilled" for s in observed_states)
         crash_loop = "CrashLoopBackOff" in str(observed_phases)
 
         if oom_killed:
@@ -629,7 +641,11 @@ class TestMissingArtifacts:
         try:
             log_output = _exec_in_pod(
                 pod=pod,
-                command=["sh", "-c", "cat /proc/1/fd/1 2>/dev/null | grep -iE 'not found|FileNotFoundError|nonexistent' | tail -10 || echo 'LOG_READ_SKIPPED'"],
+                command=[
+                    "sh",
+                    "-c",
+                    "cat /proc/1/fd/1 2>/dev/null | grep -iE 'not found|FileNotFoundError|nonexistent' | tail -10 || echo 'LOG_READ_SKIPPED'",
+                ],
             )
             LOGGER.info("Missing artifact error logs", output=log_output[:500])
         except (ExecOnPodError, ApiException) as exc:
@@ -639,18 +655,14 @@ class TestMissingArtifacts:
         repo_index = _v2_repository_index(pod=pod)
         model_names = [e.get("name", "") for e in repo_index]
         assert "missing-model" not in model_names or any(
-            e.get("state") == "UNAVAILABLE"
-            for e in repo_index
-            if e.get("name") == "missing-model"
+            e.get("state") == "UNAVAILABLE" for e in repo_index if e.get("name") == "missing-model"
         ), f"missing-model should not be available in index: {model_names}"
 
         # Valid models should serve
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
             if model_name in model_names:
                 result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
-                assert result["http_code"] == 200, (
-                    f"{model_name} inference returned HTTP {result['http_code']}"
-                )
+                assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Inference to missing-model should fail
         missing_result = _v2_infer(pod=pod, model_name="missing-model", payload=VALID_SKLEARN_PAYLOAD)
@@ -702,13 +714,9 @@ class TestInvalidCredentials:
 
             # Pod should not be in Running/Ready state successfully
             conditions = pod.instance.status.get("conditions", [])
-            ready_condition = next(
-                (c for c in conditions if c.get("type") == "Ready"), None
-            )
+            ready_condition = next((c for c in conditions if c.get("type") == "Ready"), None)
             if ready_condition:
-                assert ready_condition.get("status") != "True", (
-                    "Pod should not be Ready with invalid credentials"
-                )
+                assert ready_condition.get("status") != "True", "Pod should not be Ready with invalid credentials"
 
             # Record container states
             container_statuses = pod.instance.status.get("containerStatuses", [])
@@ -724,7 +732,7 @@ class TestInvalidCredentials:
             try:
                 live_code = _v2_health(pod=pod, endpoint="/v2/health/live")
                 assert live_code != 200, "/v2/health/live should not return 200 with invalid creds"
-            except (ExecOnPodError, ApiException):
+            except ExecOnPodError, ApiException:
                 LOGGER.info("Health endpoint unreachable (expected)")
         else:
             LOGGER.info("No pods found for invalid-credentials ISVC (pod creation may have failed)")
@@ -732,13 +740,9 @@ class TestInvalidCredentials:
         # ISVC should not report Ready
         isvc.reload()
         isvc_conditions = isvc.instance.get("status", {}).get("conditions", [])
-        isvc_ready = next(
-            (c for c in isvc_conditions if c.get("type") == "Ready"), None
-        )
+        isvc_ready = next((c for c in isvc_conditions if c.get("type") == "Ready"), None)
         if isvc_ready:
-            assert isvc_ready.get("status") != "True", (
-                "InferenceService should not be Ready with invalid credentials"
-            )
+            assert isvc_ready.get("status") != "True", "InferenceService should not be Ready with invalid credentials"
 
 
 @pytest.mark.tier3
@@ -801,15 +805,13 @@ class TestStorageExhaustion:
                 assert len(repo_index) < 10, (
                     f"Expected fewer than 10 models with exhausted storage, got {len(repo_index)}"
                 )
-            except (ExecOnPodError, ApiException):
+            except ExecOnPodError, ApiException:
                 LOGGER.info("Repository index unreachable (expected with storage failure)")
 
         # ISVC should not report Ready
         isvc.reload()
         isvc_conditions = isvc.instance.get("status", {}).get("conditions", [])
-        isvc_ready = next(
-            (c for c in isvc_conditions if c.get("type") == "Ready"), None
-        )
+        isvc_ready = next((c for c in isvc_conditions if c.get("type") == "Ready"), None)
         if isvc_ready:
             LOGGER.info(
                 "Storage exhaustion ISVC Ready condition",
