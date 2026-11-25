@@ -378,7 +378,10 @@ def legacy_owned_resources(
     """
     owned = []
     for resource in resource_class.get(client=client, namespace=namespace):
-        owner_references = resource.instance.metadata.ownerReferences or []
+        try:
+            owner_references = resource.instance.metadata.ownerReferences or []
+        except Exception:
+            continue
         if any(
             owner_ref_is_legacy_external_model(owner_ref=owner_ref, model_name=model_name)
             for owner_ref in owner_references
@@ -506,7 +509,10 @@ def verify_no_legacy_owned_httproutes(
     """
     legacy_owned_routes: list[str] = []
     for http_route in HTTPRoute.get(client=client, namespace=namespace):
-        owner_references = http_route.instance.metadata.ownerReferences or []
+        try:
+            owner_references = http_route.instance.metadata.ownerReferences or []
+        except Exception:
+            continue
         if any(
             owner_ref_is_legacy_external_model(owner_ref=owner_ref, model_name=model_name)
             for owner_ref in owner_references
