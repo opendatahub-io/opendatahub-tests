@@ -1,0 +1,7 @@
+{
+  "name": "onnx-resnet-3",
+  "implementation": "mlserver_onnx.OnnxModel",
+  "parameters": {
+    "uri": "./model.onnx"
+  }
+}

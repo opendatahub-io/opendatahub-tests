@@ -1,0 +1,7 @@
+{
+  "name": "xgb-classifier-1",
+  "implementation": "mlserver_xgboost.XGBoostModel",
+  "parameters": {
+    "uri": "./model.json"
+  }
+}

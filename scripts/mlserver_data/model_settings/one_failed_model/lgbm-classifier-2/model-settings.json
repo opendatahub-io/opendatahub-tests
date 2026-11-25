@@ -1,0 +1,7 @@
+{
+  "name": "lgbm-classifier-2",
+  "implementation": "mlserver_lightgbm.LightGBMModel",
+  "parameters": {
+    "uri": "./model.txt"
+  }
+}

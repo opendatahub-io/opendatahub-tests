@@ -1,0 +1,7 @@
+{
+  "name": "sklearn-iris-2",
+  "implementation": "mlserver_sklearn.SKLearnModel",
+  "parameters": {
+    "uri": "./model.joblib"
+  }
+}

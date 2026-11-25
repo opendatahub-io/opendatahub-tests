@@ -1,0 +1,7 @@
+{
+  "name": "missing-model",
+  "implementation": "mlserver_sklearn.SKLearnModel",
+  "parameters": {
+    "uri": "./nonexistent.joblib"
+  }
+}
