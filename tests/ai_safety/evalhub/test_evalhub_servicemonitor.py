@@ -30,6 +30,7 @@ from utilities.monitoring import validate_metrics_field
 )
 @pytest.mark.tier1
 @pytest.mark.ai_safety
+@pytest.mark.usefixtures("cluster_monitoring_config")
 class TestEvalHubServiceMonitor:
     """Tests for the EvalHub ServiceMonitor and metrics Service resources."""
 
