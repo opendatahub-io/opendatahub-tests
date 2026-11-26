@@ -106,20 +106,23 @@ ARTIFACT_GENERATORS: dict[str, tuple[str, Any]] = {
 
 
 def generate(output_dir: Path) -> None:
+    output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for scenario_dir in sorted(SETTINGS_DIR.iterdir()):
         if not scenario_dir.is_dir():
             continue
 
-        dest_scenario = output_dir / scenario_dir.name
+        dest_scenario = (output_dir / scenario_dir.name).resolve()
+        dest_scenario.relative_to(output_dir)  # noqa: FCN001
         dest_scenario.mkdir(parents=True, exist_ok=True)
 
         for model_dir in sorted(scenario_dir.iterdir()):
             if not model_dir.is_dir():
                 continue
 
-            dest_model = dest_scenario / model_dir.name
+            dest_model = (dest_scenario / model_dir.name).resolve()
+            dest_model.relative_to(output_dir)  # noqa: FCN001
             dest_model.mkdir(parents=True, exist_ok=True)
 
             settings_file = model_dir / "model-settings.json"
@@ -128,7 +131,7 @@ def generate(output_dir: Path) -> None:
 
             # Copy model-settings.json
             settings_dest = (dest_model / "model-settings.json").resolve()
-            settings_dest.relative_to(output_dir.resolve())  # noqa: FCN001
+            settings_dest.relative_to(output_dir)  # noqa: FCN001
             shutil.copy2(src=settings_file, dst=settings_dest)
 
             # Parse settings to determine which artifact to generate
@@ -154,8 +157,8 @@ def generate(output_dir: Path) -> None:
                 continue
 
             artifact_name, generator_fn = ARTIFACT_GENERATORS[impl]
-            artifact_path = dest_model / artifact_name
-            artifact_path.resolve().relative_to(output_dir.resolve())  # noqa: FCN001
+            artifact_path = (dest_model / artifact_name).resolve()
+            artifact_path.relative_to(output_dir)  # noqa: FCN001
             generator_fn(path=artifact_path)
             print(f"  {scenario_dir.name}/{model_dir.name}: {artifact_name}")
 
