@@ -275,8 +275,8 @@ def v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Repository index returned invalid JSON: {body_str!r}") from exc
     if not isinstance(parsed, list):
-        raise RuntimeError(f"Repository index returned {type(parsed).__name__}, expected list: {body_str!r}")
+        raise TypeError(f"Repository index returned {type(parsed).__name__}, expected list: {body_str!r}")
     for i, entry in enumerate(parsed):
         if not isinstance(entry, dict):
-            raise RuntimeError(f"Repository index entry {i} is {type(entry).__name__}, expected dict: {entry!r}")
+            raise TypeError(f"Repository index entry {i} is {type(entry).__name__}, expected dict: {entry!r}")
     return parsed
