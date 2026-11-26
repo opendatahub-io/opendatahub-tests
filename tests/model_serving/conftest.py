@@ -792,7 +792,7 @@ def invalid_credentials_inference_service(
             name="bad-credentials-secret",
             namespace=model_namespace.name,
             aws_access_key="INVALID_KEY_ID",
-            aws_secret_access_key="INVALID_SECRET_KEY",
+            aws_secret_access_key="INVALID_SECRET_KEY",  # pragma: allowlist secret
             aws_s3_region=models_s3_bucket_region,
             aws_s3_endpoint=models_s3_bucket_endpoint,
         ) as bad_secret,
@@ -811,7 +811,7 @@ def invalid_credentials_inference_service(
             model_format=ModelFormat.SKLEARN,
             model_service_account=bad_sa.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),  # pragma: allowlist secret
+            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
             wait_for_predictor_pods=False,
         ) as isvc,
     ):

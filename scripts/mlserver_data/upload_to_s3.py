@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Upload generated MLServer model artifacts to an S3 bucket.
+r"""Upload generated MLServer model artifacts to an S3 bucket.
 
 Reads AWS credentials from the environment (AWS_ACCESS_KEY_ID,
 AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION, AWS_ENDPOINT_URL).
 
 Usage:
-    python scripts/mlserver_data/upload_to_s3.py \\
-        --source-dir /tmp/mlserver_models \\
-        --bucket my-models-bucket \\
+    python scripts/mlserver_data/upload_to_s3.py \
+        --source-dir /tmp/mlserver_models \
+        --bucket my-models-bucket \
         --prefix mlserver
 
 This uploads each scenario directory under the specified prefix:

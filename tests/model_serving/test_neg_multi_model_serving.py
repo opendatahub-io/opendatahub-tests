@@ -387,9 +387,11 @@ class TestHealthProbesDegraded:
                 command=[
                     "sh",
                     "-c",
-                    "cat /proc/1/fd/1 2>/dev/null"
-                    " | grep -iE 'error|failed|Error'"
-                    " | tail -20 || echo 'LOG_READ_SKIPPED'",
+                    (
+                        "cat /proc/1/fd/1 2>/dev/null"
+                        " | grep -iE 'error|failed|Error'"
+                        " | tail -20 || echo 'LOG_READ_SKIPPED'"
+                    ),
                 ],
             )
             LOGGER.info("One-failed-model error logs", output=log_output[:1000])
@@ -466,9 +468,11 @@ class TestMalformedConfiguration:
                 command=[
                     "sh",
                     "-c",
-                    "cat /proc/1/fd/1 2>/dev/null"
-                    " | grep -iE 'JSON|json|parse|malformed'"
-                    " | tail -10 || echo 'LOG_READ_SKIPPED'",
+                    (
+                        "cat /proc/1/fd/1 2>/dev/null"
+                        " | grep -iE 'JSON|json|parse|malformed'"
+                        " | tail -10 || echo 'LOG_READ_SKIPPED'"
+                    ),
                 ],
             )
             LOGGER.info("Malformed settings error logs", output=log_output[:500])
@@ -535,9 +539,11 @@ class TestMalformedConfiguration:
                 command=[
                     "sh",
                     "-c",
-                    "cat /proc/1/fd/1 2>/dev/null"
-                    " | grep -iE 'implementation|custom.MyModel|reject'"
-                    " | tail -10 || echo 'LOG_READ_SKIPPED'",
+                    (
+                        "cat /proc/1/fd/1 2>/dev/null"
+                        " | grep -iE 'implementation|custom.MyModel|reject'"
+                        " | tail -10 || echo 'LOG_READ_SKIPPED'"
+                    ),
                 ],
             )
             LOGGER.info("Unsupported impl rejection logs", output=log_output[:500])
@@ -708,9 +714,11 @@ class TestMissingArtifacts:
                 command=[
                     "sh",
                     "-c",
-                    "cat /proc/1/fd/1 2>/dev/null"
-                    " | grep -iE 'not found|FileNotFoundError|nonexistent'"
-                    " | tail -10 || echo 'LOG_READ_SKIPPED'",
+                    (
+                        "cat /proc/1/fd/1 2>/dev/null"
+                        " | grep -iE 'not found|FileNotFoundError|nonexistent'"
+                        " | tail -10 || echo 'LOG_READ_SKIPPED'"
+                    ),
                 ],
             )
             LOGGER.info("Missing artifact error logs", output=log_output[:500])
