@@ -297,10 +297,7 @@ class TestHealthProbesDegraded:
         # Check MLServer logs for error
         try:
             raw_logs = pod.log(tail_lines=200)
-            log_lines = [
-                line for line in raw_logs.splitlines()
-                if re.search(r'error|failed', line, re.IGNORECASE)
-            ]
+            log_lines = [line for line in raw_logs.splitlines() if re.search(r"error|failed", line, re.IGNORECASE)]
             log_output = "\n".join(log_lines[-20:]) or "LOG_READ_SKIPPED"
             LOGGER.info("One-failed-model error logs", output=log_output[:1000])
         except (ExecOnPodError, ApiException) as exc:
@@ -373,8 +370,7 @@ class TestMalformedConfiguration:
         try:
             raw_logs = pod.log(tail_lines=200)
             log_lines = [
-                line for line in raw_logs.splitlines()
-                if re.search(r'JSON|json|parse|malformed', line, re.IGNORECASE)
+                line for line in raw_logs.splitlines() if re.search(r"JSON|json|parse|malformed", line, re.IGNORECASE)
             ]
             log_output = "\n".join(log_lines[-20:]) or "LOG_READ_SKIPPED"
             LOGGER.info("Malformed settings error logs", output=log_output[:500])
@@ -438,8 +434,9 @@ class TestMalformedConfiguration:
         try:
             raw_logs = pod.log(tail_lines=200)
             log_lines = [
-                line for line in raw_logs.splitlines()
-                if re.search(r'implementation|custom\.MyModel|reject', line, re.IGNORECASE)
+                line
+                for line in raw_logs.splitlines()
+                if re.search(r"implementation|custom\.MyModel|reject", line, re.IGNORECASE)
             ]
             log_output = "\n".join(log_lines[-20:]) or "LOG_READ_SKIPPED"
             LOGGER.info("Unsupported impl rejection logs", output=log_output[:500])
@@ -607,8 +604,9 @@ class TestMissingArtifacts:
         try:
             raw_logs = pod.log(tail_lines=200)
             log_lines = [
-                line for line in raw_logs.splitlines()
-                if re.search(r'not found|FileNotFoundError|nonexistent', line, re.IGNORECASE)
+                line
+                for line in raw_logs.splitlines()
+                if re.search(r"not found|FileNotFoundError|nonexistent", line, re.IGNORECASE)
             ]
             log_output = "\n".join(log_lines[-20:]) or "LOG_READ_SKIPPED"
             LOGGER.info("Missing artifact error logs", output=log_output[:500])
