@@ -726,7 +726,16 @@ class TestMultiModelCUDA:
         assert result["body"].get("model_name") is not None
         assert len(result["body"].get("outputs", [])) > 0
 
-        # Record GPU memory utilization
+        # Verify ONNX Runtime loaded the CUDA execution provider
+        cuda_ep = "CUDAExecutionProvider"
+        container_logs: str = pod.log(container=KSERVE_CONTAINER, tail_lines=200) or ""
+        assert cuda_ep in container_logs, (
+            f"'{cuda_ep}' not found in kserve-container logs for pod '{pod.name}'; "
+            f"ONNX Runtime should initialize the CUDA execution provider on a GPU node"
+        )
+        LOGGER.info("CUDA execution provider confirmed in pod logs", pod=pod.name)
+
+        # Record GPU memory utilization (supplementary evidence)
         try:
             gpu_output = _exec_in_pod(
                 pod=pod,

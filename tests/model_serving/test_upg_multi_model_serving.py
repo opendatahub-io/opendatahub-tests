@@ -21,6 +21,10 @@ from ocp_resources.pod import Pod
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
+from tests.model_serving.model_server.upgrade.utils import (
+    load_baseline_from_configmap,
+    save_baseline_to_configmap,
+)
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -145,22 +149,15 @@ def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="class")
-def pre_upgrade_sr_snapshot(
-    admin_client: DynamicClient,
-    mlserver_serving_runtime: ServingRuntime,
-) -> dict[str, Any]:
-    """Capture ServingRuntime spec before upgrade for post-upgrade comparison.
+def _capture_sr_snapshot(sr: ServingRuntime) -> dict[str, Any]:
+    """Capture ServingRuntime spec and annotations for baseline comparison.
 
     Args:
-        admin_client: Kubernetes dynamic client.
-        mlserver_serving_runtime: The MLServer ServingRuntime resource.
+        sr: The ServingRuntime resource (must be reloaded by the caller).
 
     Returns:
-        Dictionary containing the pre-upgrade spec and annotations.
+        Dictionary containing the spec and annotations.
     """
-    sr = mlserver_serving_runtime
-    sr.reload()
     spec = sr.instance.get("spec", {})
     annotations = sr.instance.get("metadata", {}).get("annotations", {})
     return {
@@ -169,6 +166,50 @@ def pre_upgrade_sr_snapshot(
         "spec": spec,
         "annotations": annotations,
     }
+
+
+@pytest.fixture(scope="class")
+def pre_upgrade_sr_snapshot(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    mlserver_serving_runtime: ServingRuntime,
+    model_namespace: Namespace,
+) -> dict[str, Any]:
+    """ServingRuntime spec snapshot for pre/post upgrade comparison.
+
+    Pre-upgrade: captures the live SR state and saves it to a ConfigMap.
+    Post-upgrade: loads the previously saved snapshot from the ConfigMap.
+
+    Args:
+        pytestconfig: Pytest configuration (used for post_upgrade flag).
+        admin_client: Kubernetes dynamic client.
+        mlserver_serving_runtime: The MLServer ServingRuntime resource.
+        model_namespace: The namespace where resources live.
+
+    Returns:
+        Dictionary containing the pre-upgrade spec and annotations.
+    """
+    if getattr(pytestconfig.option, "post_upgrade", False):
+        baselines = load_baseline_from_configmap(
+            client=admin_client,
+            namespace=model_namespace.name,
+        )
+        snapshot = baselines.get("sr_snapshot")
+        assert snapshot is not None, (
+            f"Missing 'sr_snapshot' key in baseline ConfigMap for namespace "
+            f"'{model_namespace.name}'. Ensure pre-upgrade tests ran successfully."
+        )
+        return snapshot
+
+    sr = mlserver_serving_runtime
+    sr.reload()
+    snapshot = _capture_sr_snapshot(sr)
+    save_baseline_to_configmap(
+        client=admin_client,
+        namespace=model_namespace.name,
+        baselines={"sr_snapshot": snapshot},
+    )
+    return snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -188,9 +229,38 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
 class TestServingRuntimeUpgrade:
     """Upgrade tests for MLServer ServingRuntime template persistence."""
 
-    @pytest.mark.post_upgrade
+    @pytest.mark.pre_upgrade
     @pytest.mark.order(1)
-    @pytest.mark.dependency(name="TC-UPG-001")
+    @pytest.mark.dependency(name="TC-UPG-001-pre")
+    def test_tc_upg_001_pre(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        mlserver_serving_runtime: ServingRuntime,
+        multi_model_inference_service: InferenceService,
+        pre_upgrade_sr_snapshot: dict[str, Any],
+    ) -> None:
+        """Create resources and capture ServingRuntime baseline before upgrade.
+
+        Given: RHOAI (source version) installed, mlserver-runtime ServingRuntime
+            template applied, InferenceService deployed and serving.
+        When: The pre-upgrade snapshot fixture captures the SR spec and
+            persists it to a ConfigMap.
+        Then: The ServingRuntime exists and the snapshot is saved for
+            post-upgrade comparison.
+        """
+        sr = mlserver_serving_runtime
+        sr.reload()
+        assert sr.exists, f"ServingRuntime {sr.name} does not exist"
+        LOGGER.info(
+            "Pre-upgrade SR snapshot captured",
+            name=pre_upgrade_sr_snapshot["name"],
+            namespace=pre_upgrade_sr_snapshot["namespace"],
+        )
+
+    @pytest.mark.post_upgrade
+    @pytest.mark.order(2)
+    @pytest.mark.dependency(name="TC-UPG-001", depends=["TC-UPG-001-pre"])
     def test_tc_upg_001(
         self,
         admin_client: DynamicClient,
@@ -202,7 +272,8 @@ class TestServingRuntimeUpgrade:
 
         Given: RHOAI (source version) installed, mlserver-runtime ServingRuntime
             template applied, InferenceService deployed and serving, upgrade
-            path available. Pre-upgrade spec snapshot captured.
+            path available. Pre-upgrade spec snapshot captured and saved to
+            ConfigMap.
         When: The RHOAI platform upgrade completes and the ServingRuntime is
             inspected.
         Then: The mlserver-runtime SR exists, spec is unchanged (excluding
@@ -261,7 +332,7 @@ class TestServingRuntimeUpgrade:
         LOGGER.info("Post-upgrade SR status", status=sr_status)
 
     @pytest.mark.post_upgrade
-    @pytest.mark.order(2)
+    @pytest.mark.order(3)
     @pytest.mark.dependency(name="TC-UPG-002", depends=["TC-UPG-001"])
     def test_tc_upg_002(
         self,
@@ -319,7 +390,9 @@ class TestServingRuntimeUpgrade:
         isvc_conditions = isvc.instance.get("status", {}).get("conditions", [])
         isvc_ready = next((c for c in isvc_conditions if c.get("type") == "Ready"), None)
         assert isvc_ready is not None, "ISVC has no Ready condition after recovery"
-        assert isvc_ready.get("status") == "True", f"ISVC Ready condition is {isvc_ready.get('status')}, expected True"
+        assert isvc_ready.get("status") == "True", (
+            f"ISVC Ready condition is {isvc_ready.get('status')}, expected True"
+        )
 
         pod = _get_isvc_pod(admin_client=admin_client, isvc=isvc)
 
@@ -330,7 +403,8 @@ class TestServingRuntimeUpgrade:
         # Verify repository index
         repo_index = _v2_repository_index(pod=pod)
         assert len(repo_index) == EXPECTED_MODEL_COUNT, (
-            f"Post-upgrade repository index has {len(repo_index)} models, expected {EXPECTED_MODEL_COUNT}"
+            f"Post-upgrade repository index has {len(repo_index)} models, "
+            f"expected {EXPECTED_MODEL_COUNT}"
         )
 
         # Send V2 inference to all 10 models

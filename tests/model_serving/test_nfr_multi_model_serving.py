@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import json
 import shlex
+import statistics
 import subprocess
+import time
 from typing import Any
 
 import pytest
@@ -296,6 +298,55 @@ class TestPSAPBenchmark:
         )
         assert multi_result["http_code"] == 200, f"Multi-model inference returned HTTP {multi_result['http_code']}"
 
+        # Sequential latency benchmark: 10 requests per service
+        benchmark_iterations = 10
+
+        baseline_latencies: list[float] = []
+        for _ in range(benchmark_iterations):
+            t0 = time.monotonic()
+            resp = _v2_infer(
+                pod=baseline_pod,
+                model_name=baseline_inference_service.name,
+                payload=SKLEARN_IRIS_PAYLOAD,
+            )
+            elapsed = time.monotonic() - t0
+            assert resp["http_code"] == 200, f"Benchmark baseline request failed: HTTP {resp['http_code']}"
+            baseline_latencies.append(elapsed)
+
+        multi_latencies: list[float] = []
+        for _ in range(benchmark_iterations):
+            t0 = time.monotonic()
+            resp = _v2_infer(
+                pod=multi_pod,
+                model_name="sklearn-iris-1",
+                payload=SKLEARN_IRIS_PAYLOAD,
+            )
+            elapsed = time.monotonic() - t0
+            assert resp["http_code"] == 200, f"Benchmark multi-model request failed: HTTP {resp['http_code']}"
+            multi_latencies.append(elapsed)
+
+        # Compute p50 and p99 latencies
+        baseline_p50 = statistics.median(baseline_latencies)
+        baseline_p99 = statistics.quantiles(baseline_latencies, n=100)[-1]
+        multi_p50 = statistics.median(multi_latencies)
+        multi_p99 = statistics.quantiles(multi_latencies, n=100)[-1]
+
+        assert all(lat > 0 for lat in baseline_latencies), "Baseline latencies must be positive"
+        assert all(lat > 0 for lat in multi_latencies), "Multi-model latencies must be positive"
+
+        LOGGER.info(
+            "Baseline latency benchmark",
+            iterations=benchmark_iterations,
+            p50_seconds=round(baseline_p50, 4),
+            p99_seconds=round(baseline_p99, 4),
+        )
+        LOGGER.info(
+            "Multi-model latency benchmark",
+            iterations=benchmark_iterations,
+            p50_seconds=round(multi_p50, 4),
+            p99_seconds=round(multi_p99, 4),
+        )
+
         LOGGER.info(
             "PSAP benchmark comparison recorded",
             baseline=baseline_resources,
@@ -303,6 +354,10 @@ class TestPSAPBenchmark:
             parallel_workers=1,
             baseline_model_count=SINGLE_MODEL_COUNT,
             multi_model_count=MULTI_MODEL_COUNT,
+            baseline_p50=round(baseline_p50, 4),
+            baseline_p99=round(baseline_p99, 4),
+            multi_model_p50=round(multi_p50, 4),
+            multi_model_p99=round(multi_p99, 4),
         )
 
 

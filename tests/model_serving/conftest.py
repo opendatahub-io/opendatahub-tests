@@ -13,7 +13,6 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
-from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
@@ -21,6 +20,12 @@ from timeout_sampler import TimeoutExpiredError
 
 from tests.model_serving.model_runtime.mlserver.constant import PREDICT_RESOURCES
 from tests.model_serving.model_runtime.vllm.utils import kserve_s3_endpoint_secret
+from tests.model_serving.multi_model_helpers import (
+    append_env_to_serving_runtime,
+    record_pod_image,
+    record_static_profile_env,
+    stage_s3_to_pvc,
+)
 from utilities.constants import (
     KServeDeploymentType,
     Labels,
@@ -54,16 +59,6 @@ S3_PATH_ONE_FAILED: str = "mlserver/one_failed_model"
 S3_PATH_MALFORMED: str = "mlserver/malformed_settings"
 S3_PATH_UNSUPPORTED_IMPL: str = "mlserver/unsupported_impl"
 S3_PATH_MISSING_ARTIFACT: str = "mlserver/missing_artifact"
-
-# Static-profile environment defaults recorded per RHAI-49122
-STATIC_PROFILE_ENV_VARS: list[str] = [
-    "CHECK_REPOSITORY_POPULATED",
-    "MLSERVER_STRICT_READINESS",
-    "MLSERVER_EMPTY_REGISTRY_READINESS",
-    "MLSERVER_LOAD_MODELS_AT_STARTUP",
-    "MLSERVER_MODELS_DIR",
-    "MLSERVER_PARALLEL_WORKERS",
-]
 
 
 @pytest.fixture(scope="session")
@@ -154,92 +149,6 @@ def kserve_s3_secret(
 # ---------------------------------------------------------------------------
 
 
-def _append_env_to_serving_runtime(
-    runtime: ServingRuntime,
-    env_vars: list[dict[str, str]],
-) -> None:
-    """Append environment variables to the first container of a live ServingRuntime.
-
-    Reads the current env list, appends any vars not already present, then
-    sends a merge-patch with the full container array.  This avoids
-    overwriting template-provided env vars (which the ``containers`` kwarg
-    of ``ServingRuntimeFromTemplate`` would do).
-
-    Args:
-        runtime: An already-created ServingRuntime resource.
-        env_vars: List of ``{"name": ..., "value": ...}`` dicts to append.
-    """
-    runtime.reload()
-    containers = runtime.instance.spec.get("containers", [])
-    if not containers:
-        return
-
-    existing_env = list(containers[0].get("env", []))
-    existing_names = {e.get("name") for e in existing_env}
-    for var in env_vars:
-        if var["name"] not in existing_names:
-            existing_env.append(var)
-
-    containers[0]["env"] = existing_env
-    runtime.update(resource_dict={"spec": {"containers": [dict(c) for c in containers]}})
-
-
-def _record_pod_image(pod: Pod) -> dict[str, str]:
-    """Extract container image reference (repository, tag, digest) from a pod.
-
-    Satisfies RHAI-49122 image traceability requirement.
-
-    Args:
-        pod: Running Kubernetes pod.
-
-    Returns:
-        Dictionary with repository, tag, digest, and full image string.
-    """
-    containers = pod.instance.spec.get("containers", [])
-    if not containers:
-        return {"image": "", "repository": "", "tag": "", "digest": ""}
-
-    image: str = containers[0].get("image", "")
-    repository = image
-    tag = ""
-    digest = ""
-
-    if "@" in image:
-        repository, digest = image.rsplit("@", 1)
-    if ":" in repository:
-        repository, tag = repository.rsplit(":", 1)
-
-    # Also capture imageID from status for the digest that was actually pulled
-    container_statuses = pod.instance.status.get("containerStatuses", [])
-    if container_statuses:
-        image_id = container_statuses[0].get("imageID", "")
-        if "@" in image_id and not digest:
-            digest = image_id.rsplit("@", 1)[1]
-
-    return {"image": image, "repository": repository, "tag": tag, "digest": digest}
-
-
-def _record_static_profile_env(pod: Pod) -> dict[str, str | None]:
-    """Record static-profile environment variable defaults from a deployed pod.
-
-    Args:
-        pod: Running Kubernetes pod.
-
-    Returns:
-        Dictionary mapping env var names to their values (None if unset).
-    """
-    env_values: dict[str, str | None] = {}
-    containers = pod.instance.spec.get("containers", [])
-    if not containers:
-        return env_values
-
-    env_list = containers[0].get("env", [])
-    env_map = {e.get("name"): e.get("value") for e in env_list}
-    for var_name in STATIC_PROFILE_ENV_VARS:
-        env_values[var_name] = env_map.get(var_name)
-
-    return env_values
-
 
 @pytest.fixture(scope="class")
 def multi_model_service_account(
@@ -258,6 +167,7 @@ def multi_model_service_account(
 
 @pytest.fixture(scope="class")
 def mlserver_serving_runtime(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_runtime_image: str,
@@ -272,20 +182,32 @@ def mlserver_serving_runtime(
 
     Patches MLSERVER_PARALLEL_WORKERS=1 onto the live resource because the
     template change has not landed yet.
+
+    Post-upgrade: looks up the existing ServingRuntime by name without
+    re-creating it.
     """
-    with ServingRuntimeFromTemplate(
-        client=admin_client,
-        name=ModelInferenceRuntime.MLSERVER_RUNTIME,
-        namespace=model_namespace.name,
-        template_name=RuntimeTemplates.MLSERVER,
-        deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
-        runtime_image=mlserver_runtime_image,
-    ) as runtime:
-        _append_env_to_serving_runtime(
-            runtime=runtime,
-            env_vars=[{"name": "MLSERVER_PARALLEL_WORKERS", "value": "1"}],
+    if getattr(pytestconfig.option, "post_upgrade", False):
+        runtime = ServingRuntime(
+            client=admin_client,
+            name=ModelInferenceRuntime.MLSERVER_RUNTIME,
+            namespace=model_namespace.name,
         )
         yield runtime
+        runtime.clean_up()
+    else:
+        with ServingRuntimeFromTemplate(
+            client=admin_client,
+            name=ModelInferenceRuntime.MLSERVER_RUNTIME,
+            namespace=model_namespace.name,
+            template_name=RuntimeTemplates.MLSERVER,
+            deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
+            runtime_image=mlserver_runtime_image,
+        ) as runtime:
+            append_env_to_serving_runtime(
+                runtime=runtime,
+                env_vars=[{"name": "MLSERVER_PARALLEL_WORKERS", "value": "1"}],
+            )
+            yield runtime
 
 
 @pytest.fixture(scope="class")
@@ -303,52 +225,6 @@ def multi_model_pvc(
     ) as pvc:
         yield pvc
 
-
-def _stage_s3_to_pvc(
-    admin_client: DynamicClient,
-    model_namespace: str,
-    pvc_name: str,
-    model_path: str,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
-    bucket_name: str,
-    endpoint: str,
-    region: str,
-) -> str:
-    """Download an S3 prefix into a PVC subdirectory.
-
-    Thin wrapper around ``download_model_data`` so every staging fixture
-    uses the same call convention.
-
-    Args:
-        admin_client: Kubernetes dynamic client.
-        model_namespace: Namespace name.
-        pvc_name: Target PVC name.
-        model_path: S3 prefix **and** PVC subdirectory (they are the same
-            by convention — ``download_model_data`` uses ``model_path``
-            for both the source key-prefix and the ``subPath`` mount).
-        aws_access_key_id: AWS access key.
-        aws_secret_access_key: AWS secret key.
-        bucket_name: S3 bucket name.
-        endpoint: S3 endpoint URL.
-        region: S3 region.
-
-    Returns:
-        ``model_path`` unchanged — callers build ``pvc://{pvc}/{path}``.
-    """
-    return download_model_data(
-        client=admin_client,
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        model_namespace=model_namespace,
-        model_pvc_name=pvc_name,
-        bucket_name=bucket_name,
-        aws_endpoint_url=endpoint,
-        aws_default_region=region,
-        model_path=model_path,
-        use_sub_path=True,
-        restricted_scc_init=True,
-    )
 
 
 @pytest.fixture(scope="class")
@@ -371,7 +247,7 @@ def multi_model_staged_data(
     Returns:
         Model path prefix within the PVC.
     """
-    return _stage_s3_to_pvc(
+    return stage_s3_to_pvc(
         admin_client=admin_client,
         model_namespace=model_namespace.name,
         pvc_name=multi_model_pvc.name,
@@ -386,6 +262,7 @@ def multi_model_staged_data(
 
 @pytest.fixture(scope="class")
 def multi_model_inference_service(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_serving_runtime: ServingRuntime,
@@ -397,30 +274,42 @@ def multi_model_inference_service(
 
     After deployment, records the pod image reference (RHAI-49122) and
     static-profile environment defaults.
-    """
-    storage_uri = f"pvc://{multi_model_pvc.name}/{multi_model_staged_data}"
 
-    with create_isvc(
-        client=admin_client,
-        name="multi-model-isvc",
-        namespace=model_namespace.name,
-        runtime=mlserver_serving_runtime.name,
-        storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
-        model_service_account=multi_model_service_account.name,
-        deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-        resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
-        external_route=True,
-        wait_for_predictor_pods=True,
-    ) as isvc:
-        # Record image and env vars for traceability (RHAI-49122)
-        pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
-        if pods:
-            image_info = _record_pod_image(pods[0])
-            LOGGER.info("multi_model_inference_service image", **image_info)
-            env_info = _record_static_profile_env(pods[0])
-            LOGGER.info("multi_model_inference_service env defaults", **env_info)
+    Post-upgrade: looks up the existing InferenceService by name without
+    re-creating it.
+    """
+    if getattr(pytestconfig.option, "post_upgrade", False):
+        isvc = InferenceService(
+            client=admin_client,
+            name="multi-model-isvc",
+            namespace=model_namespace.name,
+        )
         yield isvc
+        isvc.clean_up()
+    else:
+        storage_uri = f"pvc://{multi_model_pvc.name}/{multi_model_staged_data}"
+
+        with create_isvc(
+            client=admin_client,
+            name="multi-model-isvc",
+            namespace=model_namespace.name,
+            runtime=mlserver_serving_runtime.name,
+            storage_uri=storage_uri,
+            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+            model_service_account=multi_model_service_account.name,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+            external_route=True,
+            wait_for_predictor_pods=True,
+        ) as isvc:
+            # Record image and env vars for traceability (RHAI-49122)
+            pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+            if pods:
+                image_info = record_pod_image(pods[0])
+                LOGGER.info("multi_model_inference_service image", **image_info)
+                env_info = record_static_profile_env(pods[0])
+                LOGGER.info("multi_model_inference_service env defaults", **env_info)
+            yield isvc
 
 
 @pytest.fixture(scope="class")
@@ -435,7 +324,7 @@ def multi_version_staged_data(
     models_s3_bucket_region: str,
 ) -> str:
     """Stage the multi-version model directory (shared-model v1.0 + v2.0) onto PVC."""
-    return _stage_s3_to_pvc(
+    return stage_s3_to_pvc(
         admin_client=admin_client,
         model_namespace=model_namespace.name,
         pvc_name=multi_model_pvc.name,
@@ -546,7 +435,7 @@ def cuda_serving_runtime(
         deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
         runtime_image=None,
     ) as runtime:
-        _append_env_to_serving_runtime(
+        append_env_to_serving_runtime(
             runtime=runtime,
             env_vars=[{"name": "MLSERVER_PARALLEL_WORKERS", "value": "1"}],
         )
@@ -635,7 +524,7 @@ def one_failed_model_staged_data(
     models_s3_bucket_region: str,
 ) -> str:
     """Stage 10-model set with one bad artifact reference onto its own PVC subdir."""
-    return _stage_s3_to_pvc(
+    return stage_s3_to_pvc(
         admin_client=admin_client,
         model_namespace=model_namespace.name,
         pvc_name=multi_model_pvc.name,
@@ -692,7 +581,7 @@ def malformed_settings_staged_data(
     models_s3_bucket_region: str,
 ) -> str:
     """Stage model set containing one invalid-JSON model-settings.json onto PVC."""
-    return _stage_s3_to_pvc(
+    return stage_s3_to_pvc(
         admin_client=admin_client,
         model_namespace=model_namespace.name,
         pvc_name=multi_model_pvc.name,
@@ -749,7 +638,7 @@ def unsupported_impl_staged_data(
     models_s3_bucket_region: str,
 ) -> str:
     """Stage model set containing one custom.MyModel implementation onto PVC."""
-    return _stage_s3_to_pvc(
+    return stage_s3_to_pvc(
         admin_client=admin_client,
         model_namespace=model_namespace.name,
         pvc_name=multi_model_pvc.name,
@@ -841,7 +730,7 @@ def missing_artifact_staged_data(
     models_s3_bucket_region: str,
 ) -> str:
     """Stage model set containing one missing-artifact reference onto PVC."""
-    return _stage_s3_to_pvc(
+    return stage_s3_to_pvc(
         admin_client=admin_client,
         model_namespace=model_namespace.name,
         pvc_name=multi_model_pvc.name,
