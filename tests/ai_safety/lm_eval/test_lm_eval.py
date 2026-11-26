@@ -8,6 +8,7 @@ from ocp_resources.lm_eval_job import LMEvalJob
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import ResourceEditor
+from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.image_constants import AiSafetyImages
 from tests.ai_safety.lm_eval.constants import (
@@ -373,8 +374,8 @@ def test_lmeval_rerun_after_spec_change(
     """Test LMEvalJob re-runs after spec change.
 
     Given: A completed LMEvalJob with last-scheduled-generation annotation set
-    When: Job spec is edited (batchSize changed, bumping metadata.Generation)
-    Then: Job status resets to New, re-runs to Complete, and generation annotation updates
+    When: Job spec is edited (limit changed, bumping metadata.generation)
+    Then: Job re-runs to Complete and generation annotation updates
 
     Validates trustyai-service-operator#729 re-run behavior.
     """
@@ -385,40 +386,43 @@ def test_lmeval_rerun_after_spec_change(
         state=LMEVALJOB_COMPLETE_STATE,
     )
 
-    annotations = lmevaljob_vllm_emulator.instance.metadata.annotations or {}
-    assert LAST_SCHEDULED_GENERATION_ANNOTATION in annotations, (
+    annotations = lmevaljob_vllm_emulator.instance.metadata.annotations
+    initial_generation = annotations.get(LAST_SCHEDULED_GENERATION_ANNOTATION) if annotations else None
+    assert initial_generation is not None, (
         f"Expected annotation '{LAST_SCHEDULED_GENERATION_ANNOTATION}' not found on completed job"
     )
-    initial_generation = annotations[LAST_SCHEDULED_GENERATION_ANNOTATION]
 
     LOGGER.info("Job completed, editing spec to trigger re-run")
     ResourceEditor(
         patches={
             lmevaljob_vllm_emulator: {
                 "spec": {
-                    "batchSize": "2",
+                    "limit": "0.02",
                 }
             }
         }
     ).update()
 
-    LOGGER.info("Waiting for job to be reset to New")
-    wait_for_lmevaljob_state(
-        lmevaljob=lmevaljob_vllm_emulator,
-        state="New",
-    )
+    expected_generation = str(lmevaljob_vllm_emulator.instance.metadata.generation)
 
-    LOGGER.info("Waiting for re-run to complete")
-    wait_for_lmevaljob_state(
-        lmevaljob=lmevaljob_vllm_emulator,
-        state=LMEVALJOB_COMPLETE_STATE,
-    )
+    LOGGER.info(f"Waiting for re-run to complete for generation {expected_generation}")
+    for sample in TimeoutSampler(
+        wait_timeout=600,
+        sleep=5,
+        func=lambda: (
+            lmevaljob_vllm_emulator.instance.status.state == LMEVALJOB_COMPLETE_STATE
+            and (lmevaljob_vllm_emulator.instance.metadata.annotations or {}).get(LAST_SCHEDULED_GENERATION_ANNOTATION)
+            == expected_generation
+        ),
+    ):
+        if sample:
+            break
 
     updated_annotations = lmevaljob_vllm_emulator.instance.metadata.annotations or {}
     updated_generation = updated_annotations.get(LAST_SCHEDULED_GENERATION_ANNOTATION)
-    assert updated_generation is not None and updated_generation != initial_generation, (
+    assert updated_generation == expected_generation, (
         f"Expected generation annotation to be updated after re-run. "
-        f"Initial: {initial_generation}, current: {updated_generation}"
+        f"Initial: {initial_generation}, current: {updated_generation}, expected: {expected_generation}"
     )
 
 
