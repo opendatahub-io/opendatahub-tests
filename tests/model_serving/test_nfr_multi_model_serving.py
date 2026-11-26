@@ -203,11 +203,12 @@ def _exec_curl_external(
         data: Optional request body.
 
     Returns:
-        Dictionary with http_code and returncode.
+        Dictionary with http_code, returncode, and stderr.
     """
     curl_cmd: list[str] = [
         "curl",
         "-s",
+        "-S",
         "-o",
         "/dev/null",
         "-w",
@@ -234,10 +235,14 @@ def _exec_curl_external(
         )
         code_str = result.stdout.strip()
         http_code = int(code_str) if code_str.isdigit() else 0
-        return {"http_code": http_code, "returncode": result.returncode}
+        return {
+            "http_code": http_code,
+            "returncode": result.returncode,
+            "stderr": result.stderr.strip(),
+        }
     except (subprocess.TimeoutExpired, ValueError) as exc:
         LOGGER.error("External curl failed", error=str(exc))
-        return {"http_code": 0, "returncode": -1}
+        return {"http_code": 0, "returncode": -1, "stderr": str(exc)}
 
 
 # ---------------------------------------------------------------------------
@@ -588,11 +593,14 @@ class TestV2ManagementAPIBoundary:
             "route may not be functional — cannot verify management API blocking"
         )
 
-        # Boundary denial: HTTP 403/404, or curl exit code 7 (connection
-        # refused).  Timeouts (curl 28, subprocess -1) are transport errors,
-        # not proof of access control, so they are excluded.
-        boundary_denial_codes = {403, 404}
-        curl_connection_refused = 7
+        # Boundary denial evidence:
+        # - HTTP 403 (Forbidden) — unambiguous access-control denial.
+        # - Transport-level refusal — curl stderr must contain "refused"
+        #   or "reset" to distinguish a genuine connection refusal from
+        #   DNS failures, proxy errors, or timeouts (CWE-863).
+        # HTTP 404 is excluded: the management handler itself can return
+        # 404, so it does not prove the boundary blocked the request.
+        connection_refusal_markers = ("refused", "reset")
 
         for label, path in (("load", load_path), ("unload", unload_path)):
             resp = _exec_curl_external(
@@ -604,14 +612,16 @@ class TestV2ManagementAPIBoundary:
                 f"External V2 {label} response",
                 http_code=resp["http_code"],
                 returncode=resp["returncode"],
+                stderr=resp["stderr"],
             )
-            blocked = resp["http_code"] in boundary_denial_codes or (
-                resp["http_code"] == 0 and resp["returncode"] == curl_connection_refused
+            http_denied = resp["http_code"] == 403
+            transport_refused = resp["http_code"] == 0 and any(
+                marker in resp["stderr"].lower() for marker in connection_refusal_markers
             )
-            assert blocked, (
+            assert http_denied or transport_refused, (
                 f"External V2 {label} was not blocked: HTTP {resp['http_code']}, "
-                f"returncode {resp['returncode']}. "
-                f"Expected 403, 404, or connection refused (curl 7)"
+                f"returncode {resp['returncode']}, stderr={resp['stderr']!r}. "
+                f"Expected HTTP 403 or connection refused/reset"
             )
 
         # Verify inference still works
