@@ -162,6 +162,34 @@ def _parse_memory_mib(value: str) -> int:
     return int(int(value) / (1024 * 1024))
 
 
+def _collect_fleet_resource_requests(
+    admin_client: DynamicClient,
+    fleet: list[InferenceService],
+) -> dict[str, Any]:
+    """Collect aggregate resource requests for a fleet of ISVCs.
+
+    Uses ``get_pods_by_isvc_label`` per ISVC instead of a label selector,
+    because KServe raw-mode overwrites the ``app`` label on predictor pods.
+    """
+    metrics: dict[str, Any] = {
+        "pod_count": 0,
+        "total_cpu_millicores": 0,
+        "total_memory_mib": 0,
+    }
+    for isvc in fleet:
+        pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+        metrics["pod_count"] += len(pods)
+        for pod in pods:
+            containers = pod.instance.spec.get("containers", [])
+            for container in containers:
+                requests = container.get("resources", {}).get("requests", {})
+                cpu_str = requests.get("cpu", "0")
+                mem_str = requests.get("memory", "0")
+                metrics["total_cpu_millicores"] += _parse_cpu_millicores(cpu_str)
+                metrics["total_memory_mib"] += _parse_memory_mib(mem_str)
+    return metrics
+
+
 def _exec_curl_external(
     url: str,
     method: str = "POST",
@@ -394,8 +422,6 @@ class TestScalabilityComparison:
         Then: CPU/memory totals for both fleets are captured, the efficiency
             ratio is calculated, and the <=50% target is reported as evidence.
         """
-        namespace_name = model_namespace.name
-
         assert len(single_model_fleet) == FLEET_SINGLE_COUNT, (
             f"Expected {FLEET_SINGLE_COUNT} single-model ISVCs, got {len(single_model_fleet)}"
         )
@@ -403,19 +429,18 @@ class TestScalabilityComparison:
             f"Expected {FLEET_MULTI_COUNT} multi-model ISVCs, got {len(multi_model_fleet)}"
         )
 
-        # Collect single-model fleet resources
-        single_resources = _collect_pod_resource_requests(
+        # Collect single-model fleet resources via ISVC label
+        # (KServe raw-mode overrides the `app` label on predictor pods)
+        single_resources = _collect_fleet_resource_requests(
             admin_client=admin_client,
-            namespace=namespace_name,
-            label_selector="app=single-model-bench",
+            fleet=single_model_fleet,
         )
         LOGGER.info("Single-model fleet resources", **single_resources)
 
-        # Collect multi-model fleet resources
-        multi_resources = _collect_pod_resource_requests(
+        # Collect multi-model fleet resources via ISVC label
+        multi_resources = _collect_fleet_resource_requests(
             admin_client=admin_client,
-            namespace=namespace_name,
-            label_selector="app=multi-model-bench",
+            fleet=multi_model_fleet,
         )
         LOGGER.info("Multi-model fleet resources", **multi_resources)
 
@@ -512,6 +537,12 @@ class TestV2ManagementAPIBoundary:
             unload_code = int(unload_result) if str(unload_result).strip().isdigit() else 0
             LOGGER.info("Internal V2 unload response", http_code=unload_code)
             assert unload_code in (200, 400, 404), f"Internal V2 unload returned unexpected {unload_code}"
+
+            # Reload the model so the external preflight and final inference succeed
+            reload_result = curl_pod.execute(command=load_cmd, ignore_rc=True)
+            reload_code = int(reload_result) if str(reload_result).strip().isdigit() else 0
+            LOGGER.info("Internal V2 reload after unload", http_code=reload_code)
+            assert reload_code in (200, 400), f"Internal V2 reload returned unexpected {reload_code}"
 
         # Record NetworkPolicy
         network_policies = list(
