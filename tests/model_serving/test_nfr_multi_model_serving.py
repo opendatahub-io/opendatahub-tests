@@ -11,6 +11,7 @@ Source: RHAISTRAT-3033
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 from typing import Any
 
@@ -23,6 +24,7 @@ from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 
+from tests.model_serving.model_server.kserve.ingress.utils import create_curl_pod
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -158,68 +160,6 @@ def _parse_memory_mib(value: str) -> int:
     return int(int(value) / (1024 * 1024))
 
 
-def _exec_curl_in_cluster(
-    namespace: str,
-    url: str,
-    method: str = "POST",
-    data: str | None = None,
-) -> dict[str, Any]:
-    """Run a curl command inside the cluster using oc run.
-
-    Args:
-        namespace: Namespace for the ephemeral pod.
-        url: Target URL.
-        method: HTTP method.
-        data: Optional request body.
-
-    Returns:
-        Dictionary with http_code and returncode.
-    """
-    curl_args = [
-        "curl",
-        "-s",
-        "-o",
-        "/dev/null",
-        "-w",
-        "%{http_code}",
-        "-X",
-        method,
-        "-H",
-        "Content-Type: application/json",
-    ]
-    if data:
-        curl_args.extend(["-d", data])
-    curl_args.append(url)
-
-    oc_cmd: list[str] = [
-        "oc",
-        "run",
-        "curl-boundary-test",
-        "--rm",
-        "-i",
-        "--restart=Never",
-        f"--namespace={namespace}",
-        "--image=registry.access.redhat.com/ubi9/ubi-minimal:latest",
-        "--",
-        *curl_args,
-    ]
-
-    try:
-        result = subprocess.run(
-            oc_cmd,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        code_str = result.stdout.strip()
-        http_code = int(code_str) if code_str.isdigit() else 0
-        return {"http_code": http_code, "returncode": result.returncode}
-    except (subprocess.TimeoutExpired, ValueError) as exc:
-        LOGGER.error("In-cluster curl failed", error=str(exc))
-        return {"http_code": 0, "returncode": -1}
-
-
 def _exec_curl_external(
     url: str,
     method: str = "POST",
@@ -313,13 +253,23 @@ class TestPSAPBenchmark:
         """
         namespace_name = model_namespace.name
 
-        # Confirm parallel_workers=1
+        # Confirm MLSERVER_PARALLEL_WORKERS=1 on the predictor container
         multi_pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
         containers = multi_pod.instance.spec.get("containers", [])
-        for container in containers:
-            for env in container.get("env", []):
-                if env.get("name") == "PARALLEL_WORKERS":
-                    assert env.get("value") == "1", f"Expected PARALLEL_WORKERS=1, got {env.get('value')}"
+        predictor_containers = [
+            c for c in containers if c.get("name") == "kserve-container"
+        ]
+        assert predictor_containers, "No kserve-container found in pod spec"
+        predictor_env = {
+            e.get("name"): e.get("value")
+            for e in predictor_containers[0].get("env", [])
+        }
+        assert "MLSERVER_PARALLEL_WORKERS" in predictor_env, (
+            "MLSERVER_PARALLEL_WORKERS not set on predictor container"
+        )
+        assert predictor_env["MLSERVER_PARALLEL_WORKERS"] == "1", (
+            f"Expected MLSERVER_PARALLEL_WORKERS=1, got {predictor_env['MLSERVER_PARALLEL_WORKERS']}"
+        )
 
         # Record baseline resource usage
         baseline_resources = _collect_pod_resource_requests(
@@ -421,6 +371,13 @@ class TestScalabilityComparison:
         )
         LOGGER.info("Multi-model fleet resources", **multi_resources)
 
+        assert single_resources["pod_count"] == FLEET_SINGLE_COUNT, (
+            f"Expected {FLEET_SINGLE_COUNT} single-model pods, got {single_resources['pod_count']}"
+        )
+        assert multi_resources["pod_count"] == FLEET_MULTI_COUNT, (
+            f"Expected {FLEET_MULTI_COUNT} multi-model pods, got {multi_resources['pod_count']}"
+        )
+
         # Calculate efficiency ratio
         single_cpu = single_resources["total_cpu_millicores"]
         multi_cpu = multi_resources["total_cpu_millicores"]
@@ -441,6 +398,8 @@ class TestScalabilityComparison:
 
         assert single_cpu > 0, "Single-model fleet CPU must be > 0"
         assert single_mem > 0, "Single-model fleet memory must be > 0"
+        assert multi_cpu > 0, "Multi-model fleet CPU must be > 0"
+        assert multi_mem > 0, "Multi-model fleet memory must be > 0"
 
 
 @pytest.mark.tier1
@@ -477,31 +436,38 @@ class TestV2ManagementAPIBoundary:
 
         internal_svc = f"http://{isvc_name}.{namespace_name}.svc.cluster.local:8080"
 
-        # Internal: call V2 load endpoint
+        # Internal: call V2 load/unload via context-managed curl pod
         load_path = V2_LOAD_PATH.format(model_name=test_model)
-        internal_load = _exec_curl_in_cluster(
-            namespace=namespace_name,
-            url=f"{internal_svc}{load_path}",
-            method="POST",
-            data="{}",
-        )
-        LOGGER.info("Internal V2 load response", http_code=internal_load["http_code"])
-        assert internal_load["http_code"] in (200, 400, 404), (
-            f"Internal V2 load returned unexpected {internal_load['http_code']}"
-        )
-
-        # Internal: call V2 unload endpoint
         unload_path = V2_UNLOAD_PATH.format(model_name=test_model)
-        internal_unload = _exec_curl_in_cluster(
+
+        with create_curl_pod(
+            client=admin_client,
             namespace=namespace_name,
-            url=f"{internal_svc}{unload_path}",
-            method="POST",
-            data="{}",
-        )
-        LOGGER.info("Internal V2 unload response", http_code=internal_unload["http_code"])
-        assert internal_unload["http_code"] in (200, 400, 404), (
-            f"Internal V2 unload returned unexpected {internal_unload['http_code']}"
-        )
+            pod_name="curl-boundary-test",
+        ) as curl_pod:
+            load_cmd = shlex.split(
+                f"curl -s -o /dev/null -w '%{{http_code}}' -X POST "
+                f"-H 'Content-Type: application/json' -d '{{}}' "
+                f"{internal_svc}{load_path}"
+            )
+            load_result = curl_pod.execute(command=load_cmd, ignore_rc=True)
+            load_code = int(load_result) if str(load_result).strip().isdigit() else 0
+            LOGGER.info("Internal V2 load response", http_code=load_code)
+            assert load_code in (200, 400, 404), (
+                f"Internal V2 load returned unexpected {load_code}"
+            )
+
+            unload_cmd = shlex.split(
+                f"curl -s -o /dev/null -w '%{{http_code}}' -X POST "
+                f"-H 'Content-Type: application/json' -d '{{}}' "
+                f"{internal_svc}{unload_path}"
+            )
+            unload_result = curl_pod.execute(command=unload_cmd, ignore_rc=True)
+            unload_code = int(unload_result) if str(unload_result).strip().isdigit() else 0
+            LOGGER.info("Internal V2 unload response", http_code=unload_code)
+            assert unload_code in (200, 400, 404), (
+                f"Internal V2 unload returned unexpected {unload_code}"
+            )
 
         # Record NetworkPolicy
         network_policies = list(
@@ -534,6 +500,18 @@ class TestV2ManagementAPIBoundary:
             pytest.skip("No usable external route found")
 
         external_base = f"https://{external_host}"
+
+        # First verify inference works through the external route
+        infer_path = V2_INFER_PATH.format(model_name=test_model)
+        external_infer = _exec_curl_external(
+            url=f"{external_base}{infer_path}",
+            method="POST",
+            data=json.dumps(SKLEARN_IRIS_PAYLOAD),
+        )
+        assert external_infer["http_code"] == 200, (
+            f"External inference returned HTTP {external_infer['http_code']}; "
+            "route may not be functional — cannot verify management API blocking"
+        )
 
         external_load = _exec_curl_external(
             url=f"{external_base}{load_path}",

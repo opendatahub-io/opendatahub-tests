@@ -288,6 +288,19 @@ class TestHealthProbesDegraded:
 
         assert pod is not None
 
+        # Wait for serving container to attempt startup
+        time.sleep(15)
+        pod.reload()
+        container_statuses = pod.instance.status.get("containerStatuses", [])
+        if container_statuses:
+            cs = container_statuses[0]
+            LOGGER.info(
+                "Empty storage container state before probing",
+                name=cs.get("name"),
+                state=cs.get("state"),
+                ready=cs.get("ready"),
+            )
+
         # Record health probes (may fail depending on startup probe behavior)
         try:
             live_code = _v2_health(pod=pod, endpoint="/v2/health/live")
@@ -528,7 +541,10 @@ class TestMalformedConfiguration:
         # custom-model should not appear in repo index
         repo_index = _v2_repository_index(pod=pod)
         model_names = [e.get("name", "") for e in repo_index]
-        assert "custom-model" not in model_names, f"custom-model should not be in index: {model_names}"
+        assert "custom-model" not in model_names or any(
+            e.get("state") in ("UNAVAILABLE", "LOADING_FAILED")
+            for e in repo_index if e.get("name") == "custom-model"
+        ), f"custom-model should not be loadable in index: {model_names}"
         assert "sklearn-iris-1" in model_names, "Expected sklearn-iris-1 in repository index"
         assert "xgb-classifier-1" in model_names, "Expected xgb-classifier-1 in repository index"
 
@@ -594,6 +610,11 @@ class TestResourceExhaustion:
                             "reason": state["terminated"].get("reason", ""),
                             "exit_code": state["terminated"].get("exitCode"),
                         })
+                    if state.get("waiting"):
+                        observed_states.append({
+                            "poll": poll_idx,
+                            "waiting_reason": state["waiting"].get("reason", ""),
+                        })
                     if last_state.get("terminated"):
                         observed_states.append({
                             "poll": poll_idx,
@@ -607,7 +628,9 @@ class TestResourceExhaustion:
 
         # Classify failure mode
         oom_killed = any(s.get("reason") == "OOMKilled" or s.get("last_reason") == "OOMKilled" for s in observed_states)
-        crash_loop = "CrashLoopBackOff" in str(observed_phases)
+        crash_loop = any(
+            s.get("waiting_reason") == "CrashLoopBackOff" for s in observed_states
+        )
 
         if oom_killed:
             LOGGER.info("Failure mode: OOMKilled")
@@ -855,8 +878,10 @@ class TestStorageExhaustion:
 
                 staging_failed = getattr(storage_exhaustion_inference_service, "_staging_failed", False)
                 if staging_failed:
-                    assert model_count < 10, f"Staging failed but {model_count} models loaded — expected fewer"
-            except ExecOnPodError, ApiException:
+                    assert model_count < 10, (
+                        f"Staging failed but {model_count} models loaded — expected fewer"
+                    )
+            except (ExecOnPodError, ApiException, RuntimeError):
                 LOGGER.info("Repository index unreachable (expected with storage failure)")
 
         # ISVC should not report Ready

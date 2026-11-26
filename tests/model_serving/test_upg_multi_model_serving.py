@@ -222,10 +222,15 @@ class TestServingRuntimeUpgrade:
         # Deep comparison of key spec fields
         pre_formats = pre_upgrade_spec.get("supportedModelFormats", [])
         post_formats = post_upgrade_spec.get("supportedModelFormats", [])
-        pre_format_names = sorted(f.get("name", "") for f in pre_formats)
-        post_format_names = sorted(f.get("name", "") for f in post_formats)
-        assert pre_format_names == post_format_names, (
-            f"Model format names changed: {pre_format_names} -> {post_format_names}"
+        def _normalize_formats(formats: list) -> list:
+            return sorted(
+                [{k: v for k, v in f.items()} for f in formats],
+                key=lambda x: x.get("name", ""),
+            )
+
+        assert _normalize_formats(pre_formats) == _normalize_formats(post_formats), (
+            f"supportedModelFormats changed after upgrade: "
+            f"pre={_normalize_formats(pre_formats)}, post={_normalize_formats(post_formats)}"
         )
 
         # Compare container images
@@ -243,6 +248,14 @@ class TestServingRuntimeUpgrade:
             support_status=support_status,
             all_annotations=list(post_annotations.keys()),
         )
+
+        pre_support_status = pre_upgrade_sr_snapshot["annotations"].get(
+            "opendatahub.io/support-status", ""
+        )
+        if pre_support_status:
+            assert support_status == pre_support_status, (
+                f"support-status annotation changed: {pre_support_status!r} -> {support_status!r}"
+            )
 
         # Verify SR status is usable
         sr_status = sr.instance.get("status", {})
@@ -276,7 +289,7 @@ class TestServingRuntimeUpgrade:
 
         # If not Ready, wait for pod recovery
         if not isvc_ready or isvc_ready.get("status") != "True":
-            LOGGER.info("ISVC not Ready post-upgrade, waiting for pod recovery")
+            LOGGER.info("ISVC not Ready post-upgrade, waiting for recovery")
             try:
                 for sample in TimeoutSampler(
                     wait_timeout=ISVC_READY_TIMEOUT_SEC,
@@ -286,14 +299,27 @@ class TestServingRuntimeUpgrade:
                     if sample:
                         pod = sample[0]
                         pod.reload()
-                        conditions = pod.instance.status.get("conditions", [])
-                        ready = next((c for c in conditions if c.get("type") == "Ready"), None)
-                        if ready and ready.get("status") == "True":
+                        pod_conditions = pod.instance.status.get("conditions", [])
+                        pod_ready = next(
+                            (c for c in pod_conditions if c.get("type") == "Ready"), None
+                        )
+                        # Also check ISVC Ready
+                        isvc.reload()
+                        isvc_conds = isvc.instance.get("status", {}).get("conditions", [])
+                        isvc_r = next(
+                            (c for c in isvc_conds if c.get("type") == "Ready"), None
+                        )
+                        if (
+                            pod_ready
+                            and pod_ready.get("status") == "True"
+                            and isvc_r
+                            and isvc_r.get("status") == "True"
+                        ):
                             break
             except TimeoutExpiredError:
-                pytest.fail("ISVC pod did not reach Ready within timeout after upgrade")
+                pytest.fail("ISVC did not reach Ready within timeout after upgrade")
 
-        # Also verify ISVC reports Ready
+        # Final assertion
         isvc.reload()
         isvc_conditions = isvc.instance.get("status", {}).get("conditions", [])
         isvc_ready = next((c for c in isvc_conditions if c.get("type") == "Ready"), None)

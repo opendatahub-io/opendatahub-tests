@@ -635,7 +635,7 @@ class TestMultiModelStartup:
         # Poll until all 10 models are loaded
         try:
             for sample in TimeoutSampler(
-                wait_timeout=STARTUP_MEASUREMENT_TIMEOUT_SEC,
+                wait_timeout=max(1, STARTUP_MEASUREMENT_TIMEOUT_SEC - int(time.monotonic() - start_time)),
                 sleep=POLL_INTERVAL_SEC,
                 func=lambda: _v2_repository_index(pod=pod),
             ):
@@ -646,6 +646,9 @@ class TestMultiModelStartup:
             pytest.fail(f"Only {len(repo_index)}/{EXPECTED_MODEL_COUNT} models loaded within timeout")
 
         elapsed_seconds = time.monotonic() - start_time
+        assert elapsed_seconds <= STARTUP_MEASUREMENT_TIMEOUT_SEC, (
+            f"Startup exceeded {STARTUP_MEASUREMENT_TIMEOUT_SEC}s budget: {round(elapsed_seconds, 2)}s"
+        )
         LOGGER.info("Startup time measured", elapsed_seconds=round(elapsed_seconds, 2))
 
         # Verify readiness
@@ -796,10 +799,13 @@ class TestSingleModelRegression:
         # Baseline prediction check: deterministic iris input [5.1, 3.5, 1.4, 0.2]
         # should predict class 0 (setosa)
         outputs = result["body"].get("outputs", [])
-        if outputs and "data" in outputs[0]:
-            prediction = outputs[0]["data"]
-            LOGGER.info("Single-model prediction", prediction=prediction)
-            assert prediction is not None, "Prediction data is None"
+        assert outputs, "Single-model inference returned empty outputs"
+        assert "data" in outputs[0], "Single-model output missing 'data' field"
+        prediction = outputs[0]["data"]
+        LOGGER.info("Single-model prediction", prediction=prediction)
+        assert prediction is not None and len(prediction) > 0, "Prediction data is empty"
+        # Deterministic iris input [5.1, 3.5, 1.4, 0.2] should predict class 0 (setosa)
+        assert prediction[0] == 0, f"Expected class 0 prediction, got {prediction[0]}"
 
         # Record probe configuration
         for probe_type in ("livenessProbe", "readinessProbe", "startupProbe"):
