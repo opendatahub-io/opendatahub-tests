@@ -825,6 +825,7 @@ def lmevaljob_gpu(
     """LMEvalJob for evaluating a GPU-deployed model via vLLM."""
     model_path = "HuggingFaceTB/SmolLM-1.7B"
     model_service = Service(
+        client=admin_client,
         name=f"{lmeval_vllm_inference_service.name}-predictor",
         namespace=lmeval_vllm_inference_service.namespace,
     )

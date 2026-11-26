@@ -395,7 +395,9 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
     """
     label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
     pod_label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
-    trustyai_service = TrustyAIService(name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True)
+    trustyai_service = TrustyAIService(
+        client=client, name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True
+    )
 
     expected_sink_host = f"{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
 

@@ -170,6 +170,7 @@ def create_standalone_mariadb(
             teardown=teardown,
         ),
         Service(
+            client=client,
             kind_dict={
                 "apiVersion": "v1",
                 "kind": "Service",
@@ -353,7 +354,7 @@ def create_trustyai_service(
         data=data,
         teardown=teardown,
     ) as trustyai_service:
-        trustyai_deployment = Deployment(namespace=namespace, name=name, wait_for_resource=True)
+        trustyai_deployment = Deployment(client=client, namespace=namespace, name=name, wait_for_resource=True)
         if wait_for_replicas:
             trustyai_deployment.wait_for_replicas()
         yield trustyai_service
