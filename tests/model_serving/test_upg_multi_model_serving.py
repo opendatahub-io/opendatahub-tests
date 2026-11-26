@@ -222,6 +222,7 @@ class TestServingRuntimeUpgrade:
         # Deep comparison of key spec fields
         pre_formats = pre_upgrade_spec.get("supportedModelFormats", [])
         post_formats = post_upgrade_spec.get("supportedModelFormats", [])
+
         def _normalize_formats(formats: list) -> list:
             return sorted(
                 [{k: v for k, v in f.items()} for f in formats],
@@ -249,9 +250,7 @@ class TestServingRuntimeUpgrade:
             all_annotations=list(post_annotations.keys()),
         )
 
-        pre_support_status = pre_upgrade_sr_snapshot["annotations"].get(
-            "opendatahub.io/support-status", ""
-        )
+        pre_support_status = pre_upgrade_sr_snapshot["annotations"].get("opendatahub.io/support-status", "")
         if pre_support_status:
             assert support_status == pre_support_status, (
                 f"support-status annotation changed: {pre_support_status!r} -> {support_status!r}"
@@ -300,15 +299,11 @@ class TestServingRuntimeUpgrade:
                         pod = sample[0]
                         pod.reload()
                         pod_conditions = pod.instance.status.get("conditions", [])
-                        pod_ready = next(
-                            (c for c in pod_conditions if c.get("type") == "Ready"), None
-                        )
+                        pod_ready = next((c for c in pod_conditions if c.get("type") == "Ready"), None)
                         # Also check ISVC Ready
                         isvc.reload()
                         isvc_conds = isvc.instance.get("status", {}).get("conditions", [])
-                        isvc_r = next(
-                            (c for c in isvc_conds if c.get("type") == "Ready"), None
-                        )
+                        isvc_r = next((c for c in isvc_conds if c.get("type") == "Ready"), None)
                         if (
                             pod_ready
                             and pod_ready.get("status") == "True"

@@ -542,8 +542,7 @@ class TestMalformedConfiguration:
         repo_index = _v2_repository_index(pod=pod)
         model_names = [e.get("name", "") for e in repo_index]
         assert "custom-model" not in model_names or any(
-            e.get("state") in ("UNAVAILABLE", "LOADING_FAILED")
-            for e in repo_index if e.get("name") == "custom-model"
+            e.get("state") in ("UNAVAILABLE", "LOADING_FAILED") for e in repo_index if e.get("name") == "custom-model"
         ), f"custom-model should not be loadable in index: {model_names}"
         assert "sklearn-iris-1" in model_names, "Expected sklearn-iris-1 in repository index"
         assert "xgb-classifier-1" in model_names, "Expected xgb-classifier-1 in repository index"
@@ -628,9 +627,7 @@ class TestResourceExhaustion:
 
         # Classify failure mode
         oom_killed = any(s.get("reason") == "OOMKilled" or s.get("last_reason") == "OOMKilled" for s in observed_states)
-        crash_loop = any(
-            s.get("waiting_reason") == "CrashLoopBackOff" for s in observed_states
-        )
+        crash_loop = any(s.get("waiting_reason") == "CrashLoopBackOff" for s in observed_states)
 
         if oom_killed:
             LOGGER.info("Failure mode: OOMKilled")
@@ -878,10 +875,8 @@ class TestStorageExhaustion:
 
                 staging_failed = getattr(storage_exhaustion_inference_service, "_staging_failed", False)
                 if staging_failed:
-                    assert model_count < 10, (
-                        f"Staging failed but {model_count} models loaded — expected fewer"
-                    )
-            except (ExecOnPodError, ApiException, RuntimeError):
+                    assert model_count < 10, f"Staging failed but {model_count} models loaded — expected fewer"
+            except ExecOnPodError, ApiException, RuntimeError:
                 LOGGER.info("Repository index unreachable (expected with storage failure)")
 
         # ISVC should not report Ready

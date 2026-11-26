@@ -256,17 +256,10 @@ class TestPSAPBenchmark:
         # Confirm MLSERVER_PARALLEL_WORKERS=1 on the predictor container
         multi_pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
         containers = multi_pod.instance.spec.get("containers", [])
-        predictor_containers = [
-            c for c in containers if c.get("name") == "kserve-container"
-        ]
+        predictor_containers = [c for c in containers if c.get("name") == "kserve-container"]
         assert predictor_containers, "No kserve-container found in pod spec"
-        predictor_env = {
-            e.get("name"): e.get("value")
-            for e in predictor_containers[0].get("env", [])
-        }
-        assert "MLSERVER_PARALLEL_WORKERS" in predictor_env, (
-            "MLSERVER_PARALLEL_WORKERS not set on predictor container"
-        )
+        predictor_env = {e.get("name"): e.get("value") for e in predictor_containers[0].get("env", [])}
+        assert "MLSERVER_PARALLEL_WORKERS" in predictor_env, "MLSERVER_PARALLEL_WORKERS not set on predictor container"
         assert predictor_env["MLSERVER_PARALLEL_WORKERS"] == "1", (
             f"Expected MLSERVER_PARALLEL_WORKERS=1, got {predictor_env['MLSERVER_PARALLEL_WORKERS']}"
         )
@@ -453,9 +446,7 @@ class TestV2ManagementAPIBoundary:
             load_result = curl_pod.execute(command=load_cmd, ignore_rc=True)
             load_code = int(load_result) if str(load_result).strip().isdigit() else 0
             LOGGER.info("Internal V2 load response", http_code=load_code)
-            assert load_code in (200, 400, 404), (
-                f"Internal V2 load returned unexpected {load_code}"
-            )
+            assert load_code in (200, 400, 404), f"Internal V2 load returned unexpected {load_code}"
 
             unload_cmd = shlex.split(
                 f"curl -s -o /dev/null -w '%{{http_code}}' -X POST "
@@ -465,9 +456,7 @@ class TestV2ManagementAPIBoundary:
             unload_result = curl_pod.execute(command=unload_cmd, ignore_rc=True)
             unload_code = int(unload_result) if str(unload_result).strip().isdigit() else 0
             LOGGER.info("Internal V2 unload response", http_code=unload_code)
-            assert unload_code in (200, 400, 404), (
-                f"Internal V2 unload returned unexpected {unload_code}"
-            )
+            assert unload_code in (200, 400, 404), f"Internal V2 unload returned unexpected {unload_code}"
 
         # Record NetworkPolicy
         network_policies = list(
