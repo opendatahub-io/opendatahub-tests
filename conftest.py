@@ -418,7 +418,7 @@ def pytest_sessionstart(session: Session) -> None:
         return
 
     # Since clusters are not heterogeneous, all nodes share the same architecture
-    nodes = list(OcpNode.get(dyn_client=get_client()))
+    nodes = list(OcpNode.get(get_client()))
     if nodes:
         cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
         py_config["cluster_architecture"] = cluster_architecture
