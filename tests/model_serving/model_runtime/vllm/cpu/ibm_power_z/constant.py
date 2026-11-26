@@ -12,6 +12,7 @@ DEEPSEEK_R1_DISTILL_LLAMA_8B_MODEL_PATH: str = "deepseek-ai/DeepSeek-R1-Distill-
 ELYZA_JAPANESE_LLAMA_2_7B_INSTRUCT_MODEL_PATH: str = "ELYZA-japanese-Llama-2-7b-instruct"
 MINISTRAL_3B_INSTRUCT_MODEL_PATH: str = "ministral/Ministral-3b-instruct"
 GRANITE_3B_CODE_INSTRUCT_2K_MODEL_PATH: str = "granite-3b-code-instruct"
+TINYLLAMA_1_1B_CHAT_MODEL_PATH: str = "TinyLlama-1.1B-Chat-v1.0"
 
 IBM_POWER_Z_PREDICT_RESOURCES: dict[str, dict[str, str]] = {
     "requests": {"cpu": "12", "memory": "64Gi"},
