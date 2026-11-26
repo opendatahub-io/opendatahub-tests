@@ -9,7 +9,6 @@ Source: RHAISTRAT-3033
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
@@ -17,13 +16,18 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.upgrade.utils import (
     load_baseline_from_configmap,
     save_baseline_to_configmap,
+)
+from tests.model_serving.multi_model_helpers import (
+    get_isvc_pod,
+    v2_health,
+    v2_infer,
+    v2_repository_index,
 )
 from utilities.infra import get_pods_by_isvc_label
 
@@ -61,90 +65,6 @@ SKLEARN_IRIS_PAYLOAD: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_isvc_pod(admin_client: DynamicClient, isvc: InferenceService) -> Pod:
-    """Return the first pod for the given InferenceService."""
-    pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
-    if not pods:
-        raise RuntimeError(f"No pods found for InferenceService {isvc.name}")
-    return pods[0]
-
-
-def _exec_in_pod(pod: Pod, command: list[str]) -> str:
-    """Execute a command inside a pod and return stdout."""
-    return pod.execute(command=command)
-
-
-def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Send a V2 inference request via pod exec curl."""
-    url = f"http://localhost:8080/v2/models/{model_name}/infer"
-    result = _exec_in_pod(
-        pod=pod,
-        command=[
-            "curl",
-            "-s",
-            "-w",
-            "\n%{http_code}",
-            "-X",
-            "POST",
-            url,
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            json.dumps(payload),
-        ],
-    )
-    lines = result.strip().rsplit("\n", 1)
-    body_str = lines[0] if len(lines) > 1 else ""
-    if not lines[-1].isdigit():
-        raise RuntimeError(f"Unparseable HTTP status from V2 infer response: {result!r}")
-    http_code = int(lines[-1])
-    try:
-        body = json.loads(body_str) if body_str else {}
-    except json.JSONDecodeError:
-        body = {"raw": body_str}
-    return {"http_code": http_code, "body": body}
-
-
-def _v2_health(pod: Pod, endpoint: str) -> int:
-    """Query a V2 health endpoint and return the HTTP status code."""
-    url = f"http://localhost:8080{endpoint}"
-    result = _exec_in_pod(
-        pod=pod,
-        command=["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
-    )
-    stripped = result.strip()
-    if not stripped.isdigit():
-        raise RuntimeError(f"Unparseable HTTP status from V2 health response: {result!r}")
-    return int(stripped)
-
-
-def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
-    """Query the V2 repository index and return the model list."""
-    result = _exec_in_pod(
-        pod=pod,
-        command=[
-            "curl",
-            "-s",
-            "-X",
-            "POST",
-            "http://localhost:8080/v2/repository/index",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            "{}",
-        ],
-    )
-    try:
-        return json.loads(result.strip())
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Unparseable JSON from V2 repository index: {result!r}") from exc
-
-
-# ---------------------------------------------------------------------------
 # Module-scoped state for pre/post upgrade comparison
 # ---------------------------------------------------------------------------
 
@@ -158,8 +78,9 @@ def _capture_serving_runtime_snapshot(runtime: ServingRuntime) -> dict[str, Any]
     Returns:
         Dictionary containing the spec and annotations.
     """
-    spec = runtime.instance.get("spec", {})
-    annotations = runtime.instance.get("metadata", {}).get("annotations", {})
+    instance = runtime.instance.to_dict()
+    spec = instance.get("spec", {})
+    annotations = instance.get("metadata", {}).get("annotations", {})
     return {
         "name": runtime.name,
         "namespace": runtime.namespace,
@@ -216,7 +137,7 @@ def pre_upgrade_serving_runtime_snapshot(
 # Tests
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.tier3
@@ -260,7 +181,7 @@ class TestServingRuntimeUpgrade:
 
     @pytest.mark.post_upgrade
     @pytest.mark.order(2)
-    @pytest.mark.dependency(name="TC-UPG-001", depends=["TC-UPG-001-pre"])
+    @pytest.mark.dependency(name="TC-UPG-001")
     def test_tc_upg_001(
         self,
         admin_client: DynamicClient,
@@ -286,7 +207,7 @@ class TestServingRuntimeUpgrade:
         assert runtime.exists, f"ServingRuntime {runtime.name} does not exist after upgrade"
 
         # Compare complete spec (excluding mutable metadata fields)
-        post_upgrade_spec = runtime.instance.get("spec", {})
+        post_upgrade_spec = runtime.instance.to_dict().get("spec", {})
         pre_upgrade_spec = pre_upgrade_serving_runtime_snapshot["spec"]
 
         def _normalize_spec(spec: dict) -> dict:
@@ -323,7 +244,7 @@ class TestServingRuntimeUpgrade:
         assert not spec_diffs, "ServingRuntime spec changed after upgrade:\n" + "\n".join(spec_diffs)
 
         # Verify tech-preview annotation preserved
-        post_annotations = runtime.instance.get("metadata", {}).get("annotations", {})
+        post_annotations = runtime.instance.to_dict().get("metadata", {}).get("annotations", {})
         support_status = post_annotations.get("opendatahub.io/support-status", "")
         LOGGER.info(
             "Post-upgrade ServingRuntime annotations",
@@ -404,21 +325,21 @@ class TestServingRuntimeUpgrade:
         assert isvc_ready is not None, "ISVC has no Ready condition after recovery"
         assert isvc_ready.get("status") == "True", f"ISVC Ready condition is {isvc_ready.get('status')}, expected True"
 
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=isvc)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=isvc)
 
         # Verify /v2/health/ready
-        ready_code = _v2_health(pod=pod, endpoint="/v2/health/ready")
+        ready_code = v2_health(pod=pod, endpoint="/v2/health/ready")
         assert ready_code == 200, f"/v2/health/ready returned HTTP {ready_code} post-upgrade"
 
         # Verify repository index
-        repo_index = _v2_repository_index(pod=pod)
+        repo_index = v2_repository_index(pod=pod)
         assert len(repo_index) == EXPECTED_MODEL_COUNT, (
             f"Post-upgrade repository index has {len(repo_index)} models, expected {EXPECTED_MODEL_COUNT}"
         )
 
         # Send V2 inference to all 10 models
         for model_name in MODEL_NAMES:
-            result = _v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
+            result = v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
             assert result["http_code"] == 200, (
                 f"Post-upgrade inference for {model_name} returned HTTP {result['http_code']}"
             )

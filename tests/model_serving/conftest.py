@@ -150,17 +150,31 @@ def kserve_s3_secret(
 
 @pytest.fixture(scope="class")
 def multi_model_service_account(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     kserve_s3_secret: Secret,
+    model_namespace: Namespace,
 ) -> Generator[ServiceAccount]:
-    """ServiceAccount for multi-model InferenceServices, linked to the S3 secret."""
-    with ServiceAccount(
-        client=admin_client,
-        namespace=kserve_s3_secret.namespace,
-        name="multi-model-sa",
-        secrets=[{"name": kserve_s3_secret.name}],
-    ) as sa:
+    """ServiceAccount for multi-model InferenceServices, linked to the S3 secret.
+
+    Post-upgrade: looks up the existing ServiceAccount by name without
+    re-creating it.
+    """
+    if getattr(pytestconfig.option, "post_upgrade", False):
+        sa = ServiceAccount(
+            client=admin_client,
+            namespace=kserve_s3_secret.namespace,
+            name="multi-model-sa",
+        )
         yield sa
+    else:
+        with ServiceAccount(
+            client=admin_client,
+            namespace=kserve_s3_secret.namespace,
+            name="multi-model-sa",
+            secrets=[{"name": kserve_s3_secret.name}],
+        ) as sa:
+            yield sa
 
 
 @pytest.fixture(scope="class")
@@ -210,22 +224,35 @@ def mlserver_serving_runtime(
 
 @pytest.fixture(scope="class")
 def multi_model_pvc(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
 ) -> Generator[PersistentVolumeClaim]:
-    """PVC for the 10-model repository layout."""
-    with PersistentVolumeClaim(
-        name="multi-model-pvc",
-        namespace=model_namespace.name,
-        client=admin_client,
-        size=MULTI_MODEL_PVC_SIZE,
-        accessmodes="ReadWriteOnce",
-    ) as pvc:
+    """PVC for the 10-model repository layout.
+
+    Post-upgrade: looks up the existing PVC by name without re-creating it.
+    """
+    if getattr(pytestconfig.option, "post_upgrade", False):
+        pvc = PersistentVolumeClaim(
+            name="multi-model-pvc",
+            namespace=model_namespace.name,
+            client=admin_client,
+        )
         yield pvc
+    else:
+        with PersistentVolumeClaim(
+            name="multi-model-pvc",
+            namespace=model_namespace.name,
+            client=admin_client,
+            size=MULTI_MODEL_PVC_SIZE,
+            accessmodes="ReadWriteOnce",
+        ) as pvc:
+            yield pvc
 
 
 @pytest.fixture(scope="class")
 def multi_model_staged_data(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     multi_model_pvc: PersistentVolumeClaim,
@@ -241,9 +268,14 @@ def multi_model_staged_data(
     subdirectory ``mlserver/model_repository``.  The ISVC then references
     ``pvc://{pvc_name}/mlserver/model_repository``.
 
+    Post-upgrade: returns the model path without re-downloading.
+
     Returns:
         Model path prefix within the PVC.
     """
+    if getattr(pytestconfig.option, "post_upgrade", False):
+        return S3_PATH_10_MODEL
+
     return stage_s3_to_pvc(
         admin_client=admin_client,
         model_namespace=model_namespace.name,
@@ -410,6 +442,7 @@ def startup_measurement_inference_service(
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+        wait=False,
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
@@ -503,6 +536,7 @@ def empty_storage_inference_service(
             model_service_account=multi_model_service_account.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+            wait=False,
             wait_for_predictor_pods=False,
         ) as isvc,
     ):
@@ -561,6 +595,7 @@ def one_failed_model_inference_service(
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+        wait=False,
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
@@ -618,6 +653,7 @@ def malformed_settings_inference_service(
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+        wait=False,
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
@@ -675,6 +711,7 @@ def unsupported_impl_inference_service(
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+        wait=False,
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
@@ -710,6 +747,7 @@ def resource_exhaustion_inference_service(
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=low_resources,
+        wait=False,
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
@@ -767,6 +805,7 @@ def missing_artifact_inference_service(
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+        wait=False,
         wait_for_predictor_pods=False,
     ) as isvc:
         yield isvc
@@ -812,6 +851,7 @@ def invalid_credentials_inference_service(
             model_service_account=bad_sa.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+            wait=False,
             wait_for_predictor_pods=False,
         ) as isvc,
     ):
@@ -870,6 +910,7 @@ def storage_exhaustion_inference_service(
             model_service_account=multi_model_service_account.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+            wait=False,
             wait_for_predictor_pods=False,
         ) as isvc:
             isvc._staging_failed = staging_failed

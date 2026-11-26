@@ -5,12 +5,17 @@ Extracted from conftest.py so the component conftest contains only fixtures.
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 import structlog
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_service import InferenceService
 from ocp_resources.pod import Pod
 from ocp_resources.serving_runtime import ServingRuntime
 
 from utilities.general import download_model_data
+from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -165,3 +170,95 @@ def stage_s3_to_pvc(
         use_sub_path=True,
         restricted_scc_init=True,
     )
+
+
+def get_isvc_pod(admin_client: DynamicClient, isvc: InferenceService) -> Pod:
+    """Return the first pod for the given InferenceService."""
+    pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+    if not pods:
+        raise RuntimeError(f"No pods found for InferenceService {isvc.name}")
+    return pods[0]
+
+
+def exec_in_pod(pod: Pod, command: list[str]) -> str:
+    """Execute a command inside a pod and return stdout."""
+    return pod.execute(command=command)
+
+
+def v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Send a V2 inference request via pod exec curl.
+
+    Raises RuntimeError when the HTTP status code cannot be parsed from the
+    curl output, so callers never confuse a transport failure with a real
+    server response.
+    """
+    url = f"http://localhost:8080/v2/models/{model_name}/infer"
+    result = exec_in_pod(
+        pod=pod,
+        command=[
+            "curl",
+            "-s",
+            "-w",
+            "\n%{http_code}",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            json.dumps(payload),
+        ],
+    )
+    lines = result.strip().rsplit("\n", 1)
+    if not lines[-1].isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from curl: {result!r}")
+    body_str = lines[0] if len(lines) > 1 else ""
+    http_code = int(lines[-1])
+    try:
+        body = json.loads(body_str) if body_str else {}
+    except json.JSONDecodeError:
+        body = {"raw": body_str}
+    return {"http_code": http_code, "body": body}
+
+
+def v2_health(pod: Pod, endpoint: str) -> int:
+    """Query a V2 health endpoint and return the HTTP status code.
+
+    Raises RuntimeError when the HTTP status code cannot be parsed, so
+    callers never confuse a transport failure with a real probe result.
+    """
+    url = f"http://localhost:8080{endpoint}"
+    result = exec_in_pod(
+        pod=pod,
+        command=["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
+    )
+    status = result.strip()
+    if not status.isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from health probe: {result!r}")
+    return int(status)
+
+
+def v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
+    """Query the V2 repository index and return the model list.
+
+    Raises RuntimeError when the response is not valid JSON, so callers
+    never confuse a failed request with an empty repository.
+    """
+    result = exec_in_pod(
+        pod=pod,
+        command=[
+            "curl",
+            "-s",
+            "-X",
+            "POST",
+            "http://localhost:8080/v2/repository/index",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            "{}",
+        ],
+    )
+    try:
+        return json.loads(result.strip())
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Repository index returned invalid JSON: {result!r}") from exc

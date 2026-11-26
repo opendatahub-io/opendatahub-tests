@@ -11,7 +11,6 @@ Source: RHAISTRAT-3033
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 
@@ -25,7 +24,14 @@ from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.multi_model_helpers import KSERVE_CONTAINER
+from tests.model_serving.multi_model_helpers import (
+    KSERVE_CONTAINER,
+    exec_in_pod,
+    get_isvc_pod,
+    v2_health,
+    v2_infer,
+    v2_repository_index,
+)
 from utilities.certificates_utils import get_ca_bundle
 from utilities.inference_utils import get_exposed_isvc_url
 from utilities.infra import get_pods_by_isvc_label
@@ -80,127 +86,6 @@ MODEL_STABILITY_WAIT_SEC: int = 300
 # ---------------------------------------------------------------------------
 
 
-def _get_isvc_pod(admin_client: DynamicClient, isvc: InferenceService) -> Pod:
-    """Return the first pod for the given InferenceService.
-
-    Args:
-        admin_client: Kubernetes dynamic client.
-        isvc: InferenceService resource.
-
-    Returns:
-        The first matching pod.
-
-    Raises:
-        RuntimeError: If no pods are found.
-    """
-    pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
-    if not pods:
-        raise RuntimeError(f"No pods found for InferenceService {isvc.name}")
-    return pods[0]
-
-
-def _exec_in_pod(pod: Pod, command: list[str]) -> str:
-    """Execute a command inside a pod and return stdout.
-
-    Args:
-        pod: Target pod resource.
-        command: Command and arguments to execute.
-
-    Returns:
-        Command stdout as string.
-    """
-    return pod.execute(command=command)
-
-
-def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Send a V2 inference request to a model via pod exec curl.
-
-    Args:
-        pod: MLServer pod.
-        model_name: Name of the target model.
-        payload: V2 inference request payload.
-
-    Returns:
-        Dictionary with http_code and parsed response body.
-    """
-    url = f"http://localhost:8080/v2/models/{model_name}/infer"
-    result = _exec_in_pod(
-        pod=pod,
-        command=[
-            "curl",
-            "-s",
-            "-w",
-            "\n%{http_code}",
-            "--connect-timeout",
-            "5",
-            "--max-time",
-            "20",
-            "-X",
-            "POST",
-            url,
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            json.dumps(payload),
-        ],
-    )
-    lines = result.strip().rsplit("\n", 1)
-    body_str = lines[0] if len(lines) > 1 else ""
-    http_code = int(lines[-1]) if lines[-1].isdigit() else 0
-    try:
-        body = json.loads(body_str) if body_str else {}
-    except json.JSONDecodeError:
-        body = {"raw": body_str}
-    return {"http_code": http_code, "body": body}
-
-
-def _v2_health(pod: Pod, endpoint: str) -> int:
-    """Query a V2 health endpoint and return the HTTP status code.
-
-    Args:
-        pod: MLServer pod.
-        endpoint: Health path, e.g. "/v2/health/live".
-
-    Returns:
-        HTTP status code.
-    """
-    url = f"http://localhost:8080{endpoint}"
-    result = _exec_in_pod(
-        pod=pod,
-        command=["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
-    )
-    return int(result.strip()) if result.strip().isdigit() else 0
-
-
-def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
-    """Query the V2 repository index and return the model list.
-
-    Args:
-        pod: MLServer pod.
-
-    Returns:
-        List of model entries from the repository index.
-    """
-    result = _exec_in_pod(
-        pod=pod,
-        command=[
-            "curl",
-            "-s",
-            "-X",
-            "POST",
-            "http://localhost:8080/v2/repository/index",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            "{}",
-        ],
-    )
-    try:
-        return json.loads(result.strip())
-    except json.JSONDecodeError:
-        return []
-
-
 def _get_pod_env_var(pod: Pod, var_name: str) -> str | None:
     """Extract an environment variable value from the pod spec.
 
@@ -240,7 +125,7 @@ def _get_pod_probe(pod: Pod, probe_type: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.tier1
@@ -273,10 +158,10 @@ class TestMultiModelDeployment:
             non-empty outputs array; the external route returns HTTP 200 with
             a valid V2 payload.
         """
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
 
         # Verify all 10 models appear in the repository index
-        repo_index = _v2_repository_index(pod=pod)
+        repo_index = v2_repository_index(pod=pod)
         loaded_names = sorted(entry.get("name", "") for entry in repo_index)
         assert len(repo_index) == EXPECTED_MODEL_COUNT, (
             f"Expected {EXPECTED_MODEL_COUNT} models in repository index, got {len(repo_index)}: {loaded_names}"
@@ -284,7 +169,7 @@ class TestMultiModelDeployment:
 
         # Send V2 inference to each model
         for model_name in MODEL_NAMES:
-            result = _v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
+            result = v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
             assert result["http_code"] == 200, (
                 f"Model {model_name} inference returned HTTP {result['http_code']}, expected 200"
             )
@@ -337,7 +222,7 @@ class TestMultiModelDeployment:
             errors, MLServer logs show discovery of all 10 models, and inference
             returns HTTP 200.
         """
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
 
         # Check volume mount for /mnt/models
         containers = pod.instance.spec.get("containers", [])
@@ -366,7 +251,7 @@ class TestMultiModelDeployment:
         LOGGER.info("MLServer model discovery logs", lines=discovery_lines[:20])
 
         # Verify inference works through mount
-        result = _v2_infer(pod=pod, model_name="sklearn-iris-1", payload=SKLEARN_IRIS_PAYLOAD)
+        result = v2_infer(pod=pod, model_name="sklearn-iris-1", payload=SKLEARN_IRIS_PAYLOAD)
         assert result["http_code"] == 200, (
             f"Inference through mounted storage returned HTTP {result['http_code']}, expected 200"
         )
@@ -389,10 +274,10 @@ class TestMultiModelDeployment:
         Then: The initial and final repository index are identical, all inference
             requests return HTTP 200.
         """
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
 
         # Record initial repository state
-        initial_index = _v2_repository_index(pod=pod)
+        initial_index = v2_repository_index(pod=pod)
         initial_names = sorted(entry.get("name", "") for entry in initial_index)
         initial_entries = sorted([(e.get("name", ""), e.get("version", "")) for e in initial_index])
         assert len(initial_index) == EXPECTED_MODEL_COUNT, (
@@ -401,7 +286,7 @@ class TestMultiModelDeployment:
 
         # Infer all models
         for model_name in MODEL_NAMES:
-            result = _v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
+            result = v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
             assert result["http_code"] == 200, f"Initial inference for {model_name} failed: HTTP {result['http_code']}"
 
         # Wait without performing catalog operations
@@ -409,7 +294,7 @@ class TestMultiModelDeployment:
         time.sleep(MODEL_STABILITY_WAIT_SEC)
 
         # Re-query and compare
-        final_index = _v2_repository_index(pod=pod)
+        final_index = v2_repository_index(pod=pod)
         final_names = sorted(entry.get("name", "") for entry in final_index)
         final_entries = sorted([(e.get("name", ""), e.get("version", "")) for e in final_index])
         assert initial_names == final_names, f"Model set changed: initial={initial_names}, final={final_names}"
@@ -419,7 +304,7 @@ class TestMultiModelDeployment:
 
         # Repeat inference
         for model_name in MODEL_NAMES:
-            result = _v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
+            result = v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
             assert result["http_code"] == 200, (
                 f"Post-wait inference for {model_name} failed: HTTP {result['http_code']}"
             )
@@ -440,13 +325,13 @@ class TestMultiModelDeployment:
             HTTP 200, probe configuration and env vars are recorded,
             pod Ready condition is True.
         """
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
 
         # Health endpoints
-        live_code = _v2_health(pod=pod, endpoint="/v2/health/live")
+        live_code = v2_health(pod=pod, endpoint="/v2/health/live")
         assert live_code == 200, f"/v2/health/live returned HTTP {live_code}, expected 200"
 
-        ready_code = _v2_health(pod=pod, endpoint="/v2/health/ready")
+        ready_code = v2_health(pod=pod, endpoint="/v2/health/ready")
         assert ready_code == 200, f"/v2/health/ready returned HTTP {ready_code}, expected 200"
 
         # Record MLServer readiness env vars
@@ -502,10 +387,10 @@ class TestMultiModelVersioning:
             by version, no duplicate-name error, and each versioned inference
             returns HTTP 200 with matching model_version.
         """
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_version_inference_service)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_version_inference_service)
 
         # Query repository index for shared-model entries
-        repo_index = _v2_repository_index(pod=pod)
+        repo_index = v2_repository_index(pod=pod)
         shared_entries = [e for e in repo_index if e.get("name") == "shared-model"]
         assert len(shared_entries) == 2, (
             f"Expected 2 entries for shared-model, got {len(shared_entries)}: {shared_entries}"
@@ -516,7 +401,7 @@ class TestMultiModelVersioning:
         assert "2.0" in versions, f"Version 2.0 not found in shared-model entries: {versions}"
 
         # Infer version 1.0
-        result_v1 = _v2_infer(
+        result_v1 = v2_infer(
             pod=pod,
             model_name="shared-model/versions/1.0",
             payload=SKLEARN_IRIS_PAYLOAD,
@@ -525,7 +410,7 @@ class TestMultiModelVersioning:
         assert result_v1["body"].get("model_version") == "1.0"
 
         # Infer version 2.0
-        result_v2 = _v2_infer(
+        result_v2 = v2_infer(
             pod=pod,
             model_name="shared-model/versions/2.0",
             payload=SKLEARN_IRIS_PAYLOAD,
@@ -559,12 +444,12 @@ class TestMultiModelConcurrency:
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
 
         results: dict[str, dict[str, Any]] = {}
         with ThreadPoolExecutor(max_workers=len(CONCURRENT_MODELS)) as executor:
             futures = {
-                executor.submit(_v2_infer, pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD): model_name
+                executor.submit(v2_infer, pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD): model_name
                 for model_name in CONCURRENT_MODELS
             }
             for future in as_completed(futures, timeout=30):
@@ -637,12 +522,12 @@ class TestMultiModelStartup:
             for sample in TimeoutSampler(
                 wait_timeout=max(1, STARTUP_MEASUREMENT_TIMEOUT_SEC - int(time.monotonic() - start_time)),
                 sleep=POLL_INTERVAL_SEC,
-                func=lambda: _v2_repository_index(pod=pod),
+                func=lambda: v2_repository_index(pod=pod),
             ):
                 if len(sample) == EXPECTED_MODEL_COUNT:
                     break
         except TimeoutExpiredError:
-            repo_index = _v2_repository_index(pod=pod)
+            repo_index = v2_repository_index(pod=pod)
             pytest.fail(f"Only {len(repo_index)}/{EXPECTED_MODEL_COUNT} models loaded within timeout")
 
         elapsed_seconds = time.monotonic() - start_time
@@ -652,7 +537,7 @@ class TestMultiModelStartup:
         LOGGER.info("Startup time measured", elapsed_seconds=round(elapsed_seconds, 2))
 
         # Verify readiness
-        ready_code = _v2_health(pod=pod, endpoint="/v2/health/ready")
+        ready_code = v2_health(pod=pod, endpoint="/v2/health/ready")
         assert ready_code == 200, f"/v2/health/ready returned HTTP {ready_code}"
 
         # Record pod Ready timestamp
@@ -699,7 +584,7 @@ class TestMultiModelCUDA:
             appears in the repository index, inference returns HTTP 200, and GPU
             memory utilization is recorded.
         """
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=cuda_inference_service)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=cuda_inference_service)
 
         # Verify GPU resource allocation
         containers = pod.instance.spec.get("containers", [])
@@ -714,14 +599,14 @@ class TestMultiModelCUDA:
         assert gpu_allocated, "Pod does not have nvidia.com/gpu in resource limits"
 
         # Verify model in repository index
-        repo_index = _v2_repository_index(pod=pod)
+        repo_index = v2_repository_index(pod=pod)
         model_names = [e.get("name", "") for e in repo_index]
         assert len(repo_index) > 0, "Repository index is empty"
         LOGGER.info("CUDA ISVC models loaded", models=model_names)
 
         # V2 inference
         onnx_model_name = model_names[0]
-        result = _v2_infer(pod=pod, model_name=onnx_model_name, payload=SKLEARN_IRIS_PAYLOAD)
+        result = v2_infer(pod=pod, model_name=onnx_model_name, payload=SKLEARN_IRIS_PAYLOAD)
         assert result["http_code"] == 200, f"CUDA inference returned HTTP {result['http_code']}, expected 200"
         assert result["body"].get("model_name") is not None
         assert len(result["body"].get("outputs", [])) > 0
@@ -737,7 +622,7 @@ class TestMultiModelCUDA:
 
         # Record GPU memory utilization (supplementary evidence)
         try:
-            gpu_output = _exec_in_pod(
+            gpu_output = exec_in_pod(
                 pod=pod,
                 command=[
                     "nvidia-smi",
@@ -783,11 +668,11 @@ class TestSingleModelRegression:
         Then: The ISVC reaches Ready, V2 inference returns HTTP 200 matching
             the baseline, and probe configuration remains functional.
         """
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=single_model_inference_service)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=single_model_inference_service)
 
         # Query repository index to find the actual model name from model-settings.json,
         # which may differ from the ISVC name.
-        repo_index = _v2_repository_index(pod=pod)
+        repo_index = v2_repository_index(pod=pod)
         assert len(repo_index) > 0, "Repository index is empty for single-model ISVC"
         actual_model_name = repo_index[0].get("name", single_model_inference_service.name)
         LOGGER.info(
@@ -797,7 +682,7 @@ class TestSingleModelRegression:
         )
 
         # Verify inference
-        result = _v2_infer(
+        result = v2_infer(
             pod=pod,
             model_name=actual_model_name,
             payload=SKLEARN_IRIS_PAYLOAD,

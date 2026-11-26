@@ -127,7 +127,9 @@ def generate(output_dir: Path) -> None:
                 continue
 
             # Copy model-settings.json
-            shutil.copy2(src=settings_file, dst=dest_model / "model-settings.json")
+            settings_dest = (dest_model / "model-settings.json").resolve()
+            settings_dest.relative_to(output_dir.resolve())  # noqa: FCN001
+            shutil.copy2(src=settings_file, dst=settings_dest)
 
             # Parse settings to determine which artifact to generate
             raw = settings_file.read_text()
@@ -153,6 +155,7 @@ def generate(output_dir: Path) -> None:
 
             artifact_name, generator_fn = ARTIFACT_GENERATORS[impl]
             artifact_path = dest_model / artifact_name
+            artifact_path.resolve().relative_to(output_dir.resolve())  # noqa: FCN001
             generator_fn(path=artifact_path)
             print(f"  {scenario_dir.name}/{model_dir.name}: {artifact_name}")
 

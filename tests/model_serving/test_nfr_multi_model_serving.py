@@ -14,7 +14,6 @@ import json
 import shlex
 import statistics
 import subprocess
-import time
 from typing import Any
 
 import pytest
@@ -27,6 +26,11 @@ from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 
 from tests.model_serving.model_server.kserve.ingress.utils import create_curl_pod
+from tests.model_serving.multi_model_helpers import (
+    exec_in_pod,
+    get_isvc_pod,
+    v2_infer,
+)
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -64,48 +68,6 @@ SKLEARN_IRIS_PAYLOAD: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 
-def _get_isvc_pod(admin_client: DynamicClient, isvc: InferenceService) -> Pod:
-    """Return the first pod for the given InferenceService."""
-    pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
-    if not pods:
-        raise RuntimeError(f"No pods found for InferenceService {isvc.name}")
-    return pods[0]
-
-
-def _exec_in_pod(pod: Pod, command: list[str]) -> str:
-    """Execute a command inside a pod and return stdout."""
-    return pod.execute(command=command)
-
-
-def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Send a V2 inference request via pod exec curl."""
-    url = f"http://localhost:8080/v2/models/{model_name}/infer"
-    result = _exec_in_pod(
-        pod=pod,
-        command=[
-            "curl",
-            "-s",
-            "-w",
-            "\n%{http_code}",
-            "-X",
-            "POST",
-            url,
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            json.dumps(payload),
-        ],
-    )
-    lines = result.strip().rsplit("\n", 1)
-    body_str = lines[0] if len(lines) > 1 else ""
-    http_code = int(lines[-1]) if lines[-1].isdigit() else 0
-    try:
-        body = json.loads(body_str) if body_str else {}
-    except json.JSONDecodeError:
-        body = {"raw": body_str}
-    return {"http_code": http_code, "body": body}
-
-
 def _collect_pod_resource_requests(
     admin_client: DynamicClient,
     namespace: str,
@@ -123,7 +85,7 @@ def _collect_pod_resource_requests(
     """
     pods = list(
         Pod.get(
-            dyn_client=admin_client,
+            client=admin_client,
             namespace=namespace,
             label_selector=label_selector,
         )
@@ -190,6 +152,47 @@ def _collect_fleet_resource_requests(
     return metrics
 
 
+def _v2_infer_timed(pod: Pod, model_name: str, payload: dict[str, Any]) -> tuple[dict[str, Any], float]:
+    """Send a V2 inference request and return (result, server_latency_seconds).
+
+    Uses curl's %{time_total} to measure server-side latency, excluding
+    the Kubernetes exec session overhead.
+    """
+    url = f"http://localhost:8080/v2/models/{model_name}/infer"
+    result = exec_in_pod(
+        pod=pod,
+        command=[
+            "curl",
+            "-s",
+            "-w",
+            "\n%{time_total}\n%{http_code}",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            json.dumps(payload),
+        ],
+    )
+    parts = result.strip().rsplit("\n", 2)
+    if len(parts) < 3:
+        raise RuntimeError(f"Unparseable curl output for timed infer: {result!r}")
+    body_str, time_total_str, http_code_str = parts[0], parts[-2], parts[-1]
+    if not http_code_str.isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from timed infer: {result!r}")
+    http_code = int(http_code_str)
+    try:
+        latency = float(time_total_str)
+    except ValueError:
+        raise RuntimeError(f"Unparseable time_total from timed infer: {time_total_str!r}")
+    try:
+        body = json.loads(body_str) if body_str else {}
+    except json.JSONDecodeError:
+        body = {"raw": body_str}
+    return {"http_code": http_code, "body": body}, latency
+
+
 def _exec_curl_external(
     url: str,
     method: str = "POST",
@@ -249,7 +252,7 @@ def _exec_curl_external(
 # Tests
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.tier3
@@ -289,7 +292,7 @@ class TestPSAPBenchmark:
         namespace_name = model_namespace.name
 
         # Confirm MLSERVER_PARALLEL_WORKERS=1 on the predictor container
-        multi_pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        multi_pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
         containers = multi_pod.instance.spec.get("containers", [])
         predictor_containers = [c for c in containers if c.get("name") == "kserve-container"]
         assert predictor_containers, "No kserve-container found in pod spec"
@@ -316,47 +319,43 @@ class TestPSAPBenchmark:
         LOGGER.info("Multi-model resource metrics", **multi_model_resources)
 
         # Verify inference works on both
-        baseline_pod = _get_isvc_pod(admin_client=admin_client, isvc=baseline_inference_service)
-        baseline_result = _v2_infer(
+        baseline_pod = get_isvc_pod(admin_client=admin_client, isvc=baseline_inference_service)
+        baseline_result = v2_infer(
             pod=baseline_pod,
             model_name=baseline_inference_service.name,
             payload=SKLEARN_IRIS_PAYLOAD,
         )
         assert baseline_result["http_code"] == 200, f"Baseline inference returned HTTP {baseline_result['http_code']}"
 
-        multi_result = _v2_infer(
+        multi_result = v2_infer(
             pod=multi_pod,
             model_name="sklearn-iris-1",
             payload=SKLEARN_IRIS_PAYLOAD,
         )
         assert multi_result["http_code"] == 200, f"Multi-model inference returned HTTP {multi_result['http_code']}"
 
-        # Sequential latency benchmark: 10 requests per service
-        benchmark_iterations = 10
+        # Sequential latency benchmark: 30 requests per service
+        benchmark_iterations = 30
 
         baseline_latencies: list[float] = []
         for _ in range(benchmark_iterations):
-            t0 = time.monotonic()
-            resp = _v2_infer(
+            resp, latency = _v2_infer_timed(
                 pod=baseline_pod,
                 model_name=baseline_inference_service.name,
                 payload=SKLEARN_IRIS_PAYLOAD,
             )
-            elapsed = time.monotonic() - t0
             assert resp["http_code"] == 200, f"Benchmark baseline request failed: HTTP {resp['http_code']}"
-            baseline_latencies.append(elapsed)
+            baseline_latencies.append(latency)
 
         multi_latencies: list[float] = []
         for _ in range(benchmark_iterations):
-            t0 = time.monotonic()
-            resp = _v2_infer(
+            resp, latency = _v2_infer_timed(
                 pod=multi_pod,
                 model_name="sklearn-iris-1",
                 payload=SKLEARN_IRIS_PAYLOAD,
             )
-            elapsed = time.monotonic() - t0
             assert resp["http_code"] == 200, f"Benchmark multi-model request failed: HTTP {resp['http_code']}"
-            multi_latencies.append(elapsed)
+            multi_latencies.append(latency)
 
         # Compute p50 and p99 latencies
         baseline_p50 = statistics.median(data=baseline_latencies)
@@ -552,7 +551,7 @@ class TestV2ManagementAPIBoundary:
         # Record NetworkPolicy
         network_policies = list(
             NetworkPolicy.get(
-                dyn_client=admin_client,
+                client=admin_client,
                 namespace=namespace_name,
             )
         )
@@ -566,18 +565,21 @@ class TestV2ManagementAPIBoundary:
         # External: attempt management API via route
         routes = list(
             Route.get(
-                dyn_client=admin_client,
+                client=admin_client,
                 namespace=namespace_name,
             )
         )
         external_host: str | None = None
         for route in routes:
-            if isvc_name in route.name:
+            route_labels = route.instance.get("metadata", {}).get("labels", {})
+            if route_labels.get("serving.kserve.io/inferenceservice") == isvc_name:
                 external_host = route.instance.get("spec", {}).get("host", "")
                 break
 
-        if not external_host:
-            pytest.skip("No usable external route found")
+        assert external_host, (
+            f"No route found for InferenceService {isvc_name} in namespace {namespace_name}. "
+            f"Ensure the ISVC fixture sets external_route=True"
+        )
 
         external_base = f"https://{external_host}"
 
@@ -625,8 +627,8 @@ class TestV2ManagementAPIBoundary:
             )
 
         # Verify inference still works
-        pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
-        infer_result = _v2_infer(pod=pod, model_name=test_model, payload=SKLEARN_IRIS_PAYLOAD)
+        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        infer_result = v2_infer(pod=pod, model_name=test_model, payload=SKLEARN_IRIS_PAYLOAD)
         assert infer_result["http_code"] == 200, (
             f"Post-management-API inference returned HTTP {infer_result['http_code']}"
         )
