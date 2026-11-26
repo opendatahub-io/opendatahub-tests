@@ -321,9 +321,7 @@ class TestServingRuntimeUpgrade:
             if pre_val != post_val:
                 spec_diffs.append(f"  {key}: {pre_val!r} -> {post_val!r}")
 
-        assert not spec_diffs, (
-            "ServingRuntime spec changed after upgrade:\n" + "\n".join(spec_diffs)
-        )
+        assert not spec_diffs, "ServingRuntime spec changed after upgrade:\n" + "\n".join(spec_diffs)
 
         # Verify tech-preview annotation preserved
         post_annotations = sr.instance.get("metadata", {}).get("annotations", {})

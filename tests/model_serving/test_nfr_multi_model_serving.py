@@ -573,9 +573,8 @@ class TestV2ManagementAPIBoundary:
             http_code=external_load["http_code"],
             returncode=external_load["returncode"],
         )
-        load_blocked = (
-            external_load["http_code"] in boundary_denial_codes
-            or (external_load["http_code"] == 0 and external_load["returncode"] != 0)
+        load_blocked = external_load["http_code"] in boundary_denial_codes or (
+            external_load["http_code"] == 0 and external_load["returncode"] != 0
         )
         assert load_blocked, (
             f"External V2 load was not blocked: HTTP {external_load['http_code']}, "
@@ -593,9 +592,8 @@ class TestV2ManagementAPIBoundary:
             http_code=external_unload["http_code"],
             returncode=external_unload["returncode"],
         )
-        unload_blocked = (
-            external_unload["http_code"] in boundary_denial_codes
-            or (external_unload["http_code"] == 0 and external_unload["returncode"] != 0)
+        unload_blocked = external_unload["http_code"] in boundary_denial_codes or (
+            external_unload["http_code"] == 0 and external_unload["returncode"] != 0
         )
         assert unload_blocked, (
             f"External V2 unload was not blocked: HTTP {external_unload['http_code']}, "
