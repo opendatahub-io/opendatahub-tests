@@ -233,9 +233,7 @@ class TestServingRuntimeUpgrade:
         post_containers = post_upgrade_spec.get("containers", [])
         pre_images = [c.get("image", "") for c in pre_containers]
         post_images = [c.get("image", "") for c in post_containers]
-        assert pre_images == post_images, (
-            f"Container images changed: {pre_images} -> {post_images}"
-        )
+        assert pre_images == post_images, f"Container images changed: {pre_images} -> {post_images}"
 
         # Verify tech-preview annotation preserved
         post_annotations = sr.instance.get("metadata", {}).get("annotations", {})
@@ -300,9 +298,7 @@ class TestServingRuntimeUpgrade:
         isvc_conditions = isvc.instance.get("status", {}).get("conditions", [])
         isvc_ready = next((c for c in isvc_conditions if c.get("type") == "Ready"), None)
         assert isvc_ready is not None, "ISVC has no Ready condition after recovery"
-        assert isvc_ready.get("status") == "True", (
-            f"ISVC Ready condition is {isvc_ready.get('status')}, expected True"
-        )
+        assert isvc_ready.get("status") == "True", f"ISVC Ready condition is {isvc_ready.get('status')}, expected True"
 
         pod = _get_isvc_pod(admin_client=admin_client, isvc=isvc)
 

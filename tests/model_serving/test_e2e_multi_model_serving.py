@@ -346,9 +346,7 @@ class TestMultiModelDeployment:
             for mount in container.get("volumeMounts", []):
                 if mount.get("mountPath") == "/mnt/models":
                     model_mount_found = True
-                    assert mount.get("readOnly") is True, (
-                        f"/mnt/models mount is not readOnly: {mount.get('readOnly')}"
-                    )
+                    assert mount.get("readOnly") is True, f"/mnt/models mount is not readOnly: {mount.get('readOnly')}"
                     LOGGER.info(
                         "Found /mnt/models mount",
                         read_only=mount.get("readOnly"),
@@ -361,7 +359,8 @@ class TestMultiModelDeployment:
         # Verify MLServer discovered models via logs
         log_output = pod.log(container=KSERVE_CONTAINER, tail_lines=50) or ""
         discovery_lines = [
-            line for line in log_output.splitlines()
+            line
+            for line in log_output.splitlines()
             if any(term in line.lower() for term in ("loading model", "models found"))
         ]
         LOGGER.info("MLServer model discovery logs", lines=discovery_lines[:20])
@@ -395,9 +394,7 @@ class TestMultiModelDeployment:
         # Record initial repository state
         initial_index = _v2_repository_index(pod=pod)
         initial_names = sorted(entry.get("name", "") for entry in initial_index)
-        initial_entries = sorted(
-            [(e.get("name", ""), e.get("version", "")) for e in initial_index]
-        )
+        initial_entries = sorted([(e.get("name", ""), e.get("version", "")) for e in initial_index])
         assert len(initial_index) == EXPECTED_MODEL_COUNT, (
             f"Initial index has {len(initial_index)} models, expected {EXPECTED_MODEL_COUNT}"
         )
@@ -414,9 +411,7 @@ class TestMultiModelDeployment:
         # Re-query and compare
         final_index = _v2_repository_index(pod=pod)
         final_names = sorted(entry.get("name", "") for entry in final_index)
-        final_entries = sorted(
-            [(e.get("name", ""), e.get("version", "")) for e in final_index]
-        )
+        final_entries = sorted([(e.get("name", ""), e.get("version", "")) for e in final_index])
         assert initial_names == final_names, f"Model set changed: initial={initial_names}, final={final_names}"
         assert initial_entries == final_entries, (
             f"Model entries changed: initial={initial_entries}, final={final_entries}"

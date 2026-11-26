@@ -311,7 +311,7 @@ class TestHealthProbesDegraded:
             try:
                 value = _get_pod_env_var(pod=pod, var_name=var_name)
                 LOGGER.info("Empty storage env var", name=var_name, value=value)
-            except (AttributeError, TypeError):
+            except AttributeError, TypeError:
                 LOGGER.info("Could not read env var (container may not be running)", name=var_name)
 
         # Record probe config and pod conditions
@@ -774,7 +774,7 @@ class TestInvalidCredentials:
             try:
                 live_code = _v2_health(pod=pod, endpoint="/v2/health/live")
                 assert live_code != 200, "/v2/health/live should not return 200 with invalid creds"
-            except (ExecOnPodError, ApiException):
+            except ExecOnPodError, ApiException:
                 LOGGER.info("Health endpoint unreachable (expected)")
         else:
             LOGGER.info("No pods found for invalid-credentials ISVC (pod creation may have failed)")
@@ -851,16 +851,12 @@ class TestStorageExhaustion:
                 repo_index = _v2_repository_index(pod=pod)
                 model_count = len(repo_index)
                 LOGGER.info("Storage exhaustion model count", count=model_count)
-                assert model_count < 10, (
-                    f"Expected fewer than 10 models with exhausted storage, got {model_count}"
-                )
+                assert model_count < 10, f"Expected fewer than 10 models with exhausted storage, got {model_count}"
 
                 staging_failed = getattr(storage_exhaustion_inference_service, "_staging_failed", False)
                 if staging_failed:
-                    assert model_count < 10, (
-                        f"Staging failed but {model_count} models loaded — expected fewer"
-                    )
-            except (ExecOnPodError, ApiException):
+                    assert model_count < 10, f"Staging failed but {model_count} models loaded — expected fewer"
+            except ExecOnPodError, ApiException:
                 LOGGER.info("Repository index unreachable (expected with storage failure)")
 
         # ISVC should not report Ready
