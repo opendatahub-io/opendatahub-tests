@@ -1,6 +1,7 @@
 import base64
 import urllib.request
 from collections.abc import Generator
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -1140,10 +1141,21 @@ def maas_gateway_api(
 
     if gw.exists:
         LOGGER.info(f"Reusing existing gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
-        # Keep the existing listener certificate, which is issued for this Gateway's
-        # Service. Replacing it can make re-encrypt routes to MaaS API return 503.
-        gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
-        yield
+        listeners = deepcopy(x=gw.instance.to_dict()["spec"]["listeners"])
+        for listener in listeners:
+            # LLM-d scenarios create namespaces outside the installed Gateway's selector.
+            # Keep each listener's certificate and hostname so MaaS re-encrypt routes remain valid.
+            listener.setdefault("allowedRoutes", {})["namespaces"] = {"from": "All"}
+        with ResourceEditor(
+            patches={
+                gw: {
+                    "metadata": {"annotations": {"security.opendatahub.io/authorino-tls-bootstrap": "true"}},
+                    "spec": {"listeners": listeners},
+                }
+            }
+        ):
+            gw.wait_for_condition(condition="Programmed", status="True", timeout=300)
+            yield
     else:
         LOGGER.info(f"Creating gateway {MAAS_GATEWAY_NAMESPACE}/{MAAS_GATEWAY_NAME}")
         with Gateway(
