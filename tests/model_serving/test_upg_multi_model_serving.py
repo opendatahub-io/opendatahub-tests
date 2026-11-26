@@ -95,7 +95,9 @@ def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, A
     )
     lines = result.strip().rsplit("\n", 1)
     body_str = lines[0] if len(lines) > 1 else ""
-    http_code = int(lines[-1]) if lines[-1].isdigit() else 0
+    if not lines[-1].isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from V2 infer response: {result!r}")
+    http_code = int(lines[-1])
     try:
         body = json.loads(body_str) if body_str else {}
     except json.JSONDecodeError:
@@ -110,7 +112,10 @@ def _v2_health(pod: Pod, endpoint: str) -> int:
         pod=pod,
         command=["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url],
     )
-    return int(result.strip()) if result.strip().isdigit() else 0
+    stripped = result.strip()
+    if not stripped.isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from V2 health response: {result!r}")
+    return int(stripped)
 
 
 def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
@@ -131,8 +136,8 @@ def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     )
     try:
         return json.loads(result.strip())
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Unparseable JSON from V2 repository index: {result!r}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +145,7 @@ def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="class")
 def pre_upgrade_sr_snapshot(
     admin_client: DynamicClient,
     mlserver_serving_runtime: ServingRuntime,
@@ -217,14 +222,19 @@ class TestServingRuntimeUpgrade:
         # Deep comparison of key spec fields
         pre_formats = pre_upgrade_spec.get("supportedModelFormats", [])
         post_formats = post_upgrade_spec.get("supportedModelFormats", [])
-        assert len(pre_formats) == len(post_formats), (
-            f"supportedModelFormats count changed: {len(pre_formats)} -> {len(post_formats)}"
+        pre_format_names = sorted(f.get("name", "") for f in pre_formats)
+        post_format_names = sorted(f.get("name", "") for f in post_formats)
+        assert pre_format_names == post_format_names, (
+            f"Model format names changed: {pre_format_names} -> {post_format_names}"
         )
 
+        # Compare container images
         pre_containers = pre_upgrade_spec.get("containers", [])
         post_containers = post_upgrade_spec.get("containers", [])
-        assert len(pre_containers) == len(post_containers), (
-            f"Container count changed: {len(pre_containers)} -> {len(post_containers)}"
+        pre_images = [c.get("image", "") for c in pre_containers]
+        post_images = [c.get("image", "") for c in post_containers]
+        assert pre_images == post_images, (
+            f"Container images changed: {pre_images} -> {post_images}"
         )
 
         # Verify tech-preview annotation preserved
@@ -284,6 +294,15 @@ class TestServingRuntimeUpgrade:
                             break
             except TimeoutExpiredError:
                 pytest.fail("ISVC pod did not reach Ready within timeout after upgrade")
+
+        # Also verify ISVC reports Ready
+        isvc.reload()
+        isvc_conditions = isvc.instance.get("status", {}).get("conditions", [])
+        isvc_ready = next((c for c in isvc_conditions if c.get("type") == "Ready"), None)
+        assert isvc_ready is not None, "ISVC has no Ready condition after recovery"
+        assert isvc_ready.get("status") == "True", (
+            f"ISVC Ready condition is {isvc_ready.get('status')}, expected True"
+        )
 
         pod = _get_isvc_pod(admin_client=admin_client, isvc=isvc)
 

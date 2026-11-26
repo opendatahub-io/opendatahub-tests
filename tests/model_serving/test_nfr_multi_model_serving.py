@@ -23,8 +23,6 @@ from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 
-from tests.model_serving.model_runtime.mlserver.constant import MODEL_PATH_PREFIX
-from utilities.constants import ModelFormat
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -286,7 +284,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
     [
         pytest.param(
             {"name": MULTI_MODEL_NS},
-            {"model-dir": f"{MODEL_PATH_PREFIX}/{ModelFormat.SKLEARN}"},
+            {"model-dir": "mlserver/model_repository/sklearn-iris-1"},
             id="psap-benchmark",
         ),
     ],
@@ -372,7 +370,7 @@ class TestPSAPBenchmark:
     [
         pytest.param(
             {"name": MULTI_MODEL_NS},
-            {"model-dir": f"{MODEL_PATH_PREFIX}/{ModelFormat.SKLEARN}"},
+            {"model-dir": "mlserver/model_repository/sklearn-iris-1"},
             id="scalability-comparison",
         ),
     ],
@@ -454,7 +452,7 @@ class TestScalabilityComparison:
 class TestV2ManagementAPIBoundary:
     """V2 Management API cluster boundary access control."""
 
-    @pytest.mark.dependency(name="TC-NFR-003", depends=["TC-E2E-001"])
+    @pytest.mark.dependency(name="TC-NFR-003")
     def test_tc_nfr_003(
         self,
         admin_client: DynamicClient,
@@ -532,19 +530,30 @@ class TestV2ManagementAPIBoundary:
                 external_host = route.instance.get("spec", {}).get("host", "")
                 break
 
-        if external_host:
-            external_base = f"https://{external_host}"
-            external_load = _exec_curl_external(
-                url=f"{external_base}{load_path}",
-                method="POST",
-                data="{}",
-            )
-            LOGGER.info("External V2 load response", http_code=external_load["http_code"])
-            assert external_load["http_code"] != 200, (
-                f"External V2 load should NOT return 200, got {external_load['http_code']}"
-            )
-        else:
-            LOGGER.info("No external route found for ISVC; external boundary test skipped")
+        if not external_host:
+            pytest.skip("No usable external route found")
+
+        external_base = f"https://{external_host}"
+
+        external_load = _exec_curl_external(
+            url=f"{external_base}{load_path}",
+            method="POST",
+            data="{}",
+        )
+        LOGGER.info("External V2 load response", http_code=external_load["http_code"])
+        assert external_load["http_code"] != 200, (
+            f"External V2 load should NOT return 200, got {external_load['http_code']}"
+        )
+
+        external_unload = _exec_curl_external(
+            url=f"{external_base}{unload_path}",
+            method="POST",
+            data="{}",
+        )
+        LOGGER.info("External V2 unload response", http_code=external_unload["http_code"])
+        assert external_unload["http_code"] != 200, (
+            f"External V2 unload should NOT return 200, got {external_unload['http_code']}"
+        )
 
         # Verify inference still works
         pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)

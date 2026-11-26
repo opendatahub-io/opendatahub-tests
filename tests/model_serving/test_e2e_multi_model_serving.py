@@ -25,8 +25,8 @@ from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.model_runtime.mlserver.constant import MODEL_PATH_PREFIX
-from utilities.constants import ModelFormat
+from tests.model_serving.conftest import KSERVE_CONTAINER
+from utilities.certificates_utils import get_ca_bundle
 from utilities.inference_utils import get_exposed_isvc_url
 from utilities.infra import get_pods_by_isvc_label
 
@@ -131,6 +131,10 @@ def _v2_infer(pod: Pod, model_name: str, payload: dict[str, Any]) -> dict[str, A
             "-s",
             "-w",
             "\n%{http_code}",
+            "--connect-timeout",
+            "5",
+            "--max-time",
+            "20",
             "-X",
             "POST",
             url,
@@ -291,6 +295,7 @@ class TestMultiModelDeployment:
             assert body["model_name"] == model_name, (
                 f"Response model_name {body['model_name']} does not match requested {model_name}"
             )
+            assert "model_version" in body, f"Response for {model_name} missing model_version"
 
         # Send V2 inference through the external route (supported client path)
         isvc = multi_model_inference_service
@@ -298,10 +303,11 @@ class TestMultiModelDeployment:
         external_url = get_exposed_isvc_url(isvc=isvc)
         route_model = MODEL_NAMES[0]
         infer_url = f"{external_url}/v2/models/{route_model}/infer"
+        ca_bundle = get_ca_bundle(client=admin_client)
         route_response = requests.post(
             url=infer_url,
             json=SKLEARN_IRIS_PAYLOAD,
-            verify=False,
+            verify=ca_bundle or True,
             timeout=60,
         )
         assert route_response.status_code == 200, (
@@ -340,6 +346,9 @@ class TestMultiModelDeployment:
             for mount in container.get("volumeMounts", []):
                 if mount.get("mountPath") == "/mnt/models":
                     model_mount_found = True
+                    assert mount.get("readOnly") is True, (
+                        f"/mnt/models mount is not readOnly: {mount.get('readOnly')}"
+                    )
                     LOGGER.info(
                         "Found /mnt/models mount",
                         read_only=mount.get("readOnly"),
@@ -350,15 +359,12 @@ class TestMultiModelDeployment:
         assert model_mount_found, "Volume mount for /mnt/models not found in pod spec"
 
         # Verify MLServer discovered models via logs
-        log_output = _exec_in_pod(
-            pod=pod,
-            command=[
-                "sh",
-                "-c",
-                "cat /proc/1/fd/1 2>/dev/null | grep -iE 'Loading model|models found' | tail -20 || echo 'LOG_READ_SKIPPED'",
-            ],
-        )
-        LOGGER.info("MLServer model discovery logs", output=log_output[:500])
+        log_output = pod.log(container=KSERVE_CONTAINER, tail_lines=50) or ""
+        discovery_lines = [
+            line for line in log_output.splitlines()
+            if any(term in line.lower() for term in ("loading model", "models found"))
+        ]
+        LOGGER.info("MLServer model discovery logs", lines=discovery_lines[:20])
 
         # Verify inference works through mount
         result = _v2_infer(pod=pod, model_name="sklearn-iris-1", payload=SKLEARN_IRIS_PAYLOAD)
@@ -389,6 +395,9 @@ class TestMultiModelDeployment:
         # Record initial repository state
         initial_index = _v2_repository_index(pod=pod)
         initial_names = sorted(entry.get("name", "") for entry in initial_index)
+        initial_entries = sorted(
+            [(e.get("name", ""), e.get("version", "")) for e in initial_index]
+        )
         assert len(initial_index) == EXPECTED_MODEL_COUNT, (
             f"Initial index has {len(initial_index)} models, expected {EXPECTED_MODEL_COUNT}"
         )
@@ -405,7 +414,13 @@ class TestMultiModelDeployment:
         # Re-query and compare
         final_index = _v2_repository_index(pod=pod)
         final_names = sorted(entry.get("name", "") for entry in final_index)
+        final_entries = sorted(
+            [(e.get("name", ""), e.get("version", "")) for e in final_index]
+        )
         assert initial_names == final_names, f"Model set changed: initial={initial_names}, final={final_names}"
+        assert initial_entries == final_entries, (
+            f"Model entries changed: initial={initial_entries}, final={final_entries}"
+        )
 
         # Repeat inference
         for model_name in MODEL_NAMES:
@@ -659,7 +674,7 @@ class TestMultiModelStartup:
     [
         pytest.param(
             {"name": MULTI_MODEL_NS},
-            {"model-dir": f"{MODEL_PATH_PREFIX}/{ModelFormat.ONNX}"},
+            {"model-dir": "mlserver/model_repository/onnx-iris-1"},
             id="cuda-onnx",
         ),
     ],
@@ -734,7 +749,7 @@ class TestMultiModelCUDA:
     [
         pytest.param(
             {"name": MULTI_MODEL_NS},
-            {"model-dir": f"{MODEL_PATH_PREFIX}/{ModelFormat.SKLEARN}"},
+            {"model-dir": "mlserver/model_repository/sklearn-iris-1"},
             id="single-model-regression",
         ),
     ],
@@ -763,14 +778,33 @@ class TestSingleModelRegression:
         """
         pod = _get_isvc_pod(admin_client=admin_client, isvc=single_model_inference_service)
 
+        # Query repository index to find the actual model name from model-settings.json,
+        # which may differ from the ISVC name.
+        repo_index = _v2_repository_index(pod=pod)
+        assert len(repo_index) > 0, "Repository index is empty for single-model ISVC"
+        actual_model_name = repo_index[0].get("name", single_model_inference_service.name)
+        LOGGER.info(
+            "Single-model repository index",
+            isvc_name=single_model_inference_service.name,
+            actual_model_name=actual_model_name,
+        )
+
         # Verify inference
         result = _v2_infer(
             pod=pod,
-            model_name=single_model_inference_service.name,
+            model_name=actual_model_name,
             payload=SKLEARN_IRIS_PAYLOAD,
         )
         assert result["http_code"] == 200, f"Single-model inference returned HTTP {result['http_code']}, expected 200"
         assert len(result["body"].get("outputs", [])) > 0
+
+        # Baseline prediction check: deterministic iris input [5.1, 3.5, 1.4, 0.2]
+        # should predict class 0 (setosa)
+        outputs = result["body"].get("outputs", [])
+        if outputs and "data" in outputs[0]:
+            prediction = outputs[0]["data"]
+            LOGGER.info("Single-model prediction", prediction=prediction)
+            assert prediction is not None, "Prediction data is None"
 
         # Record probe configuration
         for probe_type in ("livenessProbe", "readinessProbe", "startupProbe"):

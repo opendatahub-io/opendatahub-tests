@@ -533,7 +533,6 @@ def startup_measurement_inference_service(
 def cuda_serving_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    mlserver_runtime_image: str,
 ) -> Generator[ServingRuntime]:
     """CUDA-variant MLServer ServingRuntime for GPU tests (TC-E2E-008).
 
@@ -545,7 +544,7 @@ def cuda_serving_runtime(
         namespace=model_namespace.name,
         template_name=MLSERVER_CUDA_TEMPLATE,
         deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
-        runtime_image=mlserver_runtime_image,
+        runtime_image=None,
     ) as runtime:
         _append_env_to_serving_runtime(
             runtime=runtime,
@@ -892,13 +891,14 @@ def invalid_credentials_inference_service(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_serving_runtime: ServingRuntime,
+    models_s3_bucket_name: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
 ) -> Generator[InferenceService]:
     """ISVC with intentionally wrong S3 credentials (TC-NEG-008).
 
-    Creates a bad secret and SA in-line, then deploys the ISVC expecting
-    storage initialization failure.
+    Uses bad credentials against the real S3 bucket so the error is
+    specifically an authentication rejection, not a missing-bucket 404.
     """
     with (
         kserve_s3_endpoint_secret(
@@ -921,7 +921,7 @@ def invalid_credentials_inference_service(
             name="invalid-creds-isvc",
             namespace=model_namespace.name,
             runtime=mlserver_serving_runtime.name,
-            storage_uri="s3://nonexistent-bucket/models/",
+            storage_uri=f"s3://{models_s3_bucket_name}/{S3_PATH_10_MODEL}/",
             model_format=ModelFormat.SKLEARN,
             model_service_account=bad_sa.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
@@ -953,6 +953,7 @@ def storage_exhaustion_inference_service(
         accessmodes="ReadWriteOnce",
     ) as pvc:
         # Attempt to stage data — expected to fail or partially succeed
+        staging_failed = False
         try:
             model_path = download_model_data(
                 client=admin_client,
@@ -971,6 +972,7 @@ def storage_exhaustion_inference_service(
         except (TimeoutExpiredError, ApiException, OSError) as exc:
             LOGGER.info("Storage exhaustion staging failed as expected", error=str(exc))
             storage_uri = f"pvc://{pvc.name}/"
+            staging_failed = True
 
         with create_isvc(
             client=admin_client,
@@ -984,6 +986,7 @@ def storage_exhaustion_inference_service(
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
             wait_for_predictor_pods=False,
         ) as isvc:
+            isvc._staging_failed = staging_failed
             yield isvc
 
 
@@ -1064,6 +1067,13 @@ def multi_model_fleet(
 
     Each ISVC points to the same 10-model PVC repository.
     Uses ExitStack so already-created ISVCs are cleaned up if setup fails mid-loop.
+
+    Note: all 5 ISVCs mount the same ReadWriteOnce PVC. This assumes either a
+    single-node cluster or that the scheduler co-locates all pods on the same
+    node. On multi-node clusters with no node-affinity constraint, pods may
+    land on different nodes and fail to attach the RWO volume. If fleet tests
+    need to run on multi-node clusters, change ``multi_model_pvc`` to use
+    ReadWriteMany (requires an RWX-capable StorageClass).
     """
     storage_uri = f"pvc://{multi_model_pvc.name}/{multi_model_staged_data}"
     with contextlib.ExitStack() as stack:

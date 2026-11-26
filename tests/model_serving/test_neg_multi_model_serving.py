@@ -18,6 +18,7 @@ import pytest
 import structlog
 from kubernetes.client.rest import ApiException
 from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.pod import ExecOnPodError, Pod
@@ -310,7 +311,7 @@ class TestHealthProbesDegraded:
             try:
                 value = _get_pod_env_var(pod=pod, var_name=var_name)
                 LOGGER.info("Empty storage env var", name=var_name, value=value)
-            except AttributeError, TypeError:
+            except (AttributeError, TypeError):
                 LOGGER.info("Could not read env var (container may not be running)", name=var_name)
 
         # Record probe config and pod conditions
@@ -461,12 +462,13 @@ class TestMalformedConfiguration:
         repo_index = _v2_repository_index(pod=pod)
         model_names = [e.get("name", "") for e in repo_index]
         assert "bad-model" not in model_names, f"bad-model should not be in index: {model_names}"
+        assert "sklearn-iris-1" in model_names, "Expected sklearn-iris-1 in repository index"
+        assert "xgb-classifier-1" in model_names, "Expected xgb-classifier-1 in repository index"
 
         # Valid models should serve
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
-            if model_name in model_names:
-                result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
-                assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
+            result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
+            assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Pod should still be running
         pod.reload()
@@ -527,12 +529,13 @@ class TestMalformedConfiguration:
         repo_index = _v2_repository_index(pod=pod)
         model_names = [e.get("name", "") for e in repo_index]
         assert "custom-model" not in model_names, f"custom-model should not be in index: {model_names}"
+        assert "sklearn-iris-1" in model_names, "Expected sklearn-iris-1 in repository index"
+        assert "xgb-classifier-1" in model_names, "Expected xgb-classifier-1 in repository index"
 
         # Valid models should serve
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
-            if model_name in model_names:
-                result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
-                assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
+            result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
+            assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Pod should still be running
         pod.reload()
@@ -571,7 +574,10 @@ class TestResourceExhaustion:
         max_polls = RESOURCE_EXHAUSTION_OBSERVE_SEC // POLL_INTERVAL_SEC
 
         for poll_idx in range(max_polls):
-            pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+            try:
+                pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+            except ResourceNotFoundError:
+                pods = []
             if pods:
                 pod = pods[0]
                 pod.reload()
@@ -611,7 +617,10 @@ class TestResourceExhaustion:
             LOGGER.info("Failure mode: controlled rejection or other")
 
         # Record pod events
-        pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+        try:
+            pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+        except ResourceNotFoundError:
+            pods = []
         if pods:
             pod = pods[0]
             pod.reload()
@@ -686,12 +695,13 @@ class TestMissingArtifacts:
         assert "missing-model" not in model_names or any(
             e.get("state") == "UNAVAILABLE" for e in repo_index if e.get("name") == "missing-model"
         ), f"missing-model should not be available in index: {model_names}"
+        assert "sklearn-iris-1" in model_names, "Expected sklearn-iris-1 in repository index"
+        assert "xgb-classifier-1" in model_names, "Expected xgb-classifier-1 in repository index"
 
         # Valid models should serve
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
-            if model_name in model_names:
-                result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
-                assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
+            result = _v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
+            assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Inference to missing-model should fail
         missing_result = _v2_infer(pod=pod, model_name="missing-model", payload=VALID_SKLEARN_PAYLOAD)
@@ -733,7 +743,10 @@ class TestInvalidCredentials:
         # Wait and observe (should NOT reach Ready)
         time.sleep(CREDENTIAL_FAILURE_TIMEOUT_SEC)
 
-        pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+        try:
+            pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+        except ResourceNotFoundError:
+            pods = []
 
         if pods:
             pod = pods[0]
@@ -761,7 +774,7 @@ class TestInvalidCredentials:
             try:
                 live_code = _v2_health(pod=pod, endpoint="/v2/health/live")
                 assert live_code != 200, "/v2/health/live should not return 200 with invalid creds"
-            except ExecOnPodError, ApiException:
+            except (ExecOnPodError, ApiException):
                 LOGGER.info("Health endpoint unreachable (expected)")
         else:
             LOGGER.info("No pods found for invalid-credentials ISVC (pod creation may have failed)")
@@ -798,12 +811,18 @@ class TestStorageExhaustion:
         isvc = storage_exhaustion_inference_service
 
         # Wait for pod creation
+        def _get_pods_safe() -> list[Pod]:
+            try:
+                return get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+            except ResourceNotFoundError:
+                return []
+
         pod: Pod | None = None
         try:
             for sample in TimeoutSampler(
                 wait_timeout=CREDENTIAL_FAILURE_TIMEOUT_SEC,
                 sleep=POLL_INTERVAL_SEC,
-                func=lambda: get_pods_by_isvc_label(client=admin_client, isvc=isvc),
+                func=_get_pods_safe,
             ):
                 if sample:
                     pod = sample[0]
@@ -830,11 +849,18 @@ class TestStorageExhaustion:
             # If pod started, check repo index for incomplete loading
             try:
                 repo_index = _v2_repository_index(pod=pod)
-                LOGGER.info("Storage exhaustion model count", count=len(repo_index))
-                assert len(repo_index) < 10, (
-                    f"Expected fewer than 10 models with exhausted storage, got {len(repo_index)}"
+                model_count = len(repo_index)
+                LOGGER.info("Storage exhaustion model count", count=model_count)
+                assert model_count < 10, (
+                    f"Expected fewer than 10 models with exhausted storage, got {model_count}"
                 )
-            except ExecOnPodError, ApiException:
+
+                staging_failed = getattr(storage_exhaustion_inference_service, "_staging_failed", False)
+                if staging_failed:
+                    assert model_count < 10, (
+                        f"Staging failed but {model_count} models loaded — expected fewer"
+                    )
+            except (ExecOnPodError, ApiException):
                 LOGGER.info("Repository index unreachable (expected with storage failure)")
 
         # ISVC should not report Ready
