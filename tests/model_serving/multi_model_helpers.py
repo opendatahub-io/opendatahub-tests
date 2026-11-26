@@ -65,9 +65,7 @@ def append_env_to_serving_runtime(
             existing_env.append(var)
 
     containers[0]["env"] = existing_env
-    runtime.update(
-        resource_dict={"spec": {"containers": [dict(c) for c in containers]}}
-    )
+    runtime.update(resource_dict={"spec": {"containers": [dict(c) for c in containers]}})
 
 
 def record_pod_image(pod: Pod) -> dict[str, str]:
@@ -273,11 +271,7 @@ def v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     try:
         parsed = json.loads(body_str) if body_str else []
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Repository index returned invalid JSON: {body_str!r}"
-        ) from exc
+        raise RuntimeError(f"Repository index returned invalid JSON: {body_str!r}") from exc
     if not isinstance(parsed, list):
-        raise RuntimeError(
-            f"Repository index returned {type(parsed).__name__}, expected list: {body_str!r}"
-        )
+        raise RuntimeError(f"Repository index returned {type(parsed).__name__}, expected list: {body_str!r}")
     return parsed

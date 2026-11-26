@@ -332,9 +332,7 @@ def multi_model_inference_service(
             namespace=model_namespace.name,
             runtime=mlserver_serving_runtime.name,
             storage_uri=storage_uri,
-            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-                0
-            ].name,
+            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
             model_service_account=multi_model_service_account.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -395,9 +393,7 @@ def multi_version_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-            0
-        ].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -451,9 +447,7 @@ def startup_measurement_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-            0
-        ].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -547,9 +541,7 @@ def empty_storage_inference_service(
             namespace=model_namespace.name,
             runtime=mlserver_serving_runtime.name,
             storage_uri=f"pvc://{pvc.name}/",
-            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-                0
-            ].name,
+            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
             model_service_account=multi_model_service_account.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -608,9 +600,7 @@ def one_failed_model_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-            0
-        ].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -668,9 +658,7 @@ def malformed_settings_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-            0
-        ].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -728,9 +716,7 @@ def unsupported_impl_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-            0
-        ].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -766,9 +752,7 @@ def resource_exhaustion_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-            0
-        ].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=low_resources,
@@ -826,9 +810,7 @@ def missing_artifact_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-            0
-        ].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -933,9 +915,7 @@ def storage_exhaustion_inference_service(
             namespace=model_namespace.name,
             runtime=mlserver_serving_runtime.name,
             storage_uri=storage_uri,
-            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-                0
-            ].name,
+            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
             model_service_account=multi_model_service_account.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -1042,9 +1022,7 @@ def multi_model_fleet(
                     namespace=model_namespace.name,
                     runtime=mlserver_serving_runtime.name,
                     storage_uri=storage_uri,
-                    model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
-                        0
-                    ].name,
+                    model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
                     model_service_account=multi_model_service_account.name,
                     deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
                     resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
