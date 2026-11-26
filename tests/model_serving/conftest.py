@@ -149,7 +149,6 @@ def kserve_s3_secret(
 # ---------------------------------------------------------------------------
 
 
-
 @pytest.fixture(scope="class")
 def multi_model_service_account(
     admin_client: DynamicClient,
@@ -224,7 +223,6 @@ def multi_model_pvc(
         accessmodes="ReadWriteOnce",
     ) as pvc:
         yield pvc
-
 
 
 @pytest.fixture(scope="class")

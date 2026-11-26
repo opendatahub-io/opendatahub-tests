@@ -390,9 +390,7 @@ class TestServingRuntimeUpgrade:
         isvc_conditions = isvc.instance.get("status", {}).get("conditions", [])
         isvc_ready = next((c for c in isvc_conditions if c.get("type") == "Ready"), None)
         assert isvc_ready is not None, "ISVC has no Ready condition after recovery"
-        assert isvc_ready.get("status") == "True", (
-            f"ISVC Ready condition is {isvc_ready.get('status')}, expected True"
-        )
+        assert isvc_ready.get("status") == "True", f"ISVC Ready condition is {isvc_ready.get('status')}, expected True"
 
         pod = _get_isvc_pod(admin_client=admin_client, isvc=isvc)
 
@@ -403,8 +401,7 @@ class TestServingRuntimeUpgrade:
         # Verify repository index
         repo_index = _v2_repository_index(pod=pod)
         assert len(repo_index) == EXPECTED_MODEL_COUNT, (
-            f"Post-upgrade repository index has {len(repo_index)} models, "
-            f"expected {EXPECTED_MODEL_COUNT}"
+            f"Post-upgrade repository index has {len(repo_index)} models, expected {EXPECTED_MODEL_COUNT}"
         )
 
         # Send V2 inference to all 10 models
