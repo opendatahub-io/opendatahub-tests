@@ -286,31 +286,44 @@ class TestServingRuntimeUpgrade:
         # Verify SR still exists
         assert sr.exists, f"ServingRuntime {sr.name} does not exist after upgrade"
 
-        # Compare spec (excluding resourceVersion)
+        # Compare complete spec (excluding mutable metadata fields)
         post_upgrade_spec = sr.instance.get("spec", {})
         pre_upgrade_spec = pre_upgrade_sr_snapshot["spec"]
 
-        # Deep comparison of key spec fields
-        pre_formats = pre_upgrade_spec.get("supportedModelFormats", [])
-        post_formats = post_upgrade_spec.get("supportedModelFormats", [])
+        def _normalize_spec(spec: dict) -> dict:
+            """Normalize a ServingRuntime spec for comparison.
 
-        def _normalize_formats(formats: list) -> list:
-            return sorted(
-                [{k: v for k, v in f.items()} for f in formats],
-                key=lambda x: x.get("name", ""),
-            )
+            Sorts list fields by a stable key so ordering differences do not
+            cause false failures.
+            """
+            normalized = dict(spec)
+            if "supportedModelFormats" in normalized:
+                normalized["supportedModelFormats"] = sorted(
+                    normalized["supportedModelFormats"],
+                    key=lambda x: x.get("name", ""),
+                )
+            if "containers" in normalized:
+                normalized["containers"] = sorted(
+                    normalized["containers"],
+                    key=lambda x: x.get("name", ""),
+                )
+            return normalized
 
-        assert _normalize_formats(pre_formats) == _normalize_formats(post_formats), (
-            f"supportedModelFormats changed after upgrade: "
-            f"pre={_normalize_formats(pre_formats)}, post={_normalize_formats(post_formats)}"
+        pre_normalized = _normalize_spec(pre_upgrade_spec)
+        post_normalized = _normalize_spec(post_upgrade_spec)
+
+        # Find specific differences for a clear failure message
+        spec_diffs: list[str] = []
+        all_keys = set(pre_normalized) | set(post_normalized)
+        for key in sorted(all_keys):
+            pre_val = pre_normalized.get(key)
+            post_val = post_normalized.get(key)
+            if pre_val != post_val:
+                spec_diffs.append(f"  {key}: {pre_val!r} -> {post_val!r}")
+
+        assert not spec_diffs, (
+            "ServingRuntime spec changed after upgrade:\n" + "\n".join(spec_diffs)
         )
-
-        # Compare container images
-        pre_containers = pre_upgrade_spec.get("containers", [])
-        post_containers = post_upgrade_spec.get("containers", [])
-        pre_images = [c.get("image", "") for c in pre_containers]
-        post_images = [c.get("image", "") for c in post_containers]
-        assert pre_images == post_images, f"Container images changed: {pre_images} -> {post_images}"
 
         # Verify tech-preview annotation preserved
         post_annotations = sr.instance.get("metadata", {}).get("annotations", {})

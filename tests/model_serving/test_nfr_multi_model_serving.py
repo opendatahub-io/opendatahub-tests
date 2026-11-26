@@ -557,14 +557,30 @@ class TestV2ManagementAPIBoundary:
             "route may not be functional — cannot verify management API blocking"
         )
 
+        # Boundary denial codes: 403 (Forbidden), 404 (Not Found on route),
+        # or connection refused (http_code 0 with non-zero returncode).
+        # Since inference at HTTP 200 proved the route is functional, any of
+        # these on the management path confirms access control is enforced.
+        boundary_denial_codes = {403, 404}
+
         external_load = _exec_curl_external(
             url=f"{external_base}{load_path}",
             method="POST",
             data="{}",
         )
-        LOGGER.info("External V2 load response", http_code=external_load["http_code"])
-        assert external_load["http_code"] != 200, (
-            f"External V2 load should NOT return 200, got {external_load['http_code']}"
+        LOGGER.info(
+            "External V2 load response",
+            http_code=external_load["http_code"],
+            returncode=external_load["returncode"],
+        )
+        load_blocked = (
+            external_load["http_code"] in boundary_denial_codes
+            or (external_load["http_code"] == 0 and external_load["returncode"] != 0)
+        )
+        assert load_blocked, (
+            f"External V2 load was not blocked: HTTP {external_load['http_code']}, "
+            f"returncode {external_load['returncode']}. "
+            f"Expected 403, 404, or connection refused"
         )
 
         external_unload = _exec_curl_external(
@@ -572,9 +588,19 @@ class TestV2ManagementAPIBoundary:
             method="POST",
             data="{}",
         )
-        LOGGER.info("External V2 unload response", http_code=external_unload["http_code"])
-        assert external_unload["http_code"] != 200, (
-            f"External V2 unload should NOT return 200, got {external_unload['http_code']}"
+        LOGGER.info(
+            "External V2 unload response",
+            http_code=external_unload["http_code"],
+            returncode=external_unload["returncode"],
+        )
+        unload_blocked = (
+            external_unload["http_code"] in boundary_denial_codes
+            or (external_unload["http_code"] == 0 and external_unload["returncode"] != 0)
+        )
+        assert unload_blocked, (
+            f"External V2 unload was not blocked: HTTP {external_unload['http_code']}, "
+            f"returncode {external_unload['returncode']}. "
+            f"Expected 403, 404, or connection refused"
         )
 
         # Verify inference still works
