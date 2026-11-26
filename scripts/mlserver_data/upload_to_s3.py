@@ -37,7 +37,7 @@ def upload(source_dir: Path, bucket: str, prefix: str, endpoint_url: str | None)
     client_kwargs: dict[str, str] = {}
     if endpoint_url:
         client_kwargs["endpoint_url"] = endpoint_url
-    s3 = session.client("s3", **client_kwargs)
+    s3 = session.client(service_name="s3", **client_kwargs)
 
     uploaded = 0
     for path in sorted(source_dir.rglob("*")):
@@ -45,7 +45,7 @@ def upload(source_dir: Path, bucket: str, prefix: str, endpoint_url: str | None)
             continue
         relative = path.relative_to(source_dir)
         key = f"{prefix}/{relative}" if prefix else str(relative)
-        s3.upload_file(str(path), bucket, key)
+        s3.upload_file(Filename=str(path), Bucket=bucket, Key=key)
         print(f"  {key}")
         uploaded += 1
 
@@ -74,7 +74,7 @@ def main() -> None:
             parser.error(f"Required environment variable {var} is not set.")
 
     print(f"Uploading {args.source_dir} -> s3://{args.bucket}/{args.prefix}/")
-    upload(args.source_dir, args.bucket, args.prefix, args.endpoint_url)
+    upload(source_dir=args.source_dir, bucket=args.bucket, prefix=args.prefix, endpoint_url=args.endpoint_url)
 
 
 if __name__ == "__main__":

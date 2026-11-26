@@ -14,6 +14,9 @@ from utilities.general import download_model_data
 
 LOGGER = structlog.get_logger(name=__name__)
 
+# Container name constant shared across multi-model tests
+KSERVE_CONTAINER: str = "kserve-container"
+
 # Static-profile environment defaults recorded per RHAI-49122
 STATIC_PROFILE_ENV_VARS: list[str] = [
     "CHECK_REPOSITORY_POPULATED",

@@ -41,34 +41,34 @@ RANDOM_STATE = 42
 def _train_sklearn() -> DecisionTreeClassifier:
     X, y = load_iris(return_X_y=True)
     clf = DecisionTreeClassifier(max_depth=3, random_state=RANDOM_STATE)
-    clf.fit(X, y)
+    clf.fit(X=X, y=y)
     return clf
 
 
 def _save_sklearn(model: DecisionTreeClassifier, path: Path) -> None:
-    joblib.dump(model, path)
+    joblib.dump(value=model, filename=path)
 
 
 def _save_xgboost(path: Path) -> None:
     import xgboost as xgb
 
     X, y = load_iris(return_X_y=True)
-    dtrain = xgb.DMatrix(X, label=y)
+    dtrain = xgb.DMatrix(data=X, label=y)
     params = {
         "max_depth": 3,
         "num_class": 3,
         "objective": "multi:softprob",
         "seed": RANDOM_STATE,
     }
-    bst = xgb.train(params, dtrain, num_boost_round=10)
-    bst.save_model(str(path))
+    bst = xgb.train(params=params, dtrain=dtrain, num_boost_round=10)
+    bst.save_model(fname=str(path))
 
 
 def _save_lightgbm(path: Path) -> None:
     import lightgbm as lgb
 
     X, y = load_iris(return_X_y=True)
-    train_data = lgb.Dataset(X, label=y)
+    train_data = lgb.Dataset(data=X, label=y)
     params = {
         "objective": "multiclass",
         "num_class": 3,
@@ -77,8 +77,8 @@ def _save_lightgbm(path: Path) -> None:
         "seed": RANDOM_STATE,
         "verbose": -1,
     }
-    bst = lgb.train(params, train_data, num_boost_round=10)
-    bst.save_model(str(path))
+    bst = lgb.train(params=params, train_set=train_data, num_boost_round=10)
+    bst.save_model(filename=str(path))
 
 
 def _save_onnx(path: Path) -> None:
@@ -88,7 +88,7 @@ def _save_onnx(path: Path) -> None:
     clf = _train_sklearn()
     initial_types = [("predict", FloatTensorType([None, 4]))]
     onnx_model = convert_sklearn(
-        clf,
+        model=clf,
         initial_types=initial_types,
         target_opset=13,
     )
@@ -98,7 +98,7 @@ def _save_onnx(path: Path) -> None:
 
 # Map implementation -> (artifact filename, generator function)
 ARTIFACT_GENERATORS: dict[str, tuple[str, Any]] = {
-    "mlserver_sklearn.SKLearnModel": ("model.joblib", lambda p: _save_sklearn(_train_sklearn(), p)),
+    "mlserver_sklearn.SKLearnModel": ("model.joblib", lambda path: _save_sklearn(model=_train_sklearn(), path=path)),
     "mlserver_xgboost.XGBoostModel": ("model.json", _save_xgboost),
     "mlserver_lightgbm.LightGBMModel": ("model.txt", _save_lightgbm),
     "mlserver_onnx.OnnxModel": ("model.onnx", _save_onnx),
@@ -127,7 +127,7 @@ def generate(output_dir: Path) -> None:
                 continue
 
             # Copy model-settings.json
-            shutil.copy2(settings_file, dest_model / "model-settings.json")
+            shutil.copy2(src=settings_file, dst=dest_model / "model-settings.json")
 
             # Parse settings to determine which artifact to generate
             raw = settings_file.read_text()
@@ -153,7 +153,7 @@ def generate(output_dir: Path) -> None:
 
             artifact_name, generator_fn = ARTIFACT_GENERATORS[impl]
             artifact_path = dest_model / artifact_name
-            generator_fn(artifact_path)
+            generator_fn(path=artifact_path)
             print(f"  {scenario_dir.name}/{model_dir.name}: {artifact_name}")
 
 
@@ -184,11 +184,13 @@ def main() -> None:
     args = parser.parse_args()
 
     print("Generating model artifacts...")
-    generate(args.output_dir)
+    generate(output_dir=args.output_dir)
     print("\nVerification:")
-    verify(args.output_dir)
+    verify(output_dir=args.output_dir)
     print(
-        f"\nDone. Upload with:\n  python scripts/mlserver_data/upload_to_s3.py --source-dir {args.output_dir} --bucket <BUCKET>"
+        f"\nDone. Upload with:\n"
+        f"  python scripts/mlserver_data/upload_to_s3.py"
+        f" --source-dir {args.output_dir} --bucket <BUCKET>"
     )
 
 

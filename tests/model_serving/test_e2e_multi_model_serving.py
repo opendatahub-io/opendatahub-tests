@@ -25,7 +25,7 @@ from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.conftest import KSERVE_CONTAINER
+from tests.model_serving.multi_model_helpers import KSERVE_CONTAINER
 from utilities.certificates_utils import get_ca_bundle
 from utilities.inference_utils import get_exposed_isvc_url
 from utilities.infra import get_pods_by_isvc_label

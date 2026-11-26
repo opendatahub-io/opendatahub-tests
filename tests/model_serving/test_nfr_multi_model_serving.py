@@ -359,10 +359,10 @@ class TestPSAPBenchmark:
             multi_latencies.append(elapsed)
 
         # Compute p50 and p99 latencies
-        baseline_p50 = statistics.median(baseline_latencies)
-        baseline_p99 = statistics.quantiles(baseline_latencies, n=100)[-1]
-        multi_p50 = statistics.median(multi_latencies)
-        multi_p99 = statistics.quantiles(multi_latencies, n=100)[-1]
+        baseline_p50 = statistics.median(data=baseline_latencies)
+        baseline_p99 = statistics.quantiles(data=baseline_latencies, n=100)[-1]
+        multi_p50 = statistics.median(data=multi_latencies)
+        multi_p99 = statistics.quantiles(data=multi_latencies, n=100)[-1]
 
         assert all(lat > 0 for lat in baseline_latencies), "Baseline latencies must be positive"
         assert all(lat > 0 for lat in multi_latencies), "Multi-model latencies must be positive"

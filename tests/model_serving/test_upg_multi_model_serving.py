@@ -203,7 +203,7 @@ def pre_upgrade_serving_runtime_snapshot(
 
     runtime = mlserver_serving_runtime
     runtime.reload()
-    snapshot = _capture_serving_runtime_snapshot(runtime)
+    snapshot = _capture_serving_runtime_snapshot(runtime=runtime)
     save_baseline_to_configmap(
         client=admin_client,
         namespace=model_namespace.name,
@@ -308,8 +308,8 @@ class TestServingRuntimeUpgrade:
                 )
             return normalized
 
-        pre_normalized = _normalize_spec(pre_upgrade_spec)
-        post_normalized = _normalize_spec(post_upgrade_spec)
+        pre_normalized = _normalize_spec(spec=pre_upgrade_spec)
+        post_normalized = _normalize_spec(spec=post_upgrade_spec)
 
         # Find specific differences for a clear failure message
         spec_diffs: list[str] = []

@@ -46,7 +46,6 @@ LOGGER = structlog.get_logger(name=__name__)
 MLSERVER_CUDA_TEMPLATE: str = "mlserver-cuda-runtime-template"
 MLSERVER_CUDA_RUNTIME: str = "mlserver-cuda-runtime"
 
-KSERVE_CONTAINER: str = "kserve-container"
 MULTI_MODEL_PVC_SIZE: str = "10Gi"
 STORAGE_EXHAUSTION_PVC_SIZE: str = "1Mi"
 
@@ -812,7 +811,7 @@ def invalid_credentials_inference_service(
             model_format=ModelFormat.SKLEARN,
             model_service_account=bad_sa.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
-            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
+            resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),  # pragma: allowlist secret
             wait_for_predictor_pods=False,
         ) as isvc,
     ):
@@ -923,7 +922,7 @@ def single_model_fleet(
         fleet: list[InferenceService] = []
         for i in range(50):
             isvc = stack.enter_context(
-                create_isvc(
+                cm=create_isvc(
                     client=admin_client,
                     name=f"single-bench-{i:03d}",
                     namespace=model_namespace.name,
@@ -967,7 +966,7 @@ def multi_model_fleet(
         fleet: list[InferenceService] = []
         for i in range(5):
             isvc = stack.enter_context(
-                create_isvc(
+                cm=create_isvc(
                     client=admin_client,
                     name=f"multi-bench-{i:03d}",
                     namespace=model_namespace.name,
