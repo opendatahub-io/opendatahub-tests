@@ -588,49 +588,31 @@ class TestV2ManagementAPIBoundary:
             "route may not be functional — cannot verify management API blocking"
         )
 
-        # Boundary denial codes: 403 (Forbidden), 404 (Not Found on route),
-        # or connection refused (http_code 0 with non-zero returncode).
-        # Since inference at HTTP 200 proved the route is functional, any of
-        # these on the management path confirms access control is enforced.
+        # Boundary denial: HTTP 403/404, or curl exit code 7 (connection
+        # refused).  Timeouts (curl 28, subprocess -1) are transport errors,
+        # not proof of access control, so they are excluded.
         boundary_denial_codes = {403, 404}
+        curl_connection_refused = 7
 
-        external_load = _exec_curl_external(
-            url=f"{external_base}{load_path}",
-            method="POST",
-            data="{}",
-        )
-        LOGGER.info(
-            "External V2 load response",
-            http_code=external_load["http_code"],
-            returncode=external_load["returncode"],
-        )
-        load_blocked = external_load["http_code"] in boundary_denial_codes or (
-            external_load["http_code"] == 0 and external_load["returncode"] != 0
-        )
-        assert load_blocked, (
-            f"External V2 load was not blocked: HTTP {external_load['http_code']}, "
-            f"returncode {external_load['returncode']}. "
-            f"Expected 403, 404, or connection refused"
-        )
-
-        external_unload = _exec_curl_external(
-            url=f"{external_base}{unload_path}",
-            method="POST",
-            data="{}",
-        )
-        LOGGER.info(
-            "External V2 unload response",
-            http_code=external_unload["http_code"],
-            returncode=external_unload["returncode"],
-        )
-        unload_blocked = external_unload["http_code"] in boundary_denial_codes or (
-            external_unload["http_code"] == 0 and external_unload["returncode"] != 0
-        )
-        assert unload_blocked, (
-            f"External V2 unload was not blocked: HTTP {external_unload['http_code']}, "
-            f"returncode {external_unload['returncode']}. "
-            f"Expected 403, 404, or connection refused"
-        )
+        for label, path in (("load", load_path), ("unload", unload_path)):
+            resp = _exec_curl_external(
+                url=f"{external_base}{path}",
+                method="POST",
+                data="{}",
+            )
+            LOGGER.info(
+                f"External V2 {label} response",
+                http_code=resp["http_code"],
+                returncode=resp["returncode"],
+            )
+            blocked = resp["http_code"] in boundary_denial_codes or (
+                resp["http_code"] == 0 and resp["returncode"] == curl_connection_refused
+            )
+            assert blocked, (
+                f"External V2 {label} was not blocked: HTTP {resp['http_code']}, "
+                f"returncode {resp['returncode']}. "
+                f"Expected 403, 404, or connection refused (curl 7)"
+            )
 
         # Verify inference still works
         pod = _get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)

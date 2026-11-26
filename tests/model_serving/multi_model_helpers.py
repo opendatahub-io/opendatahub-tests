@@ -5,11 +5,14 @@ Extracted from conftest.py so the component conftest contains only fixtures.
 
 from __future__ import annotations
 
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.pod import Pod
 from ocp_resources.serving_runtime import ServingRuntime
 
 from utilities.general import download_model_data
+
+LOGGER = structlog.get_logger(name=__name__)
 
 # Static-profile environment defaults recorded per RHAI-49122
 STATIC_PROFILE_ENV_VARS: list[str] = [
@@ -40,6 +43,11 @@ def append_env_to_serving_runtime(
     runtime.reload()
     containers = runtime.instance.spec.get("containers", [])
     if not containers:
+        LOGGER.warning(
+            "ServingRuntime has no containers; env patch skipped",
+            runtime=runtime.name,
+            namespace=runtime.namespace,
+        )
         return
 
     existing_env = list(containers[0].get("env", []))

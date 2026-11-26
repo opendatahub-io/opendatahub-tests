@@ -149,27 +149,27 @@ def _v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def _capture_sr_snapshot(sr: ServingRuntime) -> dict[str, Any]:
+def _capture_serving_runtime_snapshot(runtime: ServingRuntime) -> dict[str, Any]:
     """Capture ServingRuntime spec and annotations for baseline comparison.
 
     Args:
-        sr: The ServingRuntime resource (must be reloaded by the caller).
+        runtime: The ServingRuntime resource (must be reloaded by the caller).
 
     Returns:
         Dictionary containing the spec and annotations.
     """
-    spec = sr.instance.get("spec", {})
-    annotations = sr.instance.get("metadata", {}).get("annotations", {})
+    spec = runtime.instance.get("spec", {})
+    annotations = runtime.instance.get("metadata", {}).get("annotations", {})
     return {
-        "name": sr.name,
-        "namespace": sr.namespace,
+        "name": runtime.name,
+        "namespace": runtime.namespace,
         "spec": spec,
         "annotations": annotations,
     }
 
 
 @pytest.fixture(scope="class")
-def pre_upgrade_sr_snapshot(
+def pre_upgrade_serving_runtime_snapshot(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     mlserver_serving_runtime: ServingRuntime,
@@ -177,7 +177,7 @@ def pre_upgrade_sr_snapshot(
 ) -> dict[str, Any]:
     """ServingRuntime spec snapshot for pre/post upgrade comparison.
 
-    Pre-upgrade: captures the live SR state and saves it to a ConfigMap.
+    Pre-upgrade: captures the live ServingRuntime state and saves it to a ConfigMap.
     Post-upgrade: loads the previously saved snapshot from the ConfigMap.
 
     Args:
@@ -194,20 +194,20 @@ def pre_upgrade_sr_snapshot(
             client=admin_client,
             namespace=model_namespace.name,
         )
-        snapshot = baselines.get("sr_snapshot")
+        snapshot = baselines.get("serving_runtime_snapshot")
         assert snapshot is not None, (
-            f"Missing 'sr_snapshot' key in baseline ConfigMap for namespace "
+            f"Missing 'serving_runtime_snapshot' key in baseline ConfigMap for namespace "
             f"'{model_namespace.name}'. Ensure pre-upgrade tests ran successfully."
         )
         return snapshot
 
-    sr = mlserver_serving_runtime
-    sr.reload()
-    snapshot = _capture_sr_snapshot(sr)
+    runtime = mlserver_serving_runtime
+    runtime.reload()
+    snapshot = _capture_serving_runtime_snapshot(runtime)
     save_baseline_to_configmap(
         client=admin_client,
         namespace=model_namespace.name,
-        baselines={"sr_snapshot": snapshot},
+        baselines={"serving_runtime_snapshot": snapshot},
     )
     return snapshot
 
@@ -238,24 +238,24 @@ class TestServingRuntimeUpgrade:
         model_namespace: Namespace,
         mlserver_serving_runtime: ServingRuntime,
         multi_model_inference_service: InferenceService,
-        pre_upgrade_sr_snapshot: dict[str, Any],
+        pre_upgrade_serving_runtime_snapshot: dict[str, Any],
     ) -> None:
         """Create resources and capture ServingRuntime baseline before upgrade.
 
         Given: RHOAI (source version) installed, mlserver-runtime ServingRuntime
             template applied, InferenceService deployed and serving.
-        When: The pre-upgrade snapshot fixture captures the SR spec and
-            persists it to a ConfigMap.
+        When: The pre-upgrade snapshot fixture captures the ServingRuntime
+            spec and persists it to a ConfigMap.
         Then: The ServingRuntime exists and the snapshot is saved for
             post-upgrade comparison.
         """
-        sr = mlserver_serving_runtime
-        sr.reload()
-        assert sr.exists, f"ServingRuntime {sr.name} does not exist"
+        runtime = mlserver_serving_runtime
+        runtime.reload()
+        assert runtime.exists, f"ServingRuntime {runtime.name} does not exist"
         LOGGER.info(
-            "Pre-upgrade SR snapshot captured",
-            name=pre_upgrade_sr_snapshot["name"],
-            namespace=pre_upgrade_sr_snapshot["namespace"],
+            "Pre-upgrade ServingRuntime snapshot captured",
+            name=pre_upgrade_serving_runtime_snapshot["name"],
+            namespace=pre_upgrade_serving_runtime_snapshot["namespace"],
         )
 
     @pytest.mark.post_upgrade
@@ -266,7 +266,7 @@ class TestServingRuntimeUpgrade:
         admin_client: DynamicClient,
         model_namespace: Namespace,
         mlserver_serving_runtime: ServingRuntime,
-        pre_upgrade_sr_snapshot: dict[str, Any],
+        pre_upgrade_serving_runtime_snapshot: dict[str, Any],
     ) -> None:
         """Verify ServingRuntime template persists through RHOAI platform upgrade.
 
@@ -276,19 +276,18 @@ class TestServingRuntimeUpgrade:
             ConfigMap.
         When: The RHOAI platform upgrade completes and the ServingRuntime is
             inspected.
-        Then: The mlserver-runtime SR exists, spec is unchanged (excluding
-            resourceVersion), the opendatahub.io/support-status annotation
-            is preserved, and the SR shows a usable status.
+        Then: The mlserver-runtime ServingRuntime exists, spec is unchanged
+            (excluding resourceVersion), the opendatahub.io/support-status
+            annotation is preserved, and the ServingRuntime shows a usable status.
         """
-        sr = mlserver_serving_runtime
-        sr.reload()
+        runtime = mlserver_serving_runtime
+        runtime.reload()
 
-        # Verify SR still exists
-        assert sr.exists, f"ServingRuntime {sr.name} does not exist after upgrade"
+        assert runtime.exists, f"ServingRuntime {runtime.name} does not exist after upgrade"
 
         # Compare complete spec (excluding mutable metadata fields)
-        post_upgrade_spec = sr.instance.get("spec", {})
-        pre_upgrade_spec = pre_upgrade_sr_snapshot["spec"]
+        post_upgrade_spec = runtime.instance.get("spec", {})
+        pre_upgrade_spec = pre_upgrade_serving_runtime_snapshot["spec"]
 
         def _normalize_spec(spec: dict) -> dict:
             """Normalize a ServingRuntime spec for comparison.
@@ -324,23 +323,25 @@ class TestServingRuntimeUpgrade:
         assert not spec_diffs, "ServingRuntime spec changed after upgrade:\n" + "\n".join(spec_diffs)
 
         # Verify tech-preview annotation preserved
-        post_annotations = sr.instance.get("metadata", {}).get("annotations", {})
+        post_annotations = runtime.instance.get("metadata", {}).get("annotations", {})
         support_status = post_annotations.get("opendatahub.io/support-status", "")
         LOGGER.info(
-            "Post-upgrade SR annotations",
+            "Post-upgrade ServingRuntime annotations",
             support_status=support_status,
             all_annotations=list(post_annotations.keys()),
         )
 
-        pre_support_status = pre_upgrade_sr_snapshot["annotations"].get("opendatahub.io/support-status", "")
+        pre_support_status = pre_upgrade_serving_runtime_snapshot["annotations"].get(
+            "opendatahub.io/support-status", ""
+        )
         if pre_support_status:
             assert support_status == pre_support_status, (
                 f"support-status annotation changed: {pre_support_status!r} -> {support_status!r}"
             )
 
-        # Verify SR status is usable
-        sr_status = sr.instance.get("status", {})
-        LOGGER.info("Post-upgrade SR status", status=sr_status)
+        # Verify ServingRuntime status is usable
+        runtime_status = runtime.instance.get("status", {})
+        LOGGER.info("Post-upgrade ServingRuntime status", status=runtime_status)
 
     @pytest.mark.post_upgrade
     @pytest.mark.order(3)
