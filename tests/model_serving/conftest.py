@@ -110,37 +110,38 @@ def s3_models_storage_uri(request: FixtureRequest, models_s3_bucket_name: str) -
 
 @pytest.fixture(scope="class")
 def kserve_s3_secret(
+    pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     models_s3_bucket_region: str,
     models_s3_bucket_endpoint: str,
+    teardown_resources: bool,
 ) -> Generator[Secret]:
-    """
-    Creates and yields a Kubernetes Secret configured for S3 access in KServe.
+    """S3 access Secret for KServe InferenceServices.
 
-    Args:
-        admin_client (DynamicClient): Kubernetes dynamic client.
-        model_namespace (Namespace): Namespace where the secret will be created.
-        aws_access_key_id (str): AWS access key ID.
-        aws_secret_access_key (str): AWS secret access key.
-        models_s3_bucket_region (str): AWS S3 bucket region.
-        models_s3_bucket_endpoint (str): AWS S3 bucket endpoint URL.
-
-    Yields:
-        Secret: A Kubernetes Secret configured with the provided AWS credentials and S3 endpoint.
+    Post-upgrade: looks up the existing Secret by name without re-creating it.
     """
-    with kserve_s3_endpoint_secret(
-        admin_client=admin_client,
-        name="models-bucket-secret",
-        namespace=model_namespace.name,
-        aws_access_key=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_s3_region=models_s3_bucket_region,
-        aws_s3_endpoint=models_s3_bucket_endpoint,
-    ) as secret:
+    if getattr(pytestconfig.option, "post_upgrade", False):
+        secret = Secret(
+            client=admin_client,
+            namespace=model_namespace.name,
+            name="models-bucket-secret",
+        )
         yield secret
+    else:
+        with kserve_s3_endpoint_secret(
+            admin_client=admin_client,
+            name="models-bucket-secret",
+            namespace=model_namespace.name,
+            aws_access_key=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_s3_region=models_s3_bucket_region,
+            aws_s3_endpoint=models_s3_bucket_endpoint,
+        ) as secret:
+            secret.teardown = teardown_resources
+            yield secret
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +155,7 @@ def multi_model_service_account(
     admin_client: DynamicClient,
     kserve_s3_secret: Secret,
     model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[ServiceAccount]:
     """ServiceAccount for multi-model InferenceServices, linked to the S3 secret.
 
@@ -173,6 +175,7 @@ def multi_model_service_account(
             namespace=kserve_s3_secret.namespace,
             name="multi-model-sa",
             secrets=[{"name": kserve_s3_secret.name}],
+            teardown=teardown_resources,
         ) as sa:
             yield sa
 
@@ -183,6 +186,7 @@ def mlserver_serving_runtime(
     admin_client: DynamicClient,
     model_namespace: Namespace,
     mlserver_runtime_image: str,
+    teardown_resources: bool,
 ) -> Generator[ServingRuntime]:
     """MLServer ServingRuntime from the CPU template.
 
@@ -214,6 +218,7 @@ def mlserver_serving_runtime(
             template_name=RuntimeTemplates.MLSERVER,
             deployment_type=KServeDeploymentType.RAW_DEPLOYMENT,
             runtime_image=mlserver_runtime_image,
+            teardown=teardown_resources,
         ) as runtime:
             append_env_to_serving_runtime(
                 runtime=runtime,
@@ -227,6 +232,7 @@ def multi_model_pvc(
     pytestconfig: pytest.Config,
     admin_client: DynamicClient,
     model_namespace: Namespace,
+    teardown_resources: bool,
 ) -> Generator[PersistentVolumeClaim]:
     """PVC for the 10-model repository layout.
 
@@ -246,6 +252,7 @@ def multi_model_pvc(
             client=admin_client,
             size=MULTI_MODEL_PVC_SIZE,
             accessmodes="ReadWriteOnce",
+            teardown=teardown_resources,
         ) as pvc:
             yield pvc
 
@@ -298,6 +305,7 @@ def multi_model_inference_service(
     multi_model_pvc: PersistentVolumeClaim,
     multi_model_staged_data: str,
     multi_model_service_account: ServiceAccount,
+    teardown_resources: bool,
 ) -> Generator[InferenceService]:
     """10-model InferenceService using PVC storage.
 
@@ -324,12 +332,15 @@ def multi_model_inference_service(
             namespace=model_namespace.name,
             runtime=mlserver_serving_runtime.name,
             storage_uri=storage_uri,
-            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+                0
+            ].name,
             model_service_account=multi_model_service_account.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
             external_route=True,
             wait_for_predictor_pods=True,
+            teardown=teardown_resources,
         ) as isvc:
             # Record image and env vars for traceability (RHAI-49122)
             pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
@@ -384,7 +395,9 @@ def multi_version_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+            0
+        ].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -438,7 +451,9 @@ def startup_measurement_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+            0
+        ].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -532,7 +547,9 @@ def empty_storage_inference_service(
             namespace=model_namespace.name,
             runtime=mlserver_serving_runtime.name,
             storage_uri=f"pvc://{pvc.name}/",
-            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+                0
+            ].name,
             model_service_account=multi_model_service_account.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -591,7 +608,9 @@ def one_failed_model_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+            0
+        ].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -649,7 +668,9 @@ def malformed_settings_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+            0
+        ].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -707,7 +728,9 @@ def unsupported_impl_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+            0
+        ].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -743,7 +766,9 @@ def resource_exhaustion_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+            0
+        ].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=low_resources,
@@ -801,7 +826,9 @@ def missing_artifact_inference_service(
         namespace=model_namespace.name,
         runtime=mlserver_serving_runtime.name,
         storage_uri=storage_uri,
-        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+            0
+        ].name,
         model_service_account=multi_model_service_account.name,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -906,7 +933,9 @@ def storage_exhaustion_inference_service(
             namespace=model_namespace.name,
             runtime=mlserver_serving_runtime.name,
             storage_uri=storage_uri,
-            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+            model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+                0
+            ].name,
             model_service_account=multi_model_service_account.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),
@@ -1013,7 +1042,9 @@ def multi_model_fleet(
                     namespace=model_namespace.name,
                     runtime=mlserver_serving_runtime.name,
                     storage_uri=storage_uri,
-                    model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[0].name,
+                    model_format=mlserver_serving_runtime.instance.spec.supportedModelFormats[
+                        0
+                    ].name,
                     model_service_account=multi_model_service_account.name,
                     deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
                     resources=copy.deepcopy(PREDICT_RESOURCES["resources"]),

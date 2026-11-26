@@ -65,7 +65,9 @@ def append_env_to_serving_runtime(
             existing_env.append(var)
 
     containers[0]["env"] = existing_env
-    runtime.update(resource_dict={"spec": {"containers": [dict(c) for c in containers]}})
+    runtime.update(
+        resource_dict={"spec": {"containers": [dict(c) for c in containers]}}
+    )
 
 
 def record_pod_image(pod: Pod) -> dict[str, str]:
@@ -241,14 +243,17 @@ def v2_health(pod: Pod, endpoint: str) -> int:
 def v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     """Query the V2 repository index and return the model list.
 
-    Raises RuntimeError when the response is not valid JSON, so callers
-    never confuse a failed request with an empty repository.
+    Raises RuntimeError when the HTTP status is not 200 or the response
+    is not a JSON list, so callers never confuse an error response with
+    a valid (possibly empty) repository.
     """
     result = exec_in_pod(
         pod=pod,
         command=[
             "curl",
             "-s",
+            "-w",
+            "\n%{http_code}",
             "-X",
             "POST",
             "http://localhost:8080/v2/repository/index",
@@ -258,7 +263,21 @@ def v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
             "{}",
         ],
     )
+    lines = result.strip().rsplit("\n", 1)
+    if not lines[-1].isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from repository index: {result!r}")
+    http_code = int(lines[-1])
+    body_str = lines[0] if len(lines) > 1 else ""
+    if http_code != 200:
+        raise RuntimeError(f"Repository index returned HTTP {http_code}: {body_str!r}")
     try:
-        return json.loads(result.strip())
+        parsed = json.loads(body_str) if body_str else []
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Repository index returned invalid JSON: {result!r}") from exc
+        raise RuntimeError(
+            f"Repository index returned invalid JSON: {body_str!r}"
+        ) from exc
+    if not isinstance(parsed, list):
+        raise RuntimeError(
+            f"Repository index returned {type(parsed).__name__}, expected list: {body_str!r}"
+        )
+    return parsed

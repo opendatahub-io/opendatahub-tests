@@ -152,11 +152,16 @@ def _collect_fleet_resource_requests(
     return metrics
 
 
-def _v2_infer_timed(pod: Pod, model_name: str, payload: dict[str, Any]) -> tuple[dict[str, Any], float]:
+def _v2_infer_timed(
+    pod: Pod, model_name: str, payload: dict[str, Any]
+) -> tuple[dict[str, Any], float]:
     """Send a V2 inference request and return (result, server_latency_seconds).
 
     Uses curl's %{time_total} to measure server-side latency, excluding
-    the Kubernetes exec session overhead.
+    the Kubernetes exec session overhead.  ``--max-time 30`` bounds the
+    in-pod curl so it completes before the Pod.execute timeout (60s),
+    preventing ExecOnPodError from aborting the benchmark.  Curl timeouts
+    emit HTTP code ``000`` which is returned as ``http_code=0``.
     """
     url = f"http://localhost:8080/v2/models/{model_name}/infer"
     result = exec_in_pod(
@@ -164,6 +169,8 @@ def _v2_infer_timed(pod: Pod, model_name: str, payload: dict[str, Any]) -> tuple
         command=[
             "curl",
             "-s",
+            "--max-time",
+            "30",
             "-w",
             "\n%{time_total}\n%{http_code}",
             "-X",
@@ -185,7 +192,9 @@ def _v2_infer_timed(pod: Pod, model_name: str, payload: dict[str, Any]) -> tuple
     try:
         latency = float(time_total_str)
     except ValueError:
-        raise RuntimeError(f"Unparseable time_total from timed infer: {time_total_str!r}")
+        raise RuntimeError(
+            f"Unparseable time_total from timed infer: {time_total_str!r}"
+        )
     try:
         body = json.loads(body_str) if body_str else {}
     except json.JSONDecodeError:
@@ -292,15 +301,24 @@ class TestPSAPBenchmark:
         namespace_name = model_namespace.name
 
         # Confirm MLSERVER_PARALLEL_WORKERS=1 on the predictor container
-        multi_pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
-        containers = multi_pod.instance.spec.get("containers", [])
-        predictor_containers = [c for c in containers if c.get("name") == "kserve-container"]
-        assert predictor_containers, "No kserve-container found in pod spec"
-        predictor_env = {e.get("name"): e.get("value") for e in predictor_containers[0].get("env", [])}
-        assert "MLSERVER_PARALLEL_WORKERS" in predictor_env, "MLSERVER_PARALLEL_WORKERS not set on predictor container"
-        assert predictor_env["MLSERVER_PARALLEL_WORKERS"] == "1", (
-            f"Expected MLSERVER_PARALLEL_WORKERS=1, got {predictor_env['MLSERVER_PARALLEL_WORKERS']}"
+        multi_pod = get_isvc_pod(
+            admin_client=admin_client, isvc=multi_model_inference_service
         )
+        containers = multi_pod.instance.spec.get("containers", [])
+        predictor_containers = [
+            c for c in containers if c.get("name") == "kserve-container"
+        ]
+        assert predictor_containers, "No kserve-container found in pod spec"
+        predictor_env = {
+            e.get("name"): e.get("value")
+            for e in predictor_containers[0].get("env", [])
+        }
+        assert (
+            "MLSERVER_PARALLEL_WORKERS" in predictor_env
+        ), "MLSERVER_PARALLEL_WORKERS not set on predictor container"
+        assert (
+            predictor_env["MLSERVER_PARALLEL_WORKERS"] == "1"
+        ), f"Expected MLSERVER_PARALLEL_WORKERS=1, got {predictor_env['MLSERVER_PARALLEL_WORKERS']}"
 
         # Record baseline resource usage
         baseline_resources = _collect_pod_resource_requests(
@@ -319,20 +337,26 @@ class TestPSAPBenchmark:
         LOGGER.info("Multi-model resource metrics", **multi_model_resources)
 
         # Verify inference works on both
-        baseline_pod = get_isvc_pod(admin_client=admin_client, isvc=baseline_inference_service)
+        baseline_pod = get_isvc_pod(
+            admin_client=admin_client, isvc=baseline_inference_service
+        )
         baseline_result = v2_infer(
             pod=baseline_pod,
             model_name=baseline_inference_service.name,
             payload=SKLEARN_IRIS_PAYLOAD,
         )
-        assert baseline_result["http_code"] == 200, f"Baseline inference returned HTTP {baseline_result['http_code']}"
+        assert (
+            baseline_result["http_code"] == 200
+        ), f"Baseline inference returned HTTP {baseline_result['http_code']}"
 
         multi_result = v2_infer(
             pod=multi_pod,
             model_name="sklearn-iris-1",
             payload=SKLEARN_IRIS_PAYLOAD,
         )
-        assert multi_result["http_code"] == 200, f"Multi-model inference returned HTTP {multi_result['http_code']}"
+        assert (
+            multi_result["http_code"] == 200
+        ), f"Multi-model inference returned HTTP {multi_result['http_code']}"
 
         # Sequential latency benchmark: 30 requests per service
         benchmark_iterations = 30
@@ -344,7 +368,9 @@ class TestPSAPBenchmark:
                 model_name=baseline_inference_service.name,
                 payload=SKLEARN_IRIS_PAYLOAD,
             )
-            assert resp["http_code"] == 200, f"Benchmark baseline request failed: HTTP {resp['http_code']}"
+            assert (
+                resp["http_code"] == 200
+            ), f"Benchmark baseline request failed: HTTP {resp['http_code']}"
             baseline_latencies.append(latency)
 
         multi_latencies: list[float] = []
@@ -354,7 +380,9 @@ class TestPSAPBenchmark:
                 model_name="sklearn-iris-1",
                 payload=SKLEARN_IRIS_PAYLOAD,
             )
-            assert resp["http_code"] == 200, f"Benchmark multi-model request failed: HTTP {resp['http_code']}"
+            assert (
+                resp["http_code"] == 200
+            ), f"Benchmark multi-model request failed: HTTP {resp['http_code']}"
             multi_latencies.append(latency)
 
         # Compute p50 and p99 latencies
@@ -363,8 +391,12 @@ class TestPSAPBenchmark:
         multi_p50 = statistics.median(data=multi_latencies)
         multi_p99 = statistics.quantiles(data=multi_latencies, n=100)[-1]
 
-        assert all(lat > 0 for lat in baseline_latencies), "Baseline latencies must be positive"
-        assert all(lat > 0 for lat in multi_latencies), "Multi-model latencies must be positive"
+        assert all(
+            lat > 0 for lat in baseline_latencies
+        ), "Baseline latencies must be positive"
+        assert all(
+            lat > 0 for lat in multi_latencies
+        ), "Multi-model latencies must be positive"
 
         LOGGER.info(
             "Baseline latency benchmark",
@@ -426,12 +458,12 @@ class TestScalabilityComparison:
         Then: CPU/memory totals for both fleets are captured, the efficiency
             ratio is calculated, and the <=50% target is reported as evidence.
         """
-        assert len(single_model_fleet) == FLEET_SINGLE_COUNT, (
-            f"Expected {FLEET_SINGLE_COUNT} single-model ISVCs, got {len(single_model_fleet)}"
-        )
-        assert len(multi_model_fleet) == FLEET_MULTI_COUNT, (
-            f"Expected {FLEET_MULTI_COUNT} multi-model ISVCs, got {len(multi_model_fleet)}"
-        )
+        assert (
+            len(single_model_fleet) == FLEET_SINGLE_COUNT
+        ), f"Expected {FLEET_SINGLE_COUNT} single-model ISVCs, got {len(single_model_fleet)}"
+        assert (
+            len(multi_model_fleet) == FLEET_MULTI_COUNT
+        ), f"Expected {FLEET_MULTI_COUNT} multi-model ISVCs, got {len(multi_model_fleet)}"
 
         # Collect single-model fleet resources via ISVC label
         # (KServe raw-mode overrides the `app` label on predictor pods)
@@ -448,12 +480,12 @@ class TestScalabilityComparison:
         )
         LOGGER.info("Multi-model fleet resources", **multi_resources)
 
-        assert single_resources["pod_count"] == FLEET_SINGLE_COUNT, (
-            f"Expected {FLEET_SINGLE_COUNT} single-model pods, got {single_resources['pod_count']}"
-        )
-        assert multi_resources["pod_count"] == FLEET_MULTI_COUNT, (
-            f"Expected {FLEET_MULTI_COUNT} multi-model pods, got {multi_resources['pod_count']}"
-        )
+        assert (
+            single_resources["pod_count"] == FLEET_SINGLE_COUNT
+        ), f"Expected {FLEET_SINGLE_COUNT} single-model pods, got {single_resources['pod_count']}"
+        assert (
+            multi_resources["pod_count"] == FLEET_MULTI_COUNT
+        ), f"Expected {FLEET_MULTI_COUNT} multi-model pods, got {multi_resources['pod_count']}"
 
         # Calculate efficiency ratio
         single_cpu = single_resources["total_cpu_millicores"]
@@ -530,7 +562,11 @@ class TestV2ManagementAPIBoundary:
             load_result = curl_pod.execute(command=load_cmd, ignore_rc=True)
             load_code = int(load_result) if str(load_result).strip().isdigit() else 0
             LOGGER.info("Internal V2 load response", http_code=load_code)
-            assert load_code in (200, 400, 404), f"Internal V2 load returned unexpected {load_code}"
+            assert load_code in (
+                200,
+                400,
+                404,
+            ), f"Internal V2 load returned unexpected {load_code}"
 
             unload_cmd = shlex.split(
                 f"curl -s -o /dev/null -w '%{{http_code}}' -X POST "
@@ -538,15 +574,26 @@ class TestV2ManagementAPIBoundary:
                 f"{internal_svc}{unload_path}"
             )
             unload_result = curl_pod.execute(command=unload_cmd, ignore_rc=True)
-            unload_code = int(unload_result) if str(unload_result).strip().isdigit() else 0
+            unload_code = (
+                int(unload_result) if str(unload_result).strip().isdigit() else 0
+            )
             LOGGER.info("Internal V2 unload response", http_code=unload_code)
-            assert unload_code in (200, 400, 404), f"Internal V2 unload returned unexpected {unload_code}"
+            assert unload_code in (
+                200,
+                400,
+                404,
+            ), f"Internal V2 unload returned unexpected {unload_code}"
 
             # Reload the model so the external preflight and final inference succeed
             reload_result = curl_pod.execute(command=load_cmd, ignore_rc=True)
-            reload_code = int(reload_result) if str(reload_result).strip().isdigit() else 0
+            reload_code = (
+                int(reload_result) if str(reload_result).strip().isdigit() else 0
+            )
             LOGGER.info("Internal V2 reload after unload", http_code=reload_code)
-            assert reload_code in (200, 400), f"Internal V2 reload returned unexpected {reload_code}"
+            assert reload_code in (
+                200,
+                400,
+            ), f"Internal V2 reload returned unexpected {reload_code}"
 
         # Record NetworkPolicy
         network_policies = list(
@@ -618,7 +665,8 @@ class TestV2ManagementAPIBoundary:
             )
             http_denied = resp["http_code"] == 403
             transport_refused = resp["http_code"] == 0 and any(
-                marker in resp["stderr"].lower() for marker in connection_refusal_markers
+                marker in resp["stderr"].lower()
+                for marker in connection_refusal_markers
             )
             assert http_denied or transport_refused, (
                 f"External V2 {label} was not blocked: HTTP {resp['http_code']}, "
@@ -627,8 +675,12 @@ class TestV2ManagementAPIBoundary:
             )
 
         # Verify inference still works
-        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
-        infer_result = v2_infer(pod=pod, model_name=test_model, payload=SKLEARN_IRIS_PAYLOAD)
-        assert infer_result["http_code"] == 200, (
-            f"Post-management-API inference returned HTTP {infer_result['http_code']}"
+        pod = get_isvc_pod(
+            admin_client=admin_client, isvc=multi_model_inference_service
         )
+        infer_result = v2_infer(
+            pod=pod, model_name=test_model, payload=SKLEARN_IRIS_PAYLOAD
+        )
+        assert (
+            infer_result["http_code"] == 200
+        ), f"Post-management-API inference returned HTTP {infer_result['http_code']}"
