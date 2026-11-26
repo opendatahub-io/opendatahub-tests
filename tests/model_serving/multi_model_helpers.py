@@ -268,10 +268,19 @@ def v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
     body_str = lines[0] if len(lines) > 1 else ""
     if http_code != 200:
         raise RuntimeError(f"Repository index returned HTTP {http_code}: {body_str!r}")
+    if not body_str:
+        raise RuntimeError("Repository index returned HTTP 200 with empty body")
     try:
-        parsed = json.loads(body_str) if body_str else []
+        parsed = json.loads(body_str)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Repository index returned invalid JSON: {body_str!r}") from exc
     if not isinstance(parsed, list):
-        raise RuntimeError(f"Repository index returned {type(parsed).__name__}, expected list: {body_str!r}")
+        raise RuntimeError(
+            f"Repository index returned {type(parsed).__name__}, expected list: {body_str!r}"
+        )
+    for i, entry in enumerate(parsed):
+        if not isinstance(entry, dict):
+            raise RuntimeError(
+                f"Repository index entry {i} is {type(entry).__name__}, expected dict: {entry!r}"
+            )
     return parsed

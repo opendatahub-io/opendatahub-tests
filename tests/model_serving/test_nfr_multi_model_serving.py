@@ -181,9 +181,14 @@ def _v2_infer_timed(pod: Pod, model_name: str, payload: dict[str, Any]) -> tuple
         ],
     )
     parts = result.strip().rsplit("\n", 2)
-    if len(parts) < 3:
+    if len(parts) == 3:
+        body_str, time_total_str, http_code_str = parts
+    elif len(parts) == 2:
+        # Curl timeout: empty body stripped away, leaving only time + code
+        body_str = ""
+        time_total_str, http_code_str = parts
+    else:
         raise RuntimeError(f"Unparseable curl output for timed infer: {result!r}")
-    body_str, time_total_str, http_code_str = parts[0], parts[-2], parts[-1]
     if not http_code_str.isdigit():
         raise RuntimeError(f"Unparseable HTTP status from timed infer: {result!r}")
     http_code = int(http_code_str)

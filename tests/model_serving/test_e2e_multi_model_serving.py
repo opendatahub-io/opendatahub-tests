@@ -449,9 +449,11 @@ class TestMultiModelConcurrency:
 
         pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
 
+        admin_config = admin_client.client.configuration
+
         def _infer_isolated(model_name: str) -> dict[str, Any]:
             """Send inference using an isolated ApiClient to avoid stream() race."""
-            worker_api = ApiClient()
+            worker_api = ApiClient(configuration=admin_config)
             try:
                 worker_dyn = DynamicClient(client=worker_api)
                 worker_pod = Pod(client=worker_dyn, name=pod.name, namespace=pod.namespace)
