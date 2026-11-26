@@ -9,7 +9,7 @@ from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.evalhub import EvalHub
 from ocp_resources.namespace import Namespace
-from ocp_resources.resource import Resource, ResourceEditor
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.route import Route
@@ -36,6 +36,7 @@ from tests.ai_safety.evalhub.utils import (
     build_evalhub_job_payload,
     build_evalhub_kueue_job_payload,
     cleanup_evalhub_job,
+    delete_leftover_if_exists,
     is_evalhub_crd_available,
     submit_evalhub_job,
     tenant_rbac_ready,
@@ -61,21 +62,6 @@ from utilities.kueue_utils import (
 )
 
 LOGGER = structlog.get_logger(name=__name__)
-
-
-def delete_leftover_if_exists(resource: Resource, timeout: int) -> None:
-    """Delete a fixed-name resource left over from a previous run, if it still exists.
-
-    Based on _cleanup_ns_if_exists in k8s_lifecycle_signals/conftest.py, generalized to any
-    Resource since these fixtures also need to recover ClusterQueues and ResourceFlavors,
-    not just namespaces. resource.delete(wait=True) returns False on timeout instead of
-    raising, so the return value must be checked to catch a stuck delete.
-    """
-    if not resource.exists:
-        return
-    LOGGER.warning(f"{resource.kind} '{resource.name}' left over from a previous run, deleting before setup")
-    if not resource.delete(wait=True, timeout=timeout):
-        pytest.fail(f"{resource.kind} '{resource.name}' did not finish deleting within {timeout}s")
 
 
 KUEUE_TENANT_NS = "test-evalhub-kueue"
