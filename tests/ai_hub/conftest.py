@@ -85,7 +85,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         ).instance.spec.components.modelregistry.registriesNamespace
 
     # Since clusters are not heterogeneous, all nodes share the same architecture
-    nodes = list(Node.get(dyn_client=client))
+    nodes = list(Node.get(client=client))
     cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
     py_config["cluster_architecture"] = cluster_architecture
     if cluster_architecture in ("s390x", "ppc64le"):

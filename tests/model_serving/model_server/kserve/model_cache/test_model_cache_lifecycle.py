@@ -78,9 +78,9 @@ class TestModelCacheDeletion:
         cache_name = f"del-test-{shortuuid.uuid()[:10].lower()}"
         source_uri = f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/"
 
-        pvcs_before_cr_ns = {pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=ns_name)}
+        pvcs_before_cr_ns = {pvc.name for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=ns_name)}
         pvcs_before_cache_ns = {
-            pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=model_cache_namespace)
+            pvc.name for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=model_cache_namespace)
         }
 
         cache = LocalModelNamespaceCache(
@@ -97,11 +97,9 @@ class TestModelCacheDeletion:
             cache.deploy()
             wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=600)
 
-            pvcs_after_cr_ns = {
-                pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=ns_name)
-            }
+            pvcs_after_cr_ns = {pvc.name for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=ns_name)}
             pvcs_after_cache_ns = {
-                pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=model_cache_namespace)
+                pvc.name for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=model_cache_namespace)
             }
             new_pvcs_cr = pvcs_after_cr_ns - pvcs_before_cr_ns
             new_pvcs_cache = pvcs_after_cache_ns - pvcs_before_cache_ns

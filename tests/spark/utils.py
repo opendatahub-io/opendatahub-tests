@@ -403,7 +403,7 @@ def wait_for_spark_connect_ready(
 
         executors = list(
             Pod.get(
-                dyn_client=client,
+                client=client,
                 namespace=spark_connect.namespace,
                 label_selector=",".join(f"{key}={value}" for key, value in executor_selector.items()),
             )

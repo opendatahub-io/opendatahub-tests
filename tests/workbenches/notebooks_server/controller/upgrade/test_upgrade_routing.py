@@ -202,7 +202,7 @@ class TestPostUpgradeNotebookRouting:
         Then there should be exactly one HTTPRoute for this notebook.
         """
         apps_ns = py_config["applications_namespace"]
-        all_httproutes = list(HTTPRoute.get(dyn_client=admin_client, namespace=apps_ns))
+        all_httproutes = list(HTTPRoute.get(client=admin_client, namespace=apps_ns))
 
         matching_routes = [
             route

@@ -269,7 +269,7 @@ def wait_for_vllm_model_ready(
 
     predictor_pods = list(
         Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=namespace,
             label_selector=f"serving.kserve.io/inferenceservice={inference_service_name},component=predictor",
         )

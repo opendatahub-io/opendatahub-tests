@@ -52,7 +52,7 @@ def spark_running_execution(client: DynamicClient, spark_app: SparkApplication) 
     assert application_state.get("state") == "RUNNING", f"Expected an in-progress execution: {instance.status}"
     pods = list(
         Pod.get(
-            dyn_client=client,
+            client=client,
             namespace=spark_app.namespace,
             label_selector=f"sparkoperator.k8s.io/app-name={spark_app.name}",
         )

@@ -75,7 +75,7 @@ class TestOprOperatorReconciler:
         )
 
         def get_adapter_terminated_states() -> list[tuple[int, str]] | None:
-            pods = list(Pod.get(dyn_client=admin_client, namespace=ns, label_selector=f"job-name={job_name}"))
+            pods = list(Pod.get(client=admin_client, namespace=ns, label_selector=f"job-name={job_name}"))
             if not pods:
                 return None
 
