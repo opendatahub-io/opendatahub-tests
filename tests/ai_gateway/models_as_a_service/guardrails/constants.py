@@ -18,6 +18,11 @@ INPUT_RAIL_FLOW: str = "detect sensitive data on input"
 OUTPUT_RAIL_FLOW: str = "detect sensitive data on output"
 
 GUARDRAIL_VIOLATION_ERROR_CODE: str = "content_blocked"
+# Fail-closed rejections name this error: MaaS selection returns it and Authorino copies it into
+# the denial reason header; a closed Praxis check returns it as the 403 body.
+GUARDRAIL_UNAVAILABLE_ERROR: str = "guardrail_unavailable"
+EXT_AUTH_REASON_HEADER: str = "x-ext-auth-reason"
+AI_GUARDRAIL_PROVIDER_NOT_FOUND_REASON: str = "ProviderNotFound"
 STREAMING_WITH_OUTPUT_GUARDRAIL_STATUS: int = 422
 STREAMING_WITH_OUTPUT_GUARDRAIL_MESSAGE: str = (
     "ai_guardrails: streaming responses are not supported while a response guardrail is active"
