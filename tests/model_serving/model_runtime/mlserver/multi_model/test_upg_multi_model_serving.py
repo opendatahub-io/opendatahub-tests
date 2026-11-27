@@ -185,8 +185,10 @@ class TestServingRuntimeUpgrade:
         When: The InferenceService status is checked post-upgrade, the
             repository index is queried, and V2 inference is sent to all models.
         Then: ISVC shows Ready:True, /v2/health/ready returns HTTP 200, the
-            repository index contains 10 models, all 10 inference requests
-            return HTTP 200, and the pod image reflects the upgraded version.
+            repository index contains 10 models, and all 10 inference requests
+            return HTTP 200. The pod container image is recorded for manual
+            comparison but not asserted — the expected target image version
+            is environment-specific and not available to the test framework.
         """
         isvc = multi_model_inference_service
         isvc.reload()
