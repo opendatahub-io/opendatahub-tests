@@ -117,9 +117,7 @@ class TestStartupProbeBoundaries:
         exit_code = _run_probe(probe_command, check_populated="true", models_dir=str(missing_dir))
         assert exit_code != 0, f"true + missing should fail: exit {exit_code}"
 
-    def test_unset_models_dir_does_not_succeed_against_cwd(
-        self, probe_command: str, temp_dir: Path
-    ) -> None:
+    def test_unset_models_dir_does_not_succeed_against_cwd(self, probe_command: str, temp_dir: Path) -> None:
         """Given CHECK_REPOSITORY_POPULATED=true and MLSERVER_MODELS_DIR unset,
         when the probe runs from a non-empty CWD, then `ls -A ""` must not
         succeed against the working directory."""
@@ -128,15 +126,17 @@ class TestStartupProbeBoundaries:
         env["CHECK_REPOSITORY_POPULATED"] = "true"
         result = subprocess.run(
             ["/bin/sh", "-c", probe_command],
-            env=env, capture_output=True, timeout=10, check=False, cwd=str(temp_dir),
+            env=env,
+            capture_output=True,
+            timeout=10,
+            check=False,
+            cwd=str(temp_dir),
         )
         assert result.returncode != 0 or not (temp_dir / "placeholder").exists(), (
             f"Unset dir + non-empty CWD should not pass: exit {result.returncode}"
         )
 
-    def test_hidden_only_contents_count_as_populated(
-        self, probe_command: str, temp_dir: Path
-    ) -> None:
+    def test_hidden_only_contents_count_as_populated(self, probe_command: str, temp_dir: Path) -> None:
         """Given CHECK_REPOSITORY_POPULATED=true and a models dir containing
         only hidden files, when the probe runs, then `ls -A` includes
         hidden files so the dir counts as populated (exit 0). Pins current behavior."""
@@ -145,18 +145,14 @@ class TestStartupProbeBoundaries:
         assert exit_code == 0, f"Hidden-only should count as populated: exit {exit_code}"
 
     @pytest.mark.parametrize("value", ["true", "True", "TRUE", "1"])
-    def test_case_insensitive_true_variants_enforce_check(
-        self, probe_command: str, temp_dir: Path, value: str
-    ) -> None:
+    def test_case_insensitive_true_variants_enforce_check(self, probe_command: str, temp_dir: Path, value: str) -> None:
         """Given CHECK_REPOSITORY_POPULATED in any case variant of true or 1,
         when the probe runs against an empty dir, then the check is enforced."""
         exit_code = _run_probe(probe_command, check_populated=value, models_dir=str(temp_dir))
         assert exit_code != 0, f"{value!r} should enforce on empty dir: exit {exit_code}"
 
     @pytest.mark.parametrize("value", ["yes", "on", "enabled", "random-text"])
-    def test_non_boolean_values_skip_check(
-        self, probe_command: str, value: str
-    ) -> None:
+    def test_non_boolean_values_skip_check(self, probe_command: str, value: str) -> None:
         """Given CHECK_REPOSITORY_POPULATED set to a non-boolean value,
         when the probe runs, then the check is skipped (exit 0)."""
         exit_code = _run_probe(probe_command, check_populated=value, models_dir="/definitely/not/here")
