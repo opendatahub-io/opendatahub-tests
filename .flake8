@@ -40,6 +40,9 @@ fcn_exclude_functions =
     subprocess
     parser
 
+per-file-ignores =
+    tests/model_serving/conftest.py:E402
+
 enable-extensions =
     FCN,
     UFN,
