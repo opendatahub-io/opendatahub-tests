@@ -291,8 +291,17 @@ class TestHealthProbesDegraded:
 
         assert pod is not None
 
-        # Wait a bit for model loading to settle
-        time.sleep(30)
+        # Wait for model loading to settle — expect 9 valid models
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=ISVC_READY_TIMEOUT_SEC,
+                sleep=POLL_INTERVAL_SEC,
+                func=lambda: v2_repository_index(pod=pod),
+            ):
+                if len(sample) >= 9:
+                    break
+        except TimeoutExpiredError:
+            pass  # Proceed with assertions on whatever state we have
 
         # Check MLServer logs for error
         try:
@@ -364,7 +373,19 @@ class TestMalformedConfiguration:
             pytest.fail("Malformed-settings ISVC pod was not created within timeout")
 
         assert pod is not None
-        time.sleep(20)
+
+        # Wait for valid models to load before asserting
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=ISVC_READY_TIMEOUT_SEC,
+                sleep=POLL_INTERVAL_SEC,
+                func=lambda: v2_repository_index(pod=pod),
+            ):
+                names = [e.get("name", "") for e in sample]
+                if "sklearn-iris-1" in names and "xgb-classifier-1" in names:
+                    break
+        except TimeoutExpiredError:
+            pass  # Proceed with assertions on whatever state we have
 
         # Check logs for JSON parse error
         try:
@@ -428,7 +449,19 @@ class TestMalformedConfiguration:
             pytest.fail("Unsupported-impl ISVC pod was not created within timeout")
 
         assert pod is not None
-        time.sleep(20)
+
+        # Wait for valid models to load before asserting
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=ISVC_READY_TIMEOUT_SEC,
+                sleep=POLL_INTERVAL_SEC,
+                func=lambda: v2_repository_index(pod=pod),
+            ):
+                names = [e.get("name", "") for e in sample]
+                if "sklearn-iris-1" in names and "xgb-classifier-1" in names:
+                    break
+        except TimeoutExpiredError:
+            pass  # Proceed with assertions on whatever state we have
 
         # Check logs for rejection
         try:
@@ -598,7 +631,19 @@ class TestMissingArtifacts:
             pytest.fail("Missing-artifact ISVC pod was not created within timeout")
 
         assert pod is not None
-        time.sleep(20)
+
+        # Wait for valid models to load before asserting
+        try:
+            for sample in TimeoutSampler(
+                wait_timeout=ISVC_READY_TIMEOUT_SEC,
+                sleep=POLL_INTERVAL_SEC,
+                func=lambda: v2_repository_index(pod=pod),
+            ):
+                names = [e.get("name", "") for e in sample]
+                if "sklearn-iris-1" in names and "xgb-classifier-1" in names:
+                    break
+        except TimeoutExpiredError:
+            pass  # Proceed with assertions on whatever state we have
 
         # Check logs for file-not-found
         try:

@@ -189,10 +189,11 @@ class TestMultiModelDeployment:
         route_model = MODEL_NAMES[0]
         infer_url = f"{external_url}/v2/models/{route_model}/infer"
         ca_bundle = get_ca_bundle(client=admin_client)
+        assert ca_bundle, "CA bundle not available for external route TLS verification"
         route_response = requests.post(
             url=infer_url,
             json=SKLEARN_IRIS_PAYLOAD,
-            verify=ca_bundle or True,
+            verify=ca_bundle,
             timeout=60,
         )
         assert route_response.status_code == 200, (
@@ -531,7 +532,7 @@ class TestMultiModelStartup:
         startup_probe = _get_pod_probe(pod=pod, probe_type="startupProbe")
         LOGGER.info("startupProbe configuration", config=startup_probe)
 
-        # Poll until all 10 models are loaded
+        # Poll until all 10 models are loaded AND the server reports ready
         try:
             for sample in TimeoutSampler(
                 wait_timeout=max(
@@ -541,21 +542,21 @@ class TestMultiModelStartup:
                 sleep=POLL_INTERVAL_SEC,
                 func=lambda: v2_repository_index(pod=pod),
             ):
-                if len(sample) == EXPECTED_MODEL_COUNT:
+                if len(sample) == EXPECTED_MODEL_COUNT and v2_health(pod=pod, endpoint="/v2/health/ready") == 200:
                     break
         except TimeoutExpiredError:
             repo_index = v2_repository_index(pod=pod)
-            pytest.fail(f"Only {len(repo_index)}/{EXPECTED_MODEL_COUNT} models loaded within timeout")
+            ready_code = v2_health(pod=pod, endpoint="/v2/health/ready")
+            pytest.fail(
+                f"Startup incomplete within timeout: {len(repo_index)}/{EXPECTED_MODEL_COUNT} models,"
+                f" /v2/health/ready={ready_code}"
+            )
 
         elapsed_seconds = time.monotonic() - start_time
         assert elapsed_seconds <= STARTUP_MEASUREMENT_TIMEOUT_SEC, (
             f"Startup exceeded {STARTUP_MEASUREMENT_TIMEOUT_SEC}s budget: {round(elapsed_seconds, 2)}s"
         )
         LOGGER.info("Startup time measured", elapsed_seconds=round(elapsed_seconds, 2))
-
-        # Verify readiness
-        ready_code = v2_health(pod=pod, endpoint="/v2/health/ready")
-        assert ready_code == 200, f"/v2/health/ready returned HTTP {ready_code}"
 
         # Record pod Ready timestamp
         conditions = pod.instance.status.get("conditions", [])
