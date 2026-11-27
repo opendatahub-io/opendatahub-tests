@@ -77,12 +77,16 @@ MINIO_UPLOADER_SECURITY_CONTEXT: dict[str, object] = {
     "runAsNonRoot": True,
     "seccompProfile": {"type": "RuntimeDefault"},
 }
+MINIO_UPLOADER_LABELS: dict[str, str] = {
+    "pipelines.kubeflow.org/v2_component": "true",
+}
 
 # AutoRAG pipeline parameters
 AUTORAG_INPUT_DATA_KEY: str = os.getenv("AUTORAG_INPUT_DATA_KEY", "autorag-smoke/input_data")
 AUTORAG_TEST_DATA_KEY: str = os.getenv("AUTORAG_TEST_DATA_KEY", "autorag-smoke/benchmark_data.json")
 AUTORAG_MAX_RAG_PATTERNS: int = int(os.getenv("AUTORAG_MAX_RAG_PATTERNS", "4"))
 AUTORAG_OPTIMIZATION_METRIC: str = os.getenv("AUTORAG_OPTIMIZATION_METRIC", "unitxt:faithfulness")
+AUTORAG_VECTOR_IO_PROVIDER_ID: str = os.getenv("AUTORAG_VECTOR_IO_PROVIDER_ID", "milvus")
 
 AUTORAG_PIPELINE_START_TIMEOUT: int = int(os.getenv("AUTORAG_PIPELINE_START_TIMEOUT", "300"))
 

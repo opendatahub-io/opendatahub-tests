@@ -27,6 +27,7 @@ from tests.pipelines_components.constants import (
     MANAGED_PIPELINE_POLL_INTERVAL,
     MANAGED_PIPELINE_WAIT_TIMEOUT,
     MINIO_MC_IMAGE,
+    MINIO_UPLOADER_LABELS,
     MINIO_UPLOADER_SECURITY_CONTEXT,
 )
 from tests.pipelines_components.utils import create_pipeline_run_managed, delete_pipeline_run, wait_for_managed_pipeline
@@ -83,6 +84,7 @@ def automl_train_data(
             client=admin_client,
             name=f"automl-data-uploader-{uuid.uuid4().hex[:8]}",
             namespace=pipelines_namespace.name,
+            label=MINIO_UPLOADER_LABELS,
             restart_policy="Never",
             volumes=[
                 {"name": "work", "emptyDir": {}},

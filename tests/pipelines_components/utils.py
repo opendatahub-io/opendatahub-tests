@@ -144,6 +144,24 @@ def find_pipeline_by_display_name(
     return {"pipeline_id": pipeline_id, "pipeline_version_id": version_id}
 
 
+def get_pipeline_version(
+    api_url: str,
+    headers: dict[str, str],
+    pipeline_id: str,
+    pipeline_version_id: str,
+    ca_bundle: str,
+) -> dict[str, Any]:
+    """Get a managed pipeline version, including its parameter schema."""
+    resp = requests.get(
+        url=f"{api_url}/apis/v2beta1/pipelines/{pipeline_id}/versions/{pipeline_version_id}",
+        headers=headers,
+        verify=ca_bundle,
+        timeout=60,
+    )
+    _raise_for_status(resp=resp)
+    return resp.json()
+
+
 def wait_for_managed_pipeline(
     api_url: str,
     headers: dict[str, str],
