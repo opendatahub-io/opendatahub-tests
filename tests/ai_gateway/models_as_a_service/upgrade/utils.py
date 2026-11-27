@@ -8,7 +8,6 @@ import pytest
 import requests
 import structlog
 from kubernetes.dynamic import DynamicClient
-from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
 from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.deployment import Deployment
@@ -76,7 +75,6 @@ from tests.ai_gateway.models_as_a_service.utils import (
     build_maas_headers,
     create_api_key,
     deploy_and_verify_aitenant_ready,
-    get_httproute,
     get_maas_models_response,
     verify_maas_tenant_config_ready,
     wait_for_external_model_http_route_name,
@@ -342,110 +340,66 @@ def cluster_has_inference_external_model_crd(admin_client: DynamicClient) -> boo
     return bool(inference_external_model_crd.exists)
 
 
-def legacy_external_model_resource_name_candidates(model_name: str) -> list[str]:
-    """Return possible legacy ExternalModel networking resource names.
-
-    RHOAI 3.4 maas-controller names children after the model directly. 3.5+ uses
-    ``maas-{model_name}`` via modelnaming.ExternalModelResourceName.
-    """
-    prefixed_name = f"maas-{model_name}"
-    if prefixed_name == model_name:
-        return [model_name]
-    return [prefixed_name, model_name]
-
-
 def legacy_external_model_resource_name(model_name: str) -> str:
     """Return the preferred legacy ExternalModel networking resource name (3.5+)."""
     return f"maas-{model_name}"
 
 
-def resolve_legacy_maas_networking_resource_name(
+LEGACY_NETWORKING_KINDS: tuple[type[NamespacedResource], ...] = (
+    HTTPRoute,
+    Service,
+    ServiceEntry,
+    DestinationRule,
+)
+
+
+def legacy_owned_resources(
     client: DynamicClient,
+    resource_class: type[NamespacedResource],
+    namespace: str,
     model_name: str,
-    namespace: str,
-) -> str | None:
-    """Return the legacy networking resource name present in the namespace, if any."""
-    for candidate in legacy_external_model_resource_name_candidates(model_name=model_name):
-        if legacy_maas_networking_present(client=client, resource_name=candidate, namespace=namespace):
-            return candidate
-    return None
+) -> list[NamespacedResource]:
+    """Return the resources of one kind owned by the legacy ExternalModel.
 
-
-def get_legacy_maas_service(
-    client: DynamicClient,
-    resource_name: str,
-    namespace: str,
-) -> Service | None:
-    """Look up the legacy maas-* Service, returning None when it is absent."""
-    try:
-        service = Service(client=client, name=resource_name, namespace=namespace)
-        if service.exists:
-            return service
-    except NotFoundError, ResourceNotFoundError:
-        LOGGER.debug(f"Service {namespace}/{resource_name} not found")
-    return None
-
-
-def get_legacy_maas_service_entry(
-    client: DynamicClient,
-    resource_name: str,
-    namespace: str,
-) -> ServiceEntry | None:
-    """Look up the legacy maas-* ServiceEntry, returning None when it is absent."""
-    try:
-        service_entry = ServiceEntry(client=client, name=resource_name, namespace=namespace)
-        if service_entry.exists:
-            return service_entry
-    except NotFoundError, ResourceNotFoundError:
-        LOGGER.debug(f"ServiceEntry {namespace}/{resource_name} not found")
-    return None
-
-
-def get_legacy_maas_destination_rule(
-    client: DynamicClient,
-    resource_name: str,
-    namespace: str,
-) -> DestinationRule | None:
-    """Look up the legacy maas-* DestinationRule, returning None when it is absent."""
-    try:
-        destination_rule = DestinationRule(client=client, name=resource_name, namespace=namespace)
-        if destination_rule.exists:
-            return destination_rule
-    except NotFoundError, ResourceNotFoundError:
-        LOGGER.debug(f"DestinationRule {namespace}/{resource_name} not found")
-    return None
+    Ownership is the only reliable discriminator: the inference controller reuses the
+    legacy child names during supersede, re-parenting the same objects rather than
+    replacing them, so a name lookup matches either side.
+    """
+    owned = []
+    for resource in resource_class.get(client=client, namespace=namespace):
+        try:
+            owner_references = resource.instance.metadata.ownerReferences or []
+        except Exception:
+            continue
+        if any(
+            owner_ref_is_legacy_external_model(owner_ref=owner_ref, model_name=model_name)
+            for owner_ref in owner_references
+        ):
+            owned.append(resource)
+    return owned
 
 
 def legacy_maas_networking_present(
     client: DynamicClient,
-    resource_name: str,
+    model_name: str,
     namespace: str,
 ) -> bool:
-    """Return True when all legacy maas-* networking children exist."""
-    destination_rule = get_legacy_maas_destination_rule(
-        client=client,
-        resource_name=resource_name,
-        namespace=namespace,
-    )
-    return (
-        get_httproute(client=client, name=resource_name, namespace=namespace) is not None
-        and get_legacy_maas_service(client=client, resource_name=resource_name, namespace=namespace) is not None
-        and get_legacy_maas_service_entry(client=client, resource_name=resource_name, namespace=namespace) is not None
-        and destination_rule is not None
+    """Return True when every legacy networking child owned by the model exists."""
+    return all(
+        legacy_owned_resources(client=client, resource_class=resource_class, namespace=namespace, model_name=model_name)
+        for resource_class in LEGACY_NETWORKING_KINDS
     )
 
 
 def legacy_maas_networking_absent(
     client: DynamicClient,
-    resource_name: str,
+    model_name: str,
     namespace: str,
 ) -> bool:
-    """Return True when all legacy maas-* networking children are absent."""
-    return (
-        get_httproute(client=client, name=resource_name, namespace=namespace) is None
-        and get_legacy_maas_service(client=client, resource_name=resource_name, namespace=namespace) is None
-        and get_legacy_maas_service_entry(client=client, resource_name=resource_name, namespace=namespace) is None
-        and get_legacy_maas_destination_rule(client=client, resource_name=resource_name, namespace=namespace) is None
+    """Return True when no networking child is still owned by the legacy ExternalModel."""
+    return not any(
+        legacy_owned_resources(client=client, resource_class=resource_class, namespace=namespace, model_name=model_name)
+        for resource_class in LEGACY_NETWORKING_KINDS
     )
 
 
@@ -456,12 +410,10 @@ def wait_for_legacy_maas_networking_present(
     timeout: int = 300,
 ) -> str:
     """Poll until legacy networking children exist and return the resolved resource name."""
-    candidates = legacy_external_model_resource_name_candidates(model_name=model_name)
 
     def networking_present() -> str | None:
-        for candidate in candidates:
-            if legacy_maas_networking_present(client=client, resource_name=candidate, namespace=namespace):
-                return candidate
+        if legacy_maas_networking_present(client=client, model_name=model_name, namespace=namespace):
+            return legacy_external_model_resource_name(model_name=model_name)
         return None
 
     for _sample in TimeoutSampler(
@@ -474,13 +426,13 @@ def wait_for_legacy_maas_networking_present(
 
     raise TimeoutError(
         f"Legacy networking for model '{model_name}' not fully present in '{namespace}' "
-        f"(checked {candidates}) within {timeout}s"
+        f"(ownership-based check for ExternalModel) within {timeout}s"
     )
 
 
 def wait_for_legacy_maas_prefixed_networking_deleted(
     client: DynamicClient,
-    resource_name: str,
+    model_name: str,
     namespace: str,
     timeout: int = 300,
 ) -> None:
@@ -488,25 +440,27 @@ def wait_for_legacy_maas_prefixed_networking_deleted(
 
     Args:
         client: Kubernetes dynamic client.
-        resource_name: Legacy networking resource name (typically ``maas-{model}``).
+        model_name: Legacy ExternalModel name that owns the networking children.
         namespace: Namespace containing the legacy networking children.
         timeout: Maximum wait time in seconds.
 
     Raises:
-        TimeoutError: If legacy networking children for ``resource_name`` are still present.
+        TimeoutError: If legacy networking children for ``model_name`` are still present.
     """
     for _sample in TimeoutSampler(
         wait_timeout=timeout,
         sleep=5,
         func=legacy_maas_networking_absent,
         client=client,
-        resource_name=resource_name,
+        model_name=model_name,
         namespace=namespace,
     ):
-        if legacy_maas_networking_absent(client=client, resource_name=resource_name, namespace=namespace):
+        if legacy_maas_networking_absent(client=client, model_name=model_name, namespace=namespace):
             return
 
-    raise TimeoutError(f"Legacy networking '{namespace}/{resource_name}' still present after {timeout}s")
+    raise TimeoutError(
+        f"Legacy networking for model '{model_name}' in namespace '{namespace}' still present after {timeout}s"
+    )
 
 
 def owner_ref_is_legacy_external_model(owner_ref: Any, model_name: str) -> bool:
@@ -544,7 +498,10 @@ def verify_no_legacy_owned_httproutes(
     """
     legacy_owned_routes: list[str] = []
     for http_route in HTTPRoute.get(client=client, namespace=namespace):
-        owner_references = http_route.instance.metadata.ownerReferences or []
+        try:
+            owner_references = http_route.instance.metadata.ownerReferences or []
+        except Exception:
+            continue
         if any(
             owner_ref_is_legacy_external_model(owner_ref=owner_ref, model_name=model_name)
             for owner_ref in owner_references
@@ -616,11 +573,7 @@ def capture_legacy_migration_baseline(
     subscription: MaaSSubscription,
 ) -> LegacyMigrationBaseline:
     """Snapshot legacy external model migration state before upgrade."""
-    legacy_resource_name = resolve_legacy_maas_networking_resource_name(
-        client=client,
-        model_name=model_name,
-        namespace=model_namespace,
-    ) or legacy_external_model_resource_name(model_name=model_name)
+    legacy_resource_name = legacy_external_model_resource_name(model_name=model_name)
     baseline: LegacyMigrationBaseline = {
         "model_name": model_name,
         "model_namespace": model_namespace,
@@ -1703,4 +1656,27 @@ def verify_praxis_aitenant_without_maas_legacy_ipp_envoyfilter_post_upgrade(
     LOGGER.info(
         f"Praxis AITenant '{aitenant_name}' has no maas legacy IPP markers in '{gateway_namespace}' "
         "and Praxis payload processing is active"
+    )
+
+
+def verify_no_maas_prefixed_httproutes(
+    client: DynamicClient,
+    namespace: str,
+) -> None:
+    """Assert no HTTPRoute with maas-* naming prefix exists in the namespace.
+
+    Args:
+        client: Kubernetes dynamic client.
+        namespace: Namespace to inspect.
+
+    Raises:
+        AssertionError: When any HTTPRoute with maas-* prefix is found.
+    """
+    maas_prefixed_routes: list[str] = []
+    for http_route in HTTPRoute.get(client=client, namespace=namespace):
+        if http_route.name.startswith("maas-"):
+            maas_prefixed_routes.append(http_route.name)
+
+    assert not maas_prefixed_routes, (
+        f"Legacy maas-prefixed HTTPRoutes still present in '{namespace}': {maas_prefixed_routes}"
     )
