@@ -220,7 +220,18 @@ class TestMaaSGuardrailScopeComposition:
     """MaaS supports matching guardrail attachments from multiple scopes."""
 
     @pytest.mark.tier1
-    def test_duplicate_guardrail_check_remains_selected_after_tenant_source_removal(
+    @pytest.mark.parametrize(
+        "tenant_check_name, attached_check_names",
+        [
+            pytest.param(INPUT_CHECK_NAME, [INPUT_CHECK_NAME], id="test_duplicate_check_is_deduplicated"),
+            pytest.param(
+                OUTPUT_CHECK_NAME,
+                [INPUT_CHECK_NAME, OUTPUT_CHECK_NAME],
+                id="test_distinct_checks_are_merged",
+            ),
+        ],
+    )
+    def test_tenant_and_subscription_guardrail_checks_compose(
         self,
         admin_client: DynamicClient,
         request_session_http: requests.Session,
@@ -228,10 +239,12 @@ class TestMaaSGuardrailScopeComposition:
         guardrails_model_ref: MaaSModelRef,
         phase_ai_guardrail: AIGuardrail,
         phase_input_guarded_subscription: MaaSSubscription,
+        tenant_check_name: str,
+        attached_check_names: list[str],
     ) -> None:
-        """Given one check attached to both tenant and subscription scopes,
-        when the tenant attachment is removed,
-        then selection and gateway headers contain one check from the remaining subscription source.
+        """Given a subscription attaching the input check,
+        when the tenant scope attaches the same check or a different one and is then restored,
+        then selection and gateway headers contain each attached check once and only the input check afterwards.
         """
         input_check_id = guardrail_check_id(
             namespace=phase_ai_guardrail.namespace,
@@ -243,6 +256,22 @@ class TestMaaSGuardrailScopeComposition:
             guardrail_name=phase_ai_guardrail.name,
             check_name=INPUT_CHECK_NAME,
         )
+        attached_check_ids = {
+            guardrail_check_id(
+                namespace=phase_ai_guardrail.namespace,
+                guardrail_name=phase_ai_guardrail.name,
+                check_name=check_name,
+            )
+            for check_name in attached_check_names
+        }
+        attached_headers = {
+            guardrail_check_header(
+                namespace=phase_ai_guardrail.namespace,
+                guardrail_name=phase_ai_guardrail.name,
+                check_name=check_name,
+            )
+            for check_name in attached_check_names
+        }
         tenant_config = MaasTenantConfig(
             client=admin_client,
             name=DEFAULT_MAAS_TENANT_NAME,
@@ -252,25 +281,25 @@ class TestMaaSGuardrailScopeComposition:
         tenant_attachment = [
             {
                 "ref": {"name": phase_ai_guardrail.name},
-                "checks": [INPUT_CHECK_NAME],
+                "checks": [tenant_check_name],
             }
         ]
 
         with ResourceEditor(patches={tenant_config: {"spec": {"guardrails": tenant_attachment}}}):
-            duplicate_selection = wait_for_selected_guardrail_checks(
+            attached_selection = wait_for_selected_guardrail_checks(
                 request_session_http=request_session_http,
                 maas_api_infra_namespace=maas_api_infra_namespace,
                 subscription=phase_input_guarded_subscription,
                 model_ref=guardrails_model_ref,
-                expected_check_ids={input_check_id},
+                expected_check_ids=attached_check_ids,
             )
-            duplicate_headers = wait_for_guardrail_header_catalog(
+            attached_header_catalog = wait_for_guardrail_header_catalog(
                 admin_client=admin_client,
                 policy_name=MAAS_GATEWAY_AUTH_POLICY_NAME,
-                expected_headers={input_header},
+                expected_headers=attached_headers,
             )
-            assert duplicate_selection["selectedGuardrailChecks"] == {input_check_id: True}
-            assert duplicate_headers == {input_header}
+            assert attached_selection["selectedGuardrailChecks"] == dict.fromkeys(attached_check_ids, True)
+            assert attached_header_catalog == attached_headers
 
         remaining_selection = wait_for_selected_guardrail_checks(
             request_session_http=request_session_http,
