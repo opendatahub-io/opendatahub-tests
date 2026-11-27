@@ -1,7 +1,0 @@
-{
-  "name": "onnx-iris-2",
-  "implementation": "mlserver_onnx.OnnxModel",
-  "parameters": {
-    "uri": "./model.onnx"
-  }
-}

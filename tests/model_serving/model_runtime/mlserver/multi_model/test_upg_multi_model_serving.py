@@ -19,11 +19,15 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.model_server.upgrade.utils import (
-    load_baseline_from_configmap,
-    save_baseline_to_configmap,
+from tests.model_serving.model_runtime.mlserver.multi_model.constant import (
+    EXPECTED_MODEL_COUNT,
+    ISVC_READY_TIMEOUT_SEC,
+    MODEL_NAMES,
+    MULTI_MODEL_UPG_NS,
+    POLL_INTERVAL_SEC,
+    SKLEARN_IRIS_PAYLOAD,
 )
-from tests.model_serving.multi_model_helpers import (
+from tests.model_serving.model_runtime.mlserver.multi_model.utils import (
     get_isvc_pod,
     v2_health,
     v2_infer,
@@ -32,105 +36,6 @@ from tests.model_serving.multi_model_helpers import (
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-MULTI_MODEL_NS: str = "multi-model-upg"
-ISVC_READY_TIMEOUT_SEC: int = 300
-POLL_INTERVAL_SEC: int = 5
-EXPECTED_MODEL_COUNT: int = 10
-MODEL_NAMES: list[str] = [
-    "sklearn-iris-1",
-    "sklearn-iris-2",
-    "xgb-classifier-1",
-    "xgb-classifier-2",
-    "lgbm-classifier-1",
-    "lgbm-classifier-2",
-    "onnx-iris-1",
-    "onnx-iris-2",
-    "sklearn-iris-3",
-    "onnx-iris-3",
-]
-SKLEARN_IRIS_PAYLOAD: dict[str, Any] = {
-    "inputs": [
-        {
-            "name": "predict",
-            "shape": [1, 4],
-            "datatype": "FP32",
-            "data": [[5.1, 3.5, 1.4, 0.2]],
-        }
-    ]
-}
-
-
-# ---------------------------------------------------------------------------
-# Module-scoped state for pre/post upgrade comparison
-# ---------------------------------------------------------------------------
-
-
-def _capture_serving_runtime_snapshot(runtime: ServingRuntime) -> dict[str, Any]:
-    """Capture ServingRuntime spec and annotations for baseline comparison.
-
-    Args:
-        runtime: The ServingRuntime resource (must be reloaded by the caller).
-
-    Returns:
-        Dictionary containing the spec and annotations.
-    """
-    instance = runtime.instance.to_dict()
-    spec = instance.get("spec", {})
-    annotations = instance.get("metadata", {}).get("annotations", {})
-    return {
-        "name": runtime.name,
-        "namespace": runtime.namespace,
-        "spec": spec,
-        "annotations": annotations,
-    }
-
-
-@pytest.fixture(scope="class")
-def pre_upgrade_serving_runtime_snapshot(
-    pytestconfig: pytest.Config,
-    admin_client: DynamicClient,
-    mlserver_serving_runtime: ServingRuntime,
-    model_namespace: Namespace,
-) -> dict[str, Any]:
-    """ServingRuntime spec snapshot for pre/post upgrade comparison.
-
-    Pre-upgrade: captures the live ServingRuntime state and saves it to a ConfigMap.
-    Post-upgrade: loads the previously saved snapshot from the ConfigMap.
-
-    Args:
-        pytestconfig: Pytest configuration (used for post_upgrade flag).
-        admin_client: Kubernetes dynamic client.
-        mlserver_serving_runtime: The MLServer ServingRuntime resource.
-        model_namespace: The namespace where resources live.
-
-    Returns:
-        Dictionary containing the pre-upgrade spec and annotations.
-    """
-    if getattr(pytestconfig.option, "post_upgrade", False):
-        baselines = load_baseline_from_configmap(
-            client=admin_client,
-            namespace=model_namespace.name,
-        )
-        snapshot = baselines.get("serving_runtime_snapshot")
-        assert snapshot is not None, (
-            f"Missing 'serving_runtime_snapshot' key in baseline ConfigMap for namespace "
-            f"'{model_namespace.name}'. Ensure pre-upgrade tests ran successfully."
-        )
-        return snapshot
-
-    runtime = mlserver_serving_runtime
-    runtime.reload()
-    snapshot = _capture_serving_runtime_snapshot(runtime=runtime)
-    save_baseline_to_configmap(
-        client=admin_client,
-        namespace=model_namespace.name,
-        baselines={"serving_runtime_snapshot": snapshot},
-    )
-    return snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +49,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "model_namespace",
-    [pytest.param({"name": MULTI_MODEL_NS})],
+    [pytest.param({"name": MULTI_MODEL_UPG_NS})],
     indirect=True,
 )
 class TestServingRuntimeUpgrade:
@@ -157,7 +62,7 @@ class TestServingRuntimeUpgrade:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        multi_model_serving_runtime: ServingRuntime,
         multi_model_inference_service: InferenceService,
         pre_upgrade_serving_runtime_snapshot: dict[str, Any],
     ) -> None:
@@ -170,7 +75,7 @@ class TestServingRuntimeUpgrade:
         Then: The ServingRuntime exists and the snapshot is saved for
             post-upgrade comparison.
         """
-        runtime = mlserver_serving_runtime
+        runtime = multi_model_serving_runtime
         runtime.reload()
         assert runtime.exists, f"ServingRuntime {runtime.name} does not exist"
         LOGGER.info(
@@ -186,7 +91,7 @@ class TestServingRuntimeUpgrade:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        multi_model_serving_runtime: ServingRuntime,
         pre_upgrade_serving_runtime_snapshot: dict[str, Any],
     ) -> None:
         """Verify ServingRuntime template persists through RHOAI platform upgrade.
@@ -201,7 +106,7 @@ class TestServingRuntimeUpgrade:
             (excluding resourceVersion), the opendatahub.io/support-status
             annotation is preserved, and the ServingRuntime shows a usable status.
         """
-        runtime = mlserver_serving_runtime
+        runtime = multi_model_serving_runtime
         runtime.reload()
 
         assert runtime.exists, f"ServingRuntime {runtime.name} does not exist after upgrade"

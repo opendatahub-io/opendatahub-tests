@@ -13,8 +13,6 @@ from __future__ import annotations
 import json
 import shlex
 import statistics
-import subprocess
-from typing import Any
 
 import pytest
 import structlog
@@ -22,240 +20,30 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 from ocp_resources.namespace import Namespace
 from ocp_resources.network_policy import NetworkPolicy
-from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 
-from tests.model_serving.model_server.kserve.ingress.utils import create_curl_pod
-from tests.model_serving.multi_model_helpers import (
-    exec_in_pod,
+from tests.model_serving.model_runtime.mlserver.multi_model.constant import (
+    FLEET_MULTI_COUNT,
+    FLEET_SINGLE_COUNT,
+    MULTI_MODEL_COUNT,
+    MULTI_MODEL_NFR_NS,
+    SINGLE_MODEL_COUNT,
+    SKLEARN_IRIS_PAYLOAD,
+    V2_INFER_PATH,
+    V2_LOAD_PATH,
+    V2_UNLOAD_PATH,
+)
+from tests.model_serving.model_runtime.mlserver.multi_model.utils import (
+    collect_fleet_resource_requests,
+    collect_pod_resource_requests,
+    exec_curl_external,
     get_isvc_pod,
     v2_infer,
+    v2_infer_timed,
 )
-from utilities.infra import get_pods_by_isvc_label
+from tests.model_serving.model_server.kserve.ingress.utils import create_curl_pod
 
 LOGGER = structlog.get_logger(name=__name__)
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-MULTI_MODEL_NS: str = "multi-model-nfr"
-ISVC_READY_TIMEOUT_SEC: int = 600
-FLEET_READY_TIMEOUT_SEC: int = 600
-POLL_INTERVAL_SEC: int = 5
-SINGLE_MODEL_COUNT: int = 1
-MULTI_MODEL_COUNT: int = 10
-FLEET_SINGLE_COUNT: int = 50
-FLEET_MULTI_COUNT: int = 5
-
-V2_LOAD_PATH: str = "/v2/repository/models/{model_name}/load"
-V2_UNLOAD_PATH: str = "/v2/repository/models/{model_name}/unload"
-V2_INFER_PATH: str = "/v2/models/{model_name}/infer"
-
-SKLEARN_IRIS_PAYLOAD: dict[str, Any] = {
-    "inputs": [
-        {
-            "name": "predict",
-            "shape": [1, 4],
-            "datatype": "FP32",
-            "data": [[5.1, 3.5, 1.4, 0.2]],
-        }
-    ]
-}
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _collect_pod_resource_requests(
-    admin_client: DynamicClient,
-    namespace: str,
-    label_selector: str,
-) -> dict[str, Any]:
-    """Collect CPU and memory resource requests for pods matching a label.
-
-    Args:
-        admin_client: Kubernetes dynamic client.
-        namespace: Namespace to query.
-        label_selector: Label selector string.
-
-    Returns:
-        Dictionary with per-pod resources and aggregate totals.
-    """
-    pods = list(
-        Pod.get(
-            client=admin_client,
-            namespace=namespace,
-            label_selector=label_selector,
-        )
-    )
-    metrics: dict[str, Any] = {
-        "pod_count": len(pods),
-        "total_cpu_millicores": 0,
-        "total_memory_mib": 0,
-    }
-    for pod in pods:
-        containers = pod.instance.spec.get("containers", [])
-        for container in containers:
-            requests = container.get("resources", {}).get("requests", {})
-            cpu_str = requests.get("cpu", "0")
-            mem_str = requests.get("memory", "0")
-            metrics["total_cpu_millicores"] += _parse_cpu_millicores(cpu_str)
-            metrics["total_memory_mib"] += _parse_memory_mib(mem_str)
-    return metrics
-
-
-def _parse_cpu_millicores(value: str) -> int:
-    """Convert a Kubernetes CPU string to integer millicores."""
-    if value.endswith("m"):
-        return int(value[:-1])
-    return int(float(value) * 1000)
-
-
-def _parse_memory_mib(value: str) -> int:
-    """Convert a Kubernetes memory string to integer MiB."""
-    if value.endswith("Gi"):
-        return int(float(value[:-2]) * 1024)
-    if value.endswith("Mi"):
-        return int(float(value[:-2]))
-    if value.endswith("Ki"):
-        return int(float(value[:-2]) / 1024)
-    return int(int(value) / (1024 * 1024))
-
-
-def _collect_fleet_resource_requests(
-    admin_client: DynamicClient,
-    fleet: list[InferenceService],
-) -> dict[str, Any]:
-    """Collect aggregate resource requests for a fleet of ISVCs.
-
-    Uses ``get_pods_by_isvc_label`` per ISVC instead of a label selector,
-    because KServe raw-mode overwrites the ``app`` label on predictor pods.
-    """
-    metrics: dict[str, Any] = {
-        "pod_count": 0,
-        "total_cpu_millicores": 0,
-        "total_memory_mib": 0,
-    }
-    for isvc in fleet:
-        pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
-        metrics["pod_count"] += len(pods)
-        for pod in pods:
-            containers = pod.instance.spec.get("containers", [])
-            for container in containers:
-                requests = container.get("resources", {}).get("requests", {})
-                cpu_str = requests.get("cpu", "0")
-                mem_str = requests.get("memory", "0")
-                metrics["total_cpu_millicores"] += _parse_cpu_millicores(cpu_str)
-                metrics["total_memory_mib"] += _parse_memory_mib(mem_str)
-    return metrics
-
-
-def _v2_infer_timed(pod: Pod, model_name: str, payload: dict[str, Any]) -> tuple[dict[str, Any], float]:
-    """Send a V2 inference request and return (result, server_latency_seconds).
-
-    Uses curl's %{time_total} to measure server-side latency, excluding
-    the Kubernetes exec session overhead.  ``--max-time 30`` bounds the
-    in-pod curl so it completes before the Pod.execute timeout (60s),
-    preventing ExecOnPodError from aborting the benchmark.  Curl timeouts
-    emit HTTP code ``000`` which is returned as ``http_code=0``.
-    """
-    url = f"http://localhost:8080/v2/models/{model_name}/infer"
-    result = exec_in_pod(
-        pod=pod,
-        command=[
-            "curl",
-            "-s",
-            "--max-time",
-            "30",
-            "-w",
-            "\n%{time_total}\n%{http_code}",
-            "-X",
-            "POST",
-            url,
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            json.dumps(payload),
-        ],
-    )
-    parts = result.strip().rsplit("\n", 2)
-    if len(parts) == 3:
-        body_str, time_total_str, http_code_str = parts
-    elif len(parts) == 2:
-        # Curl timeout: empty body stripped away, leaving only time + code
-        body_str = ""
-        time_total_str, http_code_str = parts
-    else:
-        raise RuntimeError(f"Unparseable curl output for timed infer: {result!r}")
-    if not http_code_str.isdigit():
-        raise RuntimeError(f"Unparseable HTTP status from timed infer: {result!r}")
-    http_code = int(http_code_str)
-    try:
-        latency = float(time_total_str)
-    except ValueError:
-        raise RuntimeError(f"Unparseable time_total from timed infer: {time_total_str!r}")
-    try:
-        body = json.loads(body_str) if body_str else {}
-    except json.JSONDecodeError:
-        body = {"raw": body_str}
-    return {"http_code": http_code, "body": body}, latency
-
-
-def _exec_curl_external(
-    url: str,
-    method: str = "POST",
-    data: str | None = None,
-) -> dict[str, Any]:
-    """Execute a curl command from the test runner (external to cluster).
-
-    Args:
-        url: Target URL.
-        method: HTTP method.
-        data: Optional request body.
-
-    Returns:
-        Dictionary with http_code, returncode, and stderr.
-    """
-    curl_cmd: list[str] = [
-        "curl",
-        "-s",
-        "-S",
-        "-o",
-        "/dev/null",
-        "-w",
-        "%{http_code}",
-        "-X",
-        method,
-        "-H",
-        "Content-Type: application/json",
-        "--insecure",
-        "--max-time",
-        "10",
-    ]
-    if data:
-        curl_cmd.extend(["-d", data])
-    curl_cmd.append(url)
-
-    try:
-        result = subprocess.run(
-            curl_cmd,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
-        code_str = result.stdout.strip()
-        http_code = int(code_str) if code_str.isdigit() else 0
-        return {
-            "http_code": http_code,
-            "returncode": result.returncode,
-            "stderr": result.stderr.strip(),
-        }
-    except (subprocess.TimeoutExpired, ValueError) as exc:
-        LOGGER.error("External curl failed", error=str(exc))
-        return {"http_code": 0, "returncode": -1, "stderr": str(exc)}
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +59,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
     "model_namespace, s3_models_storage_uri",
     [
         pytest.param(
-            {"name": MULTI_MODEL_NS},
+            {"name": MULTI_MODEL_NFR_NS},
             {"model-dir": "mlserver/model_repository/sklearn-iris-1"},
             id="psap-benchmark",
         ),
@@ -313,7 +101,7 @@ class TestPSAPBenchmark:
         )
 
         # Record baseline resource usage
-        baseline_resources = _collect_pod_resource_requests(
+        baseline_resources = collect_pod_resource_requests(
             admin_client=admin_client,
             namespace=namespace_name,
             label_selector=f"serving.kserve.io/inferenceservice={baseline_inference_service.name}",
@@ -321,7 +109,7 @@ class TestPSAPBenchmark:
         LOGGER.info("Baseline resource metrics", **baseline_resources)
 
         # Record multi-model resource usage
-        multi_model_resources = _collect_pod_resource_requests(
+        multi_model_resources = collect_pod_resource_requests(
             admin_client=admin_client,
             namespace=namespace_name,
             label_selector=f"serving.kserve.io/inferenceservice={multi_model_inference_service.name}",
@@ -349,7 +137,7 @@ class TestPSAPBenchmark:
 
         baseline_latencies: list[float] = []
         for _ in range(benchmark_iterations):
-            resp, latency = _v2_infer_timed(
+            resp, latency = v2_infer_timed(
                 pod=baseline_pod,
                 model_name=baseline_inference_service.name,
                 payload=SKLEARN_IRIS_PAYLOAD,
@@ -359,7 +147,7 @@ class TestPSAPBenchmark:
 
         multi_latencies: list[float] = []
         for _ in range(benchmark_iterations):
-            resp, latency = _v2_infer_timed(
+            resp, latency = v2_infer_timed(
                 pod=multi_pod,
                 model_name="sklearn-iris-1",
                 payload=SKLEARN_IRIS_PAYLOAD,
@@ -409,7 +197,7 @@ class TestPSAPBenchmark:
     "model_namespace, s3_models_storage_uri",
     [
         pytest.param(
-            {"name": MULTI_MODEL_NS},
+            {"name": MULTI_MODEL_NFR_NS},
             {"model-dir": "mlserver/model_repository/sklearn-iris-1"},
             id="scalability-comparison",
         ),
@@ -445,14 +233,14 @@ class TestScalabilityComparison:
 
         # Collect single-model fleet resources via ISVC label
         # (KServe raw-mode overrides the `app` label on predictor pods)
-        single_resources = _collect_fleet_resource_requests(
+        single_resources = collect_fleet_resource_requests(
             admin_client=admin_client,
             fleet=single_model_fleet,
         )
         LOGGER.info("Single-model fleet resources", **single_resources)
 
         # Collect multi-model fleet resources via ISVC label
-        multi_resources = _collect_fleet_resource_requests(
+        multi_resources = collect_fleet_resource_requests(
             admin_client=admin_client,
             fleet=multi_model_fleet,
         )
@@ -492,7 +280,7 @@ class TestScalabilityComparison:
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
-    [pytest.param({"name": MULTI_MODEL_NS})],
+    [pytest.param({"name": MULTI_MODEL_NFR_NS})],
     indirect=True,
 )
 class TestV2ManagementAPIBoundary:
@@ -606,7 +394,7 @@ class TestV2ManagementAPIBoundary:
 
         # First verify inference works through the external route
         infer_path = V2_INFER_PATH.format(model_name=test_model)
-        external_infer = _exec_curl_external(
+        external_infer = exec_curl_external(
             url=f"{external_base}{infer_path}",
             method="POST",
             data=json.dumps(SKLEARN_IRIS_PAYLOAD),
@@ -626,7 +414,7 @@ class TestV2ManagementAPIBoundary:
         connection_refusal_markers = ("refused", "reset")
 
         for label, path in (("load", load_path), ("unload", unload_path)):
-            resp = _exec_curl_external(
+            resp = exec_curl_external(
                 url=f"{external_base}{path}",
                 method="POST",
                 data="{}",

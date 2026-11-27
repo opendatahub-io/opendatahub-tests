@@ -47,7 +47,6 @@ enable-extensions =
     NIT,
 
 per-file-ignores =
-    tests/model_serving/conftest.py:E402
     # Mock upstream server scripts: standalone stdlib code deployed into pods,
     # positional arguments are idiomatic there.
     tests/ogx/mockupstream/scripts/*.py: FCN001

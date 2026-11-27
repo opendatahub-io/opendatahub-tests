@@ -1,11 +1,13 @@
-"""Helper functions for multi-model serving test fixtures.
+"""Helper functions for multi-model serving tests.
 
-Extracted from conftest.py so the component conftest contains only fixtures.
+Consolidates pod-exec V2 protocol helpers and utility functions
+used across E2E, negative, NFR, and upgrade test modules.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
 from typing import Any
 
 import structlog
@@ -280,3 +282,226 @@ def v2_repository_index(pod: Pod) -> list[dict[str, Any]]:
         if not isinstance(entry, dict):
             raise TypeError(f"Repository index entry {i} is {type(entry).__name__}, expected dict: {entry!r}")
     return parsed
+
+
+# ---------------------------------------------------------------------------
+# Helpers consolidated from test modules
+# ---------------------------------------------------------------------------
+
+
+def get_pod_env_var(pod: Pod, var_name: str) -> str | None:
+    """Extract an environment variable value from the pod spec.
+
+    Raises RuntimeError if the pod has no containers, so callers never
+    confuse an unreadable spec with 'env var not configured'.
+    """
+    containers = pod.instance.spec.get("containers", [])
+    if not containers:
+        raise RuntimeError(f"Pod {pod.name} has no containers in its spec")
+    for container in containers:
+        for env in container.get("env", []):
+            if env.get("name") == var_name:
+                return env.get("value")
+    return None
+
+
+def get_pod_probe(pod: Pod, probe_type: str) -> dict[str, Any] | None:
+    """Extract a probe configuration from the pod spec.
+
+    Raises RuntimeError if the pod has no containers, so callers never
+    confuse an unreadable spec with 'probe not configured'.
+    """
+    containers = pod.instance.spec.get("containers", [])
+    if not containers:
+        raise RuntimeError(f"Pod {pod.name} has no containers in its spec")
+    return containers[0].get(probe_type)
+
+
+def v2_infer_timed(pod: Pod, model_name: str, payload: dict[str, Any]) -> tuple[dict[str, Any], float]:
+    """Send a V2 inference request and return (result, server_latency_seconds).
+
+    Uses curl's %{time_total} to measure server-side latency, excluding
+    the Kubernetes exec session overhead.  ``--max-time 30`` bounds the
+    in-pod curl so it completes before the Pod.execute timeout (60s),
+    preventing ExecOnPodError from aborting the benchmark.  Curl timeouts
+    emit HTTP code ``000`` which is returned as ``http_code=0``.
+    """
+    url = f"http://localhost:8080/v2/models/{model_name}/infer"
+    result = exec_in_pod(
+        pod=pod,
+        command=[
+            "curl",
+            "-s",
+            "--max-time",
+            "30",
+            "-w",
+            "\n%{time_total}\n%{http_code}",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            json.dumps(payload),
+        ],
+    )
+    parts = result.strip().rsplit("\n", 2)
+    if len(parts) == 3:
+        body_str, time_total_str, http_code_str = parts
+    elif len(parts) == 2:
+        # Curl timeout: empty body stripped away, leaving only time + code
+        body_str = ""
+        time_total_str, http_code_str = parts
+    else:
+        raise RuntimeError(f"Unparseable curl output for timed infer: {result!r}")
+    if not http_code_str.isdigit():
+        raise RuntimeError(f"Unparseable HTTP status from timed infer: {result!r}")
+    http_code = int(http_code_str)
+    try:
+        latency = float(time_total_str)
+    except ValueError:
+        raise RuntimeError(f"Unparseable time_total from timed infer: {time_total_str!r}")
+    try:
+        body = json.loads(body_str) if body_str else {}
+    except json.JSONDecodeError:
+        body = {"raw": body_str}
+    return {"http_code": http_code, "body": body}, latency
+
+
+def exec_curl_external(
+    url: str,
+    method: str = "POST",
+    data: str | None = None,
+) -> dict[str, Any]:
+    """Execute a curl command from the test runner (external to cluster).
+
+    Args:
+        url: Target URL.
+        method: HTTP method.
+        data: Optional request body.
+
+    Returns:
+        Dictionary with http_code, returncode, and stderr.
+    """
+    curl_cmd: list[str] = [
+        "curl",
+        "-s",
+        "-S",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "-X",
+        method,
+        "-H",
+        "Content-Type: application/json",
+        "--insecure",
+        "--max-time",
+        "10",
+    ]
+    if data:
+        curl_cmd.extend(["-d", data])
+    curl_cmd.append(url)
+
+    try:
+        result = subprocess.run(
+            curl_cmd,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        code_str = result.stdout.strip()
+        http_code = int(code_str) if code_str.isdigit() else 0
+        return {
+            "http_code": http_code,
+            "returncode": result.returncode,
+            "stderr": result.stderr.strip(),
+        }
+    except (subprocess.TimeoutExpired, ValueError) as exc:
+        LOGGER.error("External curl failed", error=str(exc))
+        return {"http_code": 0, "returncode": -1, "stderr": str(exc)}
+
+
+def parse_cpu_millicores(value: str) -> int:
+    """Convert a Kubernetes CPU string to integer millicores."""
+    if value.endswith("m"):
+        return int(value[:-1])
+    return int(float(value) * 1000)
+
+
+def parse_memory_mib(value: str) -> int:
+    """Convert a Kubernetes memory string to integer MiB."""
+    if value.endswith("Gi"):
+        return int(float(value[:-2]) * 1024)
+    if value.endswith("Mi"):
+        return int(float(value[:-2]))
+    if value.endswith("Ki"):
+        return int(float(value[:-2]) / 1024)
+    return int(int(value) / (1024 * 1024))
+
+
+def collect_fleet_resource_requests(
+    admin_client: DynamicClient,
+    fleet: list[InferenceService],
+) -> dict[str, Any]:
+    """Collect aggregate resource requests for a fleet of ISVCs.
+
+    Uses ``get_pods_by_isvc_label`` per ISVC instead of a label selector,
+    because KServe raw-mode overwrites the ``app`` label on predictor pods.
+    """
+    metrics: dict[str, Any] = {
+        "pod_count": 0,
+        "total_cpu_millicores": 0,
+        "total_memory_mib": 0,
+    }
+    for isvc in fleet:
+        pods = get_pods_by_isvc_label(client=admin_client, isvc=isvc)
+        metrics["pod_count"] += len(pods)
+        for pod in pods:
+            containers = pod.instance.spec.get("containers", [])
+            for container in containers:
+                requests = container.get("resources", {}).get("requests", {})
+                cpu_str = requests.get("cpu", "0")
+                mem_str = requests.get("memory", "0")
+                metrics["total_cpu_millicores"] += parse_cpu_millicores(cpu_str)
+                metrics["total_memory_mib"] += parse_memory_mib(mem_str)
+    return metrics
+
+
+def collect_pod_resource_requests(
+    admin_client: DynamicClient,
+    namespace: str,
+    label_selector: str,
+) -> dict[str, Any]:
+    """Collect CPU and memory resource requests for pods matching a label.
+
+    Args:
+        admin_client: Kubernetes dynamic client.
+        namespace: Namespace to query.
+        label_selector: Label selector string.
+
+    Returns:
+        Dictionary with per-pod resources and aggregate totals.
+    """
+    pods = list(
+        Pod.get(
+            client=admin_client,
+            namespace=namespace,
+            label_selector=label_selector,
+        )
+    )
+    metrics: dict[str, Any] = {
+        "pod_count": len(pods),
+        "total_cpu_millicores": 0,
+        "total_memory_mib": 0,
+    }
+    for pod in pods:
+        containers = pod.instance.spec.get("containers", [])
+        for container in containers:
+            requests = container.get("resources", {}).get("requests", {})
+            cpu_str = requests.get("cpu", "0")
+            mem_str = requests.get("memory", "0")
+            metrics["total_cpu_millicores"] += parse_cpu_millicores(cpu_str)
+            metrics["total_memory_mib"] += parse_memory_mib(mem_str)
+    return metrics

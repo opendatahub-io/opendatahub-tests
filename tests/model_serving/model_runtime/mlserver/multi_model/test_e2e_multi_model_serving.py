@@ -24,10 +24,22 @@ from ocp_resources.pod import ExecOnPodError, Pod
 from ocp_resources.serving_runtime import ServingRuntime
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.multi_model_helpers import (
+from tests.model_serving.model_runtime.mlserver.multi_model.constant import (
+    CONCURRENT_MODELS,
+    EXPECTED_MODEL_COUNT,
+    MODEL_NAMES,
+    MODEL_STABILITY_WAIT_SEC,
+    MULTI_MODEL_E2E_NS,
+    POLL_INTERVAL_SEC,
+    SKLEARN_IRIS_PAYLOAD,
+    STARTUP_MEASUREMENT_TIMEOUT_SEC,
+)
+from tests.model_serving.model_runtime.mlserver.multi_model.utils import (
     KSERVE_CONTAINER,
     exec_in_pod,
     get_isvc_pod,
+    get_pod_env_var,
+    get_pod_probe,
     v2_health,
     v2_infer,
     v2_repository_index,
@@ -37,87 +49,6 @@ from utilities.inference_utils import get_exposed_isvc_url
 from utilities.infra import get_pods_by_isvc_label
 
 LOGGER = structlog.get_logger(name=__name__)
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-MULTI_MODEL_NS: str = "multi-model-e2e"
-
-EXPECTED_MODEL_COUNT: int = 10
-MODEL_NAMES: list[str] = [
-    "sklearn-iris-1",
-    "sklearn-iris-2",
-    "xgb-classifier-1",
-    "xgb-classifier-2",
-    "lgbm-classifier-1",
-    "lgbm-classifier-2",
-    "onnx-iris-1",
-    "onnx-iris-2",
-    "sklearn-iris-3",
-    "onnx-iris-3",
-]
-CONCURRENT_MODELS: list[str] = [
-    "sklearn-iris-1",
-    "xgb-classifier-1",
-    "lgbm-classifier-1",
-    "onnx-iris-1",
-    "sklearn-iris-3",
-]
-
-SKLEARN_IRIS_PAYLOAD: dict[str, Any] = {
-    "inputs": [
-        {
-            "name": "predict",
-            "shape": [1, 4],
-            "datatype": "FP32",
-            "data": [[5.1, 3.5, 1.4, 0.2]],
-        }
-    ]
-}
-
-ISVC_READY_TIMEOUT_SEC: int = 300
-STARTUP_MEASUREMENT_TIMEOUT_SEC: int = 300
-POLL_INTERVAL_SEC: int = 5
-MODEL_STABILITY_WAIT_SEC: int = 300
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_pod_env_var(pod: Pod, var_name: str) -> str | None:
-    """Extract an environment variable value from the pod spec.
-
-    Args:
-        pod: Target pod.
-        var_name: Environment variable name.
-
-    Returns:
-        Variable value or None if not found.
-    """
-    containers = pod.instance.spec.get("containers", [])
-    for container in containers:
-        for env in container.get("env", []):
-            if env.get("name") == var_name:
-                return env.get("value")
-    return None
-
-
-def _get_pod_probe(pod: Pod, probe_type: str) -> dict[str, Any] | None:
-    """Extract a probe configuration from the pod spec.
-
-    Args:
-        pod: Target pod.
-        probe_type: One of livenessProbe, readinessProbe, startupProbe.
-
-    Returns:
-        Probe configuration dict or None.
-    """
-    containers = pod.instance.spec.get("containers", [])
-    if containers:
-        return containers[0].get(probe_type)
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +62,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
-    [pytest.param({"name": MULTI_MODEL_NS})],
+    [pytest.param({"name": MULTI_MODEL_E2E_NS})],
     indirect=True,
 )
 class TestMultiModelDeployment:
@@ -142,7 +73,7 @@ class TestMultiModelDeployment:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        multi_model_serving_runtime: ServingRuntime,
         multi_model_inference_service: InferenceService,
     ) -> None:
         """Verify all 10 models load from static storage and respond to V2 inference.
@@ -343,12 +274,12 @@ class TestMultiModelDeployment:
             "CHECK_REPOSITORY_POPULATED",
         ]
         for var_name in readiness_vars:
-            value = _get_pod_env_var(pod=pod, var_name=var_name)
+            value = get_pod_env_var(pod=pod, var_name=var_name)
             LOGGER.info("MLServer env var", name=var_name, value=value)
 
         # Record probe configuration
         for probe_type in ("livenessProbe", "readinessProbe", "startupProbe"):
-            probe = _get_pod_probe(pod=pod, probe_type=probe_type)
+            probe = get_pod_probe(pod=pod, probe_type=probe_type)
             LOGGER.info("Probe configuration", probe_type=probe_type, config=probe)
 
         # Pod readiness
@@ -363,7 +294,7 @@ class TestMultiModelDeployment:
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
-    [pytest.param({"name": MULTI_MODEL_NS})],
+    [pytest.param({"name": MULTI_MODEL_E2E_NS})],
     indirect=True,
 )
 class TestMultiModelVersioning:
@@ -374,7 +305,7 @@ class TestMultiModelVersioning:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        multi_model_serving_runtime: ServingRuntime,
         multi_version_inference_service: InferenceService,
     ) -> None:
         """Verify MLServer name-and-version behavior with same model name, different versions.
@@ -423,7 +354,7 @@ class TestMultiModelVersioning:
 @pytest.mark.tier1
 @pytest.mark.parametrize(
     "model_namespace",
-    [pytest.param({"name": MULTI_MODEL_NS})],
+    [pytest.param({"name": MULTI_MODEL_E2E_NS})],
     indirect=True,
 )
 class TestMultiModelConcurrency:
@@ -485,7 +416,7 @@ class TestMultiModelConcurrency:
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "model_namespace",
-    [pytest.param({"name": MULTI_MODEL_NS})],
+    [pytest.param({"name": MULTI_MODEL_E2E_NS})],
     indirect=True,
 )
 class TestMultiModelStartup:
@@ -496,7 +427,7 @@ class TestMultiModelStartup:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        multi_model_serving_runtime: ServingRuntime,
         startup_measurement_inference_service: InferenceService,
     ) -> None:
         """Measure startup time from InferenceService creation until all models available.
@@ -529,7 +460,7 @@ class TestMultiModelStartup:
         assert pod is not None
 
         # Record startupProbe configuration
-        startup_probe = _get_pod_probe(pod=pod, probe_type="startupProbe")
+        startup_probe = get_pod_probe(pod=pod, probe_type="startupProbe")
         LOGGER.info("startupProbe configuration", config=startup_probe)
 
         # Poll until all 10 models are loaded AND the server reports ready
@@ -574,7 +505,7 @@ class TestMultiModelStartup:
     "model_namespace, s3_models_storage_uri",
     [
         pytest.param(
-            {"name": MULTI_MODEL_NS},
+            {"name": MULTI_MODEL_E2E_NS},
             {"model-dir": "mlserver/model_repository/onnx-iris-1"},
             id="cuda-onnx",
         ),
@@ -658,7 +589,7 @@ class TestMultiModelCUDA:
     "model_namespace, s3_models_storage_uri",
     [
         pytest.param(
-            {"name": MULTI_MODEL_NS},
+            {"name": MULTI_MODEL_E2E_NS},
             {"model-dir": "mlserver/model_repository/sklearn-iris-1"},
             id="single-model-regression",
         ),
@@ -673,7 +604,7 @@ class TestSingleModelRegression:
         self,
         admin_client: DynamicClient,
         model_namespace: Namespace,
-        mlserver_serving_runtime: ServingRuntime,
+        multi_model_serving_runtime: ServingRuntime,
         single_model_inference_service: InferenceService,
     ) -> None:
         """Verify single-model ISVC unaffected by multi-model template changes.
@@ -721,7 +652,7 @@ class TestSingleModelRegression:
 
         # Record probe configuration
         for probe_type in ("livenessProbe", "readinessProbe", "startupProbe"):
-            probe = _get_pod_probe(pod=pod, probe_type=probe_type)
+            probe = get_pod_probe(pod=pod, probe_type=probe_type)
             LOGGER.info(
                 "Single-model probe configuration",
                 probe_type=probe_type,
@@ -730,7 +661,7 @@ class TestSingleModelRegression:
 
         # Record MLServer env vars relevant to single-model behavior
         for var_name in ("MLSERVER_EMPTY_REGISTRY_READINESS", "MLSERVER_MODEL_NAME"):
-            value = _get_pod_env_var(pod=pod, var_name=var_name)
+            value = get_pod_env_var(pod=pod, var_name=var_name)
             LOGGER.info("Single-model env var", name=var_name, value=value)
 
         # Verify pod Ready

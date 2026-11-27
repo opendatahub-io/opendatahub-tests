@@ -24,8 +24,20 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import ExecOnPodError, Pod
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
-from tests.model_serving.multi_model_helpers import (
+from tests.model_serving.model_runtime.mlserver.multi_model.constant import (
+    CREDENTIAL_FAILURE_TIMEOUT_SEC,
+    ISVC_READY_TIMEOUT_SEC,
+    MALFORMED_PAYLOAD,
+    MULTI_MODEL_NEG_NS,
+    POD_SCHEDULE_TIMEOUT_SEC,
+    POLL_INTERVAL_SEC,
+    RESOURCE_EXHAUSTION_OBSERVE_SEC,
+    SKLEARN_IRIS_PAYLOAD,
+)
+from tests.model_serving.model_runtime.mlserver.multi_model.utils import (
     get_isvc_pod,
+    get_pod_env_var,
+    get_pod_probe,
     v2_health,
     v2_infer,
     v2_repository_index,
@@ -35,72 +47,6 @@ from utilities.infra import get_pods_by_isvc_label
 LOGGER = structlog.get_logger(name=__name__)
 
 # ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-MULTI_MODEL_NS: str = "multi-model-neg"
-ISVC_READY_TIMEOUT_SEC: int = 300
-POD_SCHEDULE_TIMEOUT_SEC: int = 120
-POLL_INTERVAL_SEC: int = 5
-RESOURCE_EXHAUSTION_OBSERVE_SEC: int = 180
-CREDENTIAL_FAILURE_TIMEOUT_SEC: int = 120
-
-VALID_SKLEARN_PAYLOAD: dict[str, Any] = {
-    "inputs": [
-        {
-            "name": "predict",
-            "shape": [1, 4],
-            "datatype": "FP32",
-            "data": [[5.1, 3.5, 1.4, 0.2]],
-        }
-    ]
-}
-
-MALFORMED_PAYLOAD: dict[str, Any] = {
-    "inputs": [
-        {
-            "name": "predict",
-            "shape": [1, 99],
-            "datatype": "FP32",
-            "data": [[1.0]],
-        }
-    ]
-}
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_pod_env_var(pod: Pod, var_name: str) -> str | None:
-    """Extract an environment variable value from the pod spec.
-
-    Raises RuntimeError if the pod has no containers, so callers never
-    confuse an unreadable spec with 'env var not configured'.
-    """
-    containers = pod.instance.spec.get("containers", [])
-    if not containers:
-        raise RuntimeError(f"Pod {pod.name} has no containers in its spec")
-    for container in containers:
-        for env in container.get("env", []):
-            if env.get("name") == var_name:
-                return env.get("value")
-    return None
-
-
-def _get_pod_probe(pod: Pod, probe_type: str) -> dict[str, Any] | None:
-    """Extract a probe configuration from the pod spec.
-
-    Raises RuntimeError if the pod has no containers, so callers never
-    confuse an unreadable spec with 'probe not configured'.
-    """
-    containers = pod.instance.spec.get("containers", [])
-    if not containers:
-        raise RuntimeError(f"Pod {pod.name} has no containers in its spec")
-    return containers[0].get(probe_type)
-
-
-# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
@@ -108,7 +54,7 @@ pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_conf
 
 _NS_PARAM = pytest.mark.parametrize(
     argnames="model_namespace",
-    argvalues=[pytest.param({"name": MULTI_MODEL_NS})],
+    argvalues=[pytest.param({"name": MULTI_MODEL_NEG_NS})],
     indirect=True,
 )
 
@@ -148,14 +94,14 @@ class TestErrorIsolation:
         # Verify 3 other models are unaffected
         isolation_models = ["xgb-classifier-1", "lgbm-classifier-1", "onnx-iris-1"]
         for model_name in isolation_models:
-            result = v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
+            result = v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
             assert result["http_code"] == 200, (
                 f"Isolation check: {model_name} returned HTTP {result['http_code']}, expected 200"
             )
             assert len(result["body"].get("outputs", [])) > 0, f"Isolation check: {model_name} has empty outputs"
 
         # Verify recovery with valid request
-        recover_result = v2_infer(pod=pod, model_name="sklearn-iris-1", payload=VALID_SKLEARN_PAYLOAD)
+        recover_result = v2_infer(pod=pod, model_name="sklearn-iris-1", payload=SKLEARN_IRIS_PAYLOAD)
         assert recover_result["http_code"] == 200, (
             f"Recovery request returned HTTP {recover_result['http_code']}, expected 200"
         )
@@ -236,14 +182,14 @@ class TestHealthProbesDegraded:
             "CHECK_REPOSITORY_POPULATED",
         ):
             try:
-                value = _get_pod_env_var(pod=pod, var_name=var_name)
+                value = get_pod_env_var(pod=pod, var_name=var_name)
                 LOGGER.info("Empty storage env var", name=var_name, value=value)
-            except AttributeError, TypeError:
+            except (AttributeError, TypeError):  # fmt: skip
                 LOGGER.info("Could not read env var (container may not be running)", name=var_name)
 
         # Record probe config and pod conditions
         for probe_type in ("startupProbe", "livenessProbe", "readinessProbe"):
-            probe = _get_pod_probe(pod=pod, probe_type=probe_type)
+            probe = get_pod_probe(pod=pod, probe_type=probe_type)
             LOGGER.info("Empty storage probe", probe_type=probe_type, config=probe)
 
         pod.reload()
@@ -326,7 +272,7 @@ class TestHealthProbesDegraded:
             "MLSERVER_LOAD_MODELS_AT_STARTUP",
             "CHECK_REPOSITORY_POPULATED",
         ):
-            value = _get_pod_env_var(pod=pod, var_name=var_name)
+            value = get_pod_env_var(pod=pod, var_name=var_name)
             LOGGER.info("One-failed-model env var", name=var_name, value=value)
 
         # Repository index should show 9 models (the failed one absent)
@@ -407,7 +353,7 @@ class TestMalformedConfiguration:
 
         # Valid models should serve
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
-            result = v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
+            result = v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
             assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Pod should still be running
@@ -487,7 +433,7 @@ class TestMalformedConfiguration:
 
         # Valid models should serve
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
-            result = v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
+            result = v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
             assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Pod should still be running
@@ -669,11 +615,11 @@ class TestMissingArtifacts:
 
         # Valid models should serve
         for model_name in ("sklearn-iris-1", "xgb-classifier-1"):
-            result = v2_infer(pod=pod, model_name=model_name, payload=VALID_SKLEARN_PAYLOAD)
+            result = v2_infer(pod=pod, model_name=model_name, payload=SKLEARN_IRIS_PAYLOAD)
             assert result["http_code"] == 200, f"{model_name} inference returned HTTP {result['http_code']}"
 
         # Inference to missing-model should fail
-        missing_result = v2_infer(pod=pod, model_name="missing-model", payload=VALID_SKLEARN_PAYLOAD)
+        missing_result = v2_infer(pod=pod, model_name="missing-model", payload=SKLEARN_IRIS_PAYLOAD)
         assert missing_result["http_code"] != 200, (
             f"missing-model inference should not return 200, got {missing_result['http_code']}"
         )
@@ -743,7 +689,7 @@ class TestInvalidCredentials:
             try:
                 live_code = v2_health(pod=pod, endpoint="/v2/health/live")
                 assert live_code != 200, "/v2/health/live should not return 200 with invalid creds"
-            except ExecOnPodError, ApiException:
+            except (ExecOnPodError, ApiException):  # fmt: skip
                 LOGGER.info("Health endpoint unreachable (expected)")
         else:
             LOGGER.info("No pods found for invalid-credentials ISVC (pod creation may have failed)")
@@ -825,7 +771,7 @@ class TestStorageExhaustion:
                 staging_failed = getattr(storage_exhaustion_inference_service, "_staging_failed", False)
                 if staging_failed:
                     assert model_count < 10, f"Staging failed but {model_count} models loaded — expected fewer"
-            except ExecOnPodError, ApiException, RuntimeError:
+            except (ExecOnPodError, ApiException, RuntimeError):  # fmt: skip
                 LOGGER.info("Repository index unreachable (expected with storage failure)")
 
         # ISVC should not report Ready

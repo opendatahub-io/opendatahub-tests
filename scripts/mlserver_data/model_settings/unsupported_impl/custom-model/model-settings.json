@@ -1,7 +1,0 @@
-{
-  "name": "custom-model",
-  "implementation": "custom.MyModel",
-  "parameters": {
-    "uri": "./model.joblib"
-  }
-}

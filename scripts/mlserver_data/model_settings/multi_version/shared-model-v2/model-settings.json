@@ -1,8 +1,0 @@
-{
-  "name": "shared-model",
-  "version": "2.0",
-  "implementation": "mlserver_sklearn.SKLearnModel",
-  "parameters": {
-    "uri": "./model.joblib"
-  }
-}
