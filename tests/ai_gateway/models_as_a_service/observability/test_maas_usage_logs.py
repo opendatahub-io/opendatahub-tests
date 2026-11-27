@@ -1,19 +1,32 @@
 import pytest
 import requests
+from kubernetes.dynamic import DynamicClient
 from ocp_resources.maas_subscription import MaaSSubscription
+from ocp_resources.resource import ResourceEditor
 
+from tests.ai_gateway.models_as_a_service.maas_subscription.utils import chat_payload_for_url, poll_expected_status
 from tests.ai_gateway.models_as_a_service.observability.constants import (
     USAGE_LOGS_INFERENCE_CALLS,
     USAGE_LOGS_RATE_LIMIT_MAX_CALLS,
     USAGE_LOGS_RATE_LIMIT_TOKENS_PER_MINUTE,
 )
 from tests.ai_gateway.models_as_a_service.observability.utils import (
+    get_loki_usage_record_count,
     get_loki_usage_totals_snapshot,
     loki_query_port_forward,
     send_non_streaming_inference_calls,
+    wait_for_loki_usage_record,
     wait_for_loki_usage_totals,
+    wait_for_usage_logs_envoy_filter_capture,
 )
-from tests.ai_gateway.models_as_a_service.utils import verify_streaming_chat_completions
+from tests.ai_gateway.models_as_a_service.utils import (
+    build_maas_headers,
+    create_api_key,
+    revoke_api_key,
+    verify_streaming_chat_completions,
+)
+from utilities.general import generate_random_name
+from utilities.resources.maastenantconfig import MaasTenantConfig
 
 
 @pytest.mark.usefixtures(
@@ -202,3 +215,112 @@ class TestMaaSUsageLogsInference:
                 expected_totals=(expected_successful_requests, expected_rate_limited_requests, expected_tokens),
                 subscription=rate_limit_subscription,
             )
+
+    @pytest.mark.slow
+    def test_identity_capture_follows_tenant_settings(
+        self,
+        request_session_http: requests.Session,
+        admin_client: DynamicClient,
+        usage_logs_capture_subscription: MaaSSubscription,
+        usage_logs_model_url: str,
+        dsci_monitoring_namespace: str,
+        current_client_token: str,
+        base_url: str,
+        maas_api_endpoints_ready: None,
+        maas_gateway_auth_policy_ready: None,
+    ) -> None:
+        """Given capture toggles, when governed inference runs, then Loki logs contain only enabled identities."""
+        gateway_probe = request_session_http.get(f"{base_url}/v1/models", timeout=30)
+        assert gateway_probe.status_code in {200, 401, 403}, (
+            f"MaaS API is not reachable through the gateway: HTTP {gateway_probe.status_code}"
+        )
+        subscription_name = usage_logs_capture_subscription.name
+        organization_id = usage_logs_capture_subscription.instance.to_dict()["spec"]["tokenMetadata"]["organizationId"]
+        tenant_config = MaasTenantConfig(
+            client=admin_client,
+            name="default-tenant",
+            namespace=usage_logs_capture_subscription.namespace,
+            ensure_exists=True,
+        )
+
+        with loki_query_port_forward(namespace=dsci_monitoring_namespace):
+            for capture_user, capture_organization in ((False, False), (True, True), (True, False), (False, True)):
+                editor = ResourceEditor(
+                    patches={
+                        tenant_config: {
+                            "spec": {
+                                "telemetry": {
+                                    "enabled": True,
+                                    "logs": {
+                                        "captureUser": capture_user,
+                                        "captureOrganization": capture_organization,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                )
+                try:
+                    editor.update(backup_resources=True)
+                    wait_for_usage_logs_envoy_filter_capture(
+                        admin_client=admin_client,
+                        capture_user=capture_user,
+                        capture_organization=capture_organization,
+                    )
+                    key_name = generate_random_name(prefix="usage-capture-key")
+                    _, key = create_api_key(
+                        base_url=base_url,
+                        ocp_user_token=current_client_token,
+                        request_session_http=request_session_http,
+                        api_key_name=key_name,
+                        subscription=subscription_name,
+                    )
+                    try:
+                        response = poll_expected_status(
+                            request_session_http=request_session_http,
+                            model_url=usage_logs_model_url,
+                            headers=build_maas_headers(token=key["key"]),
+                            payload=chat_payload_for_url(model_url=usage_logs_model_url),
+                            expected_statuses={200},
+                        )
+                        assert response.status_code == 200, "Governed inference did not succeed"
+                        record_count = wait_for_loki_usage_record(
+                            http_session=request_session_http,
+                            admin_token=current_client_token,
+                            subscription=subscription_name,
+                            key_name=key_name,
+                        )
+                        user_count = get_loki_usage_record_count(
+                            http_session=request_session_http,
+                            admin_token=current_client_token,
+                            subscription=subscription_name,
+                            key_name=key_name,
+                            identity_field="user_id",
+                        )
+                        organization_count = get_loki_usage_record_count(
+                            http_session=request_session_http,
+                            admin_token=current_client_token,
+                            subscription=subscription_name,
+                            key_name=key_name,
+                            identity_field="organization_id",
+                            identity_value=organization_id if capture_organization else None,
+                        )
+                        assert user_count == (record_count if capture_user else 0), (
+                            f"captureUser={capture_user}: {user_count} of {record_count} logs contain user_id"
+                        )
+                        assert organization_count == (record_count if capture_organization else 0), (
+                            f"captureOrganization={capture_organization}: {organization_count} of {record_count} "
+                            "logs contain the subscription organization_id"
+                        )
+                    finally:
+                        revoke_response, _ = revoke_api_key(
+                            request_session_http=request_session_http,
+                            base_url=base_url,
+                            key_id=key["id"],
+                            ocp_user_token=current_client_token,
+                        )
+                        assert revoke_response.status_code in (200, 404), (
+                            f"Unexpected revocation status for key id={key['id']}: {revoke_response.status_code}"
+                        )
+                finally:
+                    editor.restore()

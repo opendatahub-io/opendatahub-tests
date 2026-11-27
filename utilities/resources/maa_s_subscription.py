@@ -23,6 +23,7 @@ class MaaSSubscription(NamespacedResource):
         model_refs: list[Any] | None = None,
         owner: dict[str, Any] | None = None,
         priority: int | None = None,
+        token_metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         r"""
@@ -40,6 +41,8 @@ class MaaSSubscription(NamespacedResource):
             priority (int): Priority determines subscription priority when user has multiple
               subscriptions Higher numbers have higher priority. Defaults to 0.
 
+            token_metadata (dict[str, Any]): TokenMetadata contains metadata for token attribution and metering.
+
         """
         super().__init__(**kwargs)
 
@@ -48,6 +51,7 @@ class MaaSSubscription(NamespacedResource):
         self.model_refs = model_refs
         self.owner = owner
         self.priority = priority
+        self.token_metadata = token_metadata
 
     def to_dict(self) -> None:
 
@@ -74,5 +78,8 @@ class MaaSSubscription(NamespacedResource):
 
             if self.priority is not None:
                 _spec["priority"] = self.priority
+
+            if self.token_metadata is not None:
+                _spec["tokenMetadata"] = self.token_metadata
 
     # End of generated code

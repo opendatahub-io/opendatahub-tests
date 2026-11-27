@@ -203,6 +203,7 @@ def create_maas_subscription(
     priority: int = 0,
     teardown: bool = True,
     wait_for_resource: bool = True,
+    token_metadata: dict[str, Any] | None = None,
 ) -> MaaSSubscription:
 
     return MaaSSubscription(
@@ -220,6 +221,7 @@ def create_maas_subscription(
             }
         ],
         priority=priority,
+        token_metadata=token_metadata,
         teardown=teardown,
         wait_for_resource=wait_for_resource,
     )

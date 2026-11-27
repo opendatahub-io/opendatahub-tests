@@ -128,6 +128,26 @@ Coverage reflects the tests on this branch; individual checks are documented in 
 - [test_inference_with_llmd.py](upgrade/test_inference_with_llmd.py) — Checks that an llm-d workload, its routing and MaaS configuration survive the upgrade, and that inference still succeeds with the existing API key.
 - [test_external_model_legacy_migration.py](upgrade/test_external_model_legacy_migration.py) — Checks ExternalModel migration, removal of legacy networking, and preservation of model references, auth policies, and subscriptions.
 
+### Usage-log identity capture E2E
+
+RHOAIENG-99402 checks that `MaasTenantConfig.spec.telemetry.logs.captureUser` and
+`captureOrganization` control the `user_id` and `organization_id` fields in Loki
+usage logs after real MaaS inference. It tests all four toggle combinations and
+restores the prior tenant configuration. It waits for the generated EnvoyFilter to
+reflect each setting, then queries Loki for a unique API key and the expected
+identity fields. The test creates and cleans up its model, subscription, auth
+policy, and API keys.
+
+Run it on a dedicated test cluster with MaaS, a default StorageClass, and the Loki
+and OpenTelemetry operators installed. It temporarily changes identity capture on
+the default tenant. The shared usage-logs fixtures provision SeaweedFS S3 storage,
+configure the DSCI usage-log pipeline, wait for Loki and the collector, and restore the
+previous monitoring configuration on teardown.
+
+```bash
+uv run pytest -v -s tests/ai_gateway/models_as_a_service/observability/test_maas_usage_logs.py::TestMaaSUsageLogsInference::test_identity_capture_follows_tenant_settings
+```
+
 ## Additional Resources
 
 - [MaaS Documentation](https://opendatahub-io.github.io/models-as-a-service/)
