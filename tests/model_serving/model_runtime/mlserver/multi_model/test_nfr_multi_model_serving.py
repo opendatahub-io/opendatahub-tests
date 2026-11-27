@@ -1,0 +1,443 @@
+"""
+Non-functional requirement tests for MLServer multi-model serving.
+
+Covers PSAP benchmark comparison (single vs multi-model), scalability
+(50 single-model vs 5 multi-model), and V2 Management API access control
+at the cluster boundary.
+
+Source: RHAISTRAT-3033
+"""
+
+from __future__ import annotations
+
+import json
+import shlex
+import statistics
+
+import pytest
+import structlog
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.inference_service import InferenceService
+from ocp_resources.namespace import Namespace
+from ocp_resources.network_policy import NetworkPolicy
+from ocp_resources.route import Route
+
+from tests.model_serving.model_runtime.mlserver.multi_model.constant import (
+    FLEET_MULTI_COUNT,
+    FLEET_SINGLE_COUNT,
+    MULTI_MODEL_COUNT,
+    MULTI_MODEL_NFR_NS,
+    SINGLE_MODEL_COUNT,
+    SKLEARN_IRIS_PAYLOAD,
+    V2_INFER_PATH,
+    V2_LOAD_PATH,
+    V2_UNLOAD_PATH,
+)
+from tests.model_serving.model_runtime.mlserver.multi_model.utils import (
+    collect_fleet_resource_requests,
+    collect_pod_resource_requests,
+    exec_curl_external,
+    get_isvc_pod,
+    v2_infer,
+    v2_infer_timed,
+)
+from tests.model_serving.model_server.kserve.ingress.utils import create_curl_pod
+
+LOGGER = structlog.get_logger(name=__name__)
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
+
+
+@pytest.mark.tier3
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "model_namespace, s3_models_storage_uri",
+    [
+        pytest.param(
+            {"name": MULTI_MODEL_NFR_NS},
+            {"model-dir": "mlserver/model_repository/sklearn-iris-1"},
+            id="psap-benchmark",
+        ),
+    ],
+    indirect=True,
+)
+class TestPSAPBenchmark:
+    """PSAP performance benchmark: single-model baseline vs 10-model ISVC."""
+
+    def test_tc_nfr_001(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        baseline_inference_service: InferenceService,
+        multi_model_inference_service: InferenceService,
+    ) -> None:
+        """Record PSAP benchmark metrics for single-model baseline and 10-model profile.
+
+        Given: RHOAI 3.7 EA installed with MLServer SR template at parallel_workers=1,
+            PSAP benchmark tooling installed, single-model baseline and 10-model
+            ISVC deployed on the same hardware profile.
+        When: PSAP benchmarks are executed sequentially against both deployments,
+            pod resource consumption is recorded.
+        Then: Baseline and 10-model metrics (p50/p99 latency, throughput RPS, CPU,
+            memory) are captured; parallel_workers=1 is confirmed; saturation
+            factors are documented.
+        """
+        namespace_name = model_namespace.name
+
+        # Confirm MLSERVER_PARALLEL_WORKERS=1 on the predictor container
+        multi_pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        containers = multi_pod.instance.spec.get("containers", [])
+        predictor_containers = [c for c in containers if c.get("name") == "kserve-container"]
+        assert predictor_containers, "No kserve-container found in pod spec"
+        predictor_env = {e.get("name"): e.get("value") for e in predictor_containers[0].get("env", [])}
+        assert "MLSERVER_PARALLEL_WORKERS" in predictor_env, "MLSERVER_PARALLEL_WORKERS not set on predictor container"
+        assert predictor_env["MLSERVER_PARALLEL_WORKERS"] == "1", (
+            f"Expected MLSERVER_PARALLEL_WORKERS=1, got {predictor_env['MLSERVER_PARALLEL_WORKERS']}"
+        )
+
+        # Record baseline resource usage
+        baseline_resources = collect_pod_resource_requests(
+            admin_client=admin_client,
+            namespace=namespace_name,
+            label_selector=f"serving.kserve.io/inferenceservice={baseline_inference_service.name}",
+        )
+        LOGGER.info("Baseline resource metrics", **baseline_resources)
+
+        # Record multi-model resource usage
+        multi_model_resources = collect_pod_resource_requests(
+            admin_client=admin_client,
+            namespace=namespace_name,
+            label_selector=f"serving.kserve.io/inferenceservice={multi_model_inference_service.name}",
+        )
+        LOGGER.info("Multi-model resource metrics", **multi_model_resources)
+
+        # Verify inference works on both
+        baseline_pod = get_isvc_pod(admin_client=admin_client, isvc=baseline_inference_service)
+        baseline_result = v2_infer(
+            pod=baseline_pod,
+            model_name=baseline_inference_service.name,
+            payload=SKLEARN_IRIS_PAYLOAD,
+        )
+        assert baseline_result["http_code"] == 200, f"Baseline inference returned HTTP {baseline_result['http_code']}"
+
+        multi_result = v2_infer(
+            pod=multi_pod,
+            model_name="sklearn-iris-1",
+            payload=SKLEARN_IRIS_PAYLOAD,
+        )
+        assert multi_result["http_code"] == 200, f"Multi-model inference returned HTTP {multi_result['http_code']}"
+
+        # Sequential latency benchmark: 30 requests per service
+        benchmark_iterations = 30
+
+        baseline_latencies: list[float] = []
+        for _ in range(benchmark_iterations):
+            resp, latency = v2_infer_timed(
+                pod=baseline_pod,
+                model_name=baseline_inference_service.name,
+                payload=SKLEARN_IRIS_PAYLOAD,
+            )
+            assert resp["http_code"] == 200, f"Benchmark baseline request failed: HTTP {resp['http_code']}"
+            baseline_latencies.append(latency)
+
+        multi_latencies: list[float] = []
+        for _ in range(benchmark_iterations):
+            resp, latency = v2_infer_timed(
+                pod=multi_pod,
+                model_name="sklearn-iris-1",
+                payload=SKLEARN_IRIS_PAYLOAD,
+            )
+            assert resp["http_code"] == 200, f"Benchmark multi-model request failed: HTTP {resp['http_code']}"
+            multi_latencies.append(latency)
+
+        # Compute p50 and p99 latencies
+        baseline_p50 = statistics.median(data=baseline_latencies)
+        baseline_p99 = statistics.quantiles(data=baseline_latencies, n=100)[-1]
+        multi_p50 = statistics.median(data=multi_latencies)
+        multi_p99 = statistics.quantiles(data=multi_latencies, n=100)[-1]
+
+        assert all(lat > 0 for lat in baseline_latencies), "Baseline latencies must be positive"
+        assert all(lat > 0 for lat in multi_latencies), "Multi-model latencies must be positive"
+
+        LOGGER.info(
+            "Baseline latency benchmark",
+            iterations=benchmark_iterations,
+            p50_seconds=round(baseline_p50, 4),
+            p99_seconds=round(baseline_p99, 4),
+        )
+        LOGGER.info(
+            "Multi-model latency benchmark",
+            iterations=benchmark_iterations,
+            p50_seconds=round(multi_p50, 4),
+            p99_seconds=round(multi_p99, 4),
+        )
+
+        LOGGER.info(
+            "PSAP benchmark comparison recorded",
+            baseline=baseline_resources,
+            multi_model=multi_model_resources,
+            parallel_workers=1,
+            baseline_model_count=SINGLE_MODEL_COUNT,
+            multi_model_count=MULTI_MODEL_COUNT,
+            baseline_p50=round(baseline_p50, 4),
+            baseline_p99=round(baseline_p99, 4),
+            multi_model_p50=round(multi_p50, 4),
+            multi_model_p99=round(multi_p99, 4),
+        )
+
+
+@pytest.mark.tier3
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "model_namespace, s3_models_storage_uri",
+    [
+        pytest.param(
+            {"name": MULTI_MODEL_NFR_NS},
+            {"model-dir": "mlserver/model_repository/sklearn-iris-1"},
+            id="scalability-comparison",
+        ),
+    ],
+    indirect=True,
+)
+class TestScalabilityComparison:
+    """Scalability: 50 single-model ISVCs vs 5 multi-model ISVCs."""
+
+    def test_tc_nfr_002(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        single_model_fleet: list[InferenceService],
+        multi_model_fleet: list[InferenceService],
+    ) -> None:
+        """Record resource-efficiency ratio comparing 50 single-model ISVCs with 5 multi-model.
+
+        Given: RHOAI installed with MLServer SR template, sufficient cluster
+            capacity for 50 ISVCs, same hardware profile across deployments.
+        When: 50 single-model ISVCs are deployed and their aggregate resource
+            consumption is recorded, then 5 multi-model ISVCs are deployed
+            and their aggregate consumption is recorded.
+        Then: CPU/memory totals for both fleets are captured, the efficiency
+            ratio is calculated, and the <=50% target is reported as evidence.
+        """
+        assert len(single_model_fleet) == FLEET_SINGLE_COUNT, (
+            f"Expected {FLEET_SINGLE_COUNT} single-model ISVCs, got {len(single_model_fleet)}"
+        )
+        assert len(multi_model_fleet) == FLEET_MULTI_COUNT, (
+            f"Expected {FLEET_MULTI_COUNT} multi-model ISVCs, got {len(multi_model_fleet)}"
+        )
+
+        # Collect single-model fleet resources via ISVC label
+        # (KServe raw-mode overrides the `app` label on predictor pods)
+        single_resources = collect_fleet_resource_requests(
+            admin_client=admin_client,
+            fleet=single_model_fleet,
+        )
+        LOGGER.info("Single-model fleet resources", **single_resources)
+
+        # Collect multi-model fleet resources via ISVC label
+        multi_resources = collect_fleet_resource_requests(
+            admin_client=admin_client,
+            fleet=multi_model_fleet,
+        )
+        LOGGER.info("Multi-model fleet resources", **multi_resources)
+
+        assert single_resources["pod_count"] == FLEET_SINGLE_COUNT, (
+            f"Expected {FLEET_SINGLE_COUNT} single-model pods, got {single_resources['pod_count']}"
+        )
+        assert multi_resources["pod_count"] == FLEET_MULTI_COUNT, (
+            f"Expected {FLEET_MULTI_COUNT} multi-model pods, got {multi_resources['pod_count']}"
+        )
+
+        # Calculate efficiency ratio
+        single_cpu = single_resources["total_cpu_millicores"]
+        multi_cpu = multi_resources["total_cpu_millicores"]
+        single_mem = single_resources["total_memory_mib"]
+        multi_mem = multi_resources["total_memory_mib"]
+
+        cpu_ratio = (multi_cpu / single_cpu * 100) if single_cpu > 0 else 0.0
+        mem_ratio = (multi_mem / single_mem * 100) if single_mem > 0 else 0.0
+
+        LOGGER.info(
+            "Efficiency ratio",
+            cpu_ratio_percent=round(cpu_ratio, 2),
+            memory_ratio_percent=round(mem_ratio, 2),
+            target_percent=50,
+            single_fleet_count=FLEET_SINGLE_COUNT,
+            multi_fleet_count=FLEET_MULTI_COUNT,
+        )
+
+        assert single_cpu > 0, "Single-model fleet CPU must be > 0"
+        assert single_mem > 0, "Single-model fleet memory must be > 0"
+        assert multi_cpu > 0, "Multi-model fleet CPU must be > 0"
+        assert multi_mem > 0, "Multi-model fleet memory must be > 0"
+
+
+@pytest.mark.tier1
+@pytest.mark.parametrize(
+    "model_namespace",
+    [pytest.param({"name": MULTI_MODEL_NFR_NS})],
+    indirect=True,
+)
+class TestV2ManagementAPIBoundary:
+    """V2 Management API cluster boundary access control."""
+
+    @pytest.mark.dependency(name="TC-NFR-003")
+    def test_tc_nfr_003(
+        self,
+        admin_client: DynamicClient,
+        model_namespace: Namespace,
+        multi_model_inference_service: InferenceService,
+    ) -> None:
+        """Verify V2 Management API reachable internally but blocked externally.
+
+        Given: InferenceService deployed with 10-model repo, pod Ready
+            (TC-E2E-001), NetworkPolicy configured, access from internal
+            pod and external route.
+        When: V2 load and unload endpoints are called from within the cluster,
+            the NetworkPolicy is recorded, and the same endpoints are attempted
+            from an external route.
+        Then: Internal load/unload return an HTTP response (200, 400, or 404);
+            NetworkPolicy is recorded; external management API returns non-200
+            or connection refused; inference still returns HTTP 200.
+        """
+        namespace_name = model_namespace.name
+        isvc_name = multi_model_inference_service.name
+        test_model = "sklearn-iris-1"
+
+        internal_svc = f"http://{isvc_name}.{namespace_name}.svc.cluster.local:8080"
+
+        # Internal: call V2 load/unload via context-managed curl pod
+        load_path = V2_LOAD_PATH.format(model_name=test_model)
+        unload_path = V2_UNLOAD_PATH.format(model_name=test_model)
+
+        with create_curl_pod(
+            client=admin_client,
+            namespace=namespace_name,
+            pod_name="curl-boundary-test",
+        ) as curl_pod:
+            load_cmd = shlex.split(
+                f"curl -s -o /dev/null -w '%{{http_code}}' -X POST "
+                f"-H 'Content-Type: application/json' -d '{{}}' "
+                f"{internal_svc}{load_path}"
+            )
+            load_result = curl_pod.execute(command=load_cmd, ignore_rc=True)
+            load_code = int(load_result) if str(load_result).strip().isdigit() else 0
+            LOGGER.info("Internal V2 load response", http_code=load_code)
+            assert load_code in (
+                200,
+                400,
+                404,
+            ), f"Internal V2 load returned unexpected {load_code}"
+
+            unload_cmd = shlex.split(
+                f"curl -s -o /dev/null -w '%{{http_code}}' -X POST "
+                f"-H 'Content-Type: application/json' -d '{{}}' "
+                f"{internal_svc}{unload_path}"
+            )
+            unload_result = curl_pod.execute(command=unload_cmd, ignore_rc=True)
+            unload_code = int(unload_result) if str(unload_result).strip().isdigit() else 0
+            LOGGER.info("Internal V2 unload response", http_code=unload_code)
+            assert unload_code in (
+                200,
+                400,
+                404,
+            ), f"Internal V2 unload returned unexpected {unload_code}"
+
+            # Reload the model so the external preflight and final inference succeed
+            reload_result = curl_pod.execute(command=load_cmd, ignore_rc=True)
+            reload_code = int(reload_result) if str(reload_result).strip().isdigit() else 0
+            LOGGER.info("Internal V2 reload after unload", http_code=reload_code)
+            assert reload_code in (
+                200,
+                400,
+            ), f"Internal V2 reload returned unexpected {reload_code}"
+
+        # Record NetworkPolicy
+        network_policies = list(
+            NetworkPolicy.get(
+                client=admin_client,
+                namespace=namespace_name,
+            )
+        )
+        for netpol in network_policies:
+            LOGGER.info(
+                "NetworkPolicy",
+                name=netpol.name,
+                spec=netpol.instance.get("spec", {}),
+            )
+
+        # External: attempt management API via route
+        routes = list(
+            Route.get(
+                client=admin_client,
+                namespace=namespace_name,
+            )
+        )
+        external_host: str | None = None
+        for route in routes:
+            route_labels = route.instance.get("metadata", {}).get("labels", {})
+            if route_labels.get("serving.kserve.io/inferenceservice") == isvc_name:
+                external_host = route.instance.get("spec", {}).get("host", "")
+                break
+
+        assert external_host, (
+            f"No route found for InferenceService {isvc_name} in namespace {namespace_name}. "
+            f"Ensure the ISVC fixture sets external_route=True"
+        )
+
+        external_base = f"https://{external_host}"
+
+        # First verify inference works through the external route
+        infer_path = V2_INFER_PATH.format(model_name=test_model)
+        external_infer = exec_curl_external(
+            url=f"{external_base}{infer_path}",
+            method="POST",
+            data=json.dumps(SKLEARN_IRIS_PAYLOAD),
+        )
+        assert external_infer["http_code"] == 200, (
+            f"External inference returned HTTP {external_infer['http_code']}; "
+            "route may not be functional — cannot verify management API blocking"
+        )
+
+        # Boundary denial evidence:
+        # - HTTP 403 (Forbidden) — unambiguous access-control denial.
+        # - Transport-level refusal — curl stderr must contain "refused"
+        #   or "reset" to distinguish a genuine connection refusal from
+        #   DNS failures, proxy errors, or timeouts (CWE-863).
+        # HTTP 404 is excluded: the management handler itself can return
+        # 404, so it does not prove the boundary blocked the request.
+        connection_refusal_markers = ("refused", "reset")
+
+        for label, path in (("load", load_path), ("unload", unload_path)):
+            resp = exec_curl_external(
+                url=f"{external_base}{path}",
+                method="POST",
+                data="{}",
+            )
+            LOGGER.info(
+                f"External V2 {label} response",
+                http_code=resp["http_code"],
+                returncode=resp["returncode"],
+                stderr=resp["stderr"],
+            )
+            http_denied = resp["http_code"] == 403
+            transport_refused = resp["http_code"] == 0 and any(
+                marker in resp["stderr"].lower() for marker in connection_refusal_markers
+            )
+            assert http_denied or transport_refused, (
+                f"External V2 {label} was not blocked: HTTP {resp['http_code']}, "
+                f"returncode {resp['returncode']}, stderr={resp['stderr']!r}. "
+                f"Expected HTTP 403 or connection refused/reset"
+            )
+
+        # Verify inference still works
+        pod = get_isvc_pod(admin_client=admin_client, isvc=multi_model_inference_service)
+        infer_result = v2_infer(pod=pod, model_name=test_model, payload=SKLEARN_IRIS_PAYLOAD)
+        assert infer_result["http_code"] == 200, (
+            f"Post-management-API inference returned HTTP {infer_result['http_code']}"
+        )

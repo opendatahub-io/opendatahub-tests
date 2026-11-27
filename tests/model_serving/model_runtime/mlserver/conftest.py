@@ -80,7 +80,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item], config: pytest.Confi
 
 
 @pytest.fixture(scope="class")
-def mlserver_serving_runtime(
+def mlserver_serving_runtime(  # noqa: UFN001
     request: pytest.FixtureRequest,
     admin_client: DynamicClient,
     model_namespace: Namespace,
