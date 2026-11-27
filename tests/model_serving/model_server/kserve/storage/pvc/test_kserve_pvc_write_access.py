@@ -2,7 +2,7 @@ import pytest
 
 from tests.model_serving.model_server.kserve.storage.constants import (
     INFERENCE_SERVICE_PARAMS,
-    KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
+    KSERVE_MLSERVER_SERVING_RUNTIME_PARAMS,
 )
 from tests.model_serving.model_server.kserve.storage.pvc.utils import (
     chmod_model_directory,
@@ -26,7 +26,7 @@ pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_no_nfs_storage
             {"name": "pvc-write-access"},
             {"model-dir": "test-dir"},
             {"access-modes": "ReadWriteMany", "storage-class-name": StorageClassName.NFS, "pvc-size": "4Gi"},
-            KSERVE_OVMS_SERVING_RUNTIME_PARAMS,
+            KSERVE_MLSERVER_SERVING_RUNTIME_PARAMS,
             INFERENCE_SERVICE_PARAMS | {"deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT},
         )
     ],

@@ -20,7 +20,7 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 LOGGER = structlog.get_logger(name=__name__)
 
-VALID_OVMS_INFERENCE_BODY: dict[str, Any] = {
+VALID_MLSERVER_INFERENCE_BODY: dict[str, Any] = {
     "inputs": ONNX_INFERENCE_CONFIG["default_query_model"]["infer"]["query_input"]
 }
 

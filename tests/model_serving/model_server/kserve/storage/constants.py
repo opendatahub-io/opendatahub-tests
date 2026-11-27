@@ -1,10 +1,10 @@
 from typing import Any
 
-from utilities.constants import ModelFormat
+from utilities.constants import ModelFormat, RuntimeTemplates
 
-KSERVE_OVMS_SERVING_RUNTIME_PARAMS: dict[str, Any] = {
-    "name": "ovms-runtime",
-    "template-name": "kserve-ovms",
+KSERVE_MLSERVER_SERVING_RUNTIME_PARAMS: dict[str, Any] = {
+    "name": "mlserver-runtime",
+    "template-name": RuntimeTemplates.MLSERVER,
     "multi-model": False,
 }
 INFERENCE_SERVICE_PARAMS: dict[str, str] = {"name": ModelFormat.ONNX}

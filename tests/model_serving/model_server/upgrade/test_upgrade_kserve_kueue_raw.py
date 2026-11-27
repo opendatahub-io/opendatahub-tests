@@ -20,6 +20,7 @@ from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import
 from tests.model_serving.model_server.upgrade.utils import (
     ISVCKueueBaseline,
     get_isvc_kueue_integration_stats,
+    get_upgrade_isvc_inference_config,
     load_baseline_from_configmap,
     read_isvc_total_copies,
     verify_inference_generation,
@@ -30,7 +31,6 @@ from utilities.constants import Timeout
 from utilities.general import create_isvc_label_selector_str
 from utilities.inference_utils import Inference
 from utilities.kueue_utils import LocalQueue, check_gated_pods_and_running_pods
-from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
 
 pytestmark = [
     pytest.mark.rawdeployment,
@@ -367,7 +367,9 @@ class TestKserveKueueRawPostUpgrade:
 
         verify_kserve_kueue_upgrade_inference(
             inference_service=kserve_kueue_upgrade_inference_service,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(
+                inference_service=kserve_kueue_upgrade_inference_service
+            ),
             inference_type=Inference.INFER,
             inference_timeout=KSERVE_KUEUE_INFERENCE_TIMEOUT,
         )

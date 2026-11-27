@@ -2,6 +2,7 @@ import pytest
 
 from tests.model_serving.model_server.upgrade.utils import (
     get_isvc_baseline,
+    get_upgrade_isvc_inference_config,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
     verify_model_status_loaded,
@@ -10,8 +11,7 @@ from tests.model_serving.model_server.upgrade.utils import (
 from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-from utilities.manifests.openvino import OPENVINO_KSERVE_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_RESNET50_INFERENCE_CONFIG
 
 pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
@@ -21,7 +21,7 @@ class TestPreUpgradeModelServer:
     """Validate raw deployment model inference before an operator upgrade.
 
     Steps:
-        1. Deploy an OVMS inference service as a raw deployment.
+        1. Deploy an MLServer inference service as a raw deployment.
         2. Send an inference request via the internal HTTP route and verify a successful response.
         3. Capture baseline values (generation, restart counts) to ConfigMap.
     """
@@ -31,7 +31,7 @@ class TestPreUpgradeModelServer:
         """Test raw deployment model inference using internal route before upgrade"""
         verify_inference_response(
             inference_service=inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,
@@ -110,7 +110,7 @@ class TestPostUpgradeModelServer:
         """Test raw deployment model inference using internal route after upgrade"""
         verify_inference_response(
             inference_service=inference_service_fixture,
-            inference_config=OPENVINO_KSERVE_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTP,
             use_default_query=True,
@@ -151,7 +151,7 @@ class TestPostUpgradeNewIsvcCreation:
         """Verify inference works on a freshly created ISVC post-upgrade"""
         verify_inference_response(
             inference_service=new_isvc_inference_service_fixture,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,

@@ -6,41 +6,38 @@ from tests.model_serving.model_server.utils import verify_inference_response
 from utilities.constants import KServeDeploymentType, ModelCarImage, ModelFormat, ModelName, Protocols, RuntimeTemplates
 from utilities.inference_utils import Inference
 from utilities.infra import get_pods_by_isvc_label
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
-
-# The tests deploy an OVMS runtime, whose image is not built for arm64
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
+from utilities.manifests.onnx import ONNX_RESNET50_INFERENCE_CONFIG
 
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, serving_runtime_from_template, model_car_inference_service",
     [
         pytest.param(
-            {"name": f"{ModelFormat.OPENVINO}-model-car"},
+            {"name": f"{ModelFormat.ONNX}-model-car"},
             {
                 "name": f"{ModelName.MNIST}-runtime",
-                "template-name": RuntimeTemplates.OVMS_KSERVE,
+                "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
             },
             {
-                # Using mnist-8-1 model from OCI image
-                "storage-uri": ModelCarImage.MNIST_8_1,
+                # MLServer-compatible ModelCar (ResNet-50 `model.onnx` at the image root)
+                "storage-uri": ModelCarImage.MLSERVER_ONNX,
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
             },
             marks=[pytest.mark.rawdeployment],
             id="rawdeployment",
         ),
         pytest.param(
-            {"name": f"{ModelFormat.OPENVINO}-model-car-connection"},
+            {"name": f"{ModelFormat.ONNX}-model-car-connection"},
             {
                 "name": f"{ModelName.MNIST}-runtime",
-                "template-name": RuntimeTemplates.OVMS_KSERVE,
+                "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
             },
             {
                 # OCI injection only adds imagePullSecrets — storage-uri stays the real modelcar
                 # reference (manual 1.3).
-                "storage-uri": ModelCarImage.MNIST_8_1,
+                "storage-uri": ModelCarImage.MLSERVER_ONNX,
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
                 "connection-secret-fixture": "oci_connection_secret",
             },
@@ -54,7 +51,7 @@ class TestKserveModelCar:
     """Validate KServe model serving using OCI Model Car images for model storage.
 
     Steps:
-        1. Deploy an OVMS inference service using an OCI Model Car image (MNIST), either with a
+        1. Deploy an MLServer inference service using an OCI Model Car image (ResNet-50 ONNX), either with a
            static `storage-uri` or (for the `connection` param) a ConnectionsAPI connection Secret.
         2. Verify the predictor pod does not experience excessive container restarts.
         3. For the `connection` param, assert the ConnectionsAPI webhook injected
@@ -85,7 +82,7 @@ class TestKserveModelCar:
 
         verify_inference_response(
             inference_service=model_car_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,

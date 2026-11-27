@@ -21,16 +21,16 @@ from ocp_resources.inference_service import InferenceService
 from pyhelper_utils.shell import run_command
 
 from tests.model_serving.model_server.kserve.negative.utils import (
-    VALID_OVMS_INFERENCE_BODY,
+    VALID_MLSERVER_INFERENCE_BODY,
     assert_pods_healthy,
 )
 
 pytestmark = [
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
+    pytest.mark.usefixtures("valid_aws_config"),
 ]
 
-_VALID_BODY: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
+_VALID_BODY: str = json.dumps(VALID_MLSERVER_INFERENCE_BODY)
 
 
 def _send_request_with_token(
@@ -79,7 +79,7 @@ class TestRbacForbidden:
 
     def test_cross_namespace_token_returns_403(
         self,
-        negative_test_ovms_isvc_with_auth: InferenceService,
+        negative_test_mlserver_isvc_with_auth: InferenceService,
         cross_namespace_sa_token: str,
     ) -> None:
         """Verify that a token from a different namespace returns 403.
@@ -89,7 +89,7 @@ class TestRbacForbidden:
         Then the response must be HTTP 403 Forbidden
         """
         status_code, response_body = _send_request_with_token(
-            inference_service=negative_test_ovms_isvc_with_auth,
+            inference_service=negative_test_mlserver_isvc_with_auth,
             token=cross_namespace_sa_token,
             body=_VALID_BODY,
         )
@@ -100,7 +100,7 @@ class TestRbacForbidden:
 
     def test_unauthorized_sa_token_returns_403(
         self,
-        negative_test_ovms_isvc_with_auth: InferenceService,
+        negative_test_mlserver_isvc_with_auth: InferenceService,
         unauthorized_sa_token: str,
     ) -> None:
         """Verify that a SA token without inference roles returns 403.
@@ -110,7 +110,7 @@ class TestRbacForbidden:
         Then the response must be HTTP 403 Forbidden
         """
         status_code, response_body = _send_request_with_token(
-            inference_service=negative_test_ovms_isvc_with_auth,
+            inference_service=negative_test_mlserver_isvc_with_auth,
             token=unauthorized_sa_token,
             body=_VALID_BODY,
         )
@@ -122,7 +122,7 @@ class TestRbacForbidden:
     def test_pod_remains_healthy_after_forbidden_requests(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc_with_auth: InferenceService,
+        negative_test_mlserver_isvc_with_auth: InferenceService,
         cross_namespace_sa_token: str,
         initial_pod_state_auth: dict[str, dict[str, Any]],
     ) -> None:
@@ -134,7 +134,7 @@ class TestRbacForbidden:
         """
         for i in range(3):
             status_code, _ = _send_request_with_token(
-                inference_service=negative_test_ovms_isvc_with_auth,
+                inference_service=negative_test_mlserver_isvc_with_auth,
                 token=cross_namespace_sa_token,
                 body=_VALID_BODY,
             )
@@ -144,6 +144,6 @@ class TestRbacForbidden:
 
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc_with_auth,
+            isvc=negative_test_mlserver_isvc_with_auth,
             initial_pod_state=initial_pod_state_auth,
         )

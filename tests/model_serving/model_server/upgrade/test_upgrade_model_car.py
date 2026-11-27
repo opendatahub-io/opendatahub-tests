@@ -2,6 +2,8 @@ import pytest
 
 from tests.model_serving.model_server.upgrade.utils import (
     get_isvc_baseline,
+    get_upgrade_isvc_inference_config,
+    get_upgrade_modelcar_storage_uri,
     verify_inference_generation,
     verify_isvc_pods_not_restarted_against_baseline,
     verify_model_status_loaded,
@@ -9,9 +11,8 @@ from tests.model_serving.model_server.upgrade.utils import (
     verify_storage_uri_unchanged,
 )
 from tests.model_serving.model_server.utils import verify_inference_response
-from utilities.constants import ModelCarImage, Protocols
+from utilities.constants import Protocols
 from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
 pytestmark = pytest.mark.rawdeployment
 
@@ -37,7 +38,7 @@ class TestPreUpgradeModelCarServer:
         """Verify Model Car inference before upgrade"""
         verify_inference_response(
             inference_service=model_car_inference_service_fixture,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=model_car_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,
@@ -95,7 +96,7 @@ class TestPostUpgradeModelCarServer:
         """Verify OCI storage URI is unchanged after upgrade"""
         verify_storage_uri_unchanged(
             isvc=model_car_inference_service_fixture,
-            expected_uri=ModelCarImage.MNIST_8_1,
+            expected_uri=get_upgrade_modelcar_storage_uri(inference_service=model_car_inference_service_fixture),
         )
 
     @pytest.mark.post_upgrade
@@ -123,7 +124,7 @@ class TestPostUpgradeModelCarServer:
         """Verify Model Car inference after upgrade"""
         verify_inference_response(
             inference_service=model_car_inference_service_fixture,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=get_upgrade_isvc_inference_config(inference_service=model_car_inference_service_fixture),
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             use_default_query=True,

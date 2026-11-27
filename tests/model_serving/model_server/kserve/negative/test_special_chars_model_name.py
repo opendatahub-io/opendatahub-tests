@@ -17,14 +17,14 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.kserve.negative.utils import (
-    VALID_OVMS_INFERENCE_BODY,
+    VALID_MLSERVER_INFERENCE_BODY,
     assert_pods_healthy,
     send_inference_request,
 )
 
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
-_VALID_BODY: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
+_VALID_BODY: str = json.dumps(VALID_MLSERVER_INFERENCE_BODY)
 
 # Boundary / edge cases for model name in URL
 _SPECIAL_MODEL_NAMES: list[tuple[str, str]] = [
@@ -46,7 +46,7 @@ _EXPECTED_REJECTION_CODES: set[int] = {
     HTTPStatus.NOT_FOUND,  # 404 - model not found (most common)
     HTTPStatus.BAD_REQUEST,  # 400 - request rejected before routing
     HTTPStatus.FORBIDDEN,  # 403 - path traversal blocked at gateway
-    HTTPStatus.NOT_ACCEPTABLE,  # 406 - OVMS returns this for mangled paths
+    HTTPStatus.NOT_ACCEPTABLE,  # 406 - returned by some proxies for mangled paths
     HTTPStatus.UNPROCESSABLE_ENTITY,  # 422 - invalid model name format
     HTTPStatus.METHOD_NOT_ALLOWED,  # 405 - method not allowed on the path
 }
@@ -58,11 +58,11 @@ class TestSpecialCharsModelName:
     """Test class for verifying safe handling of special characters in model names.
 
     Preconditions:
-        - InferenceService deployed with OVMS runtime (RawDeployment)
+        - InferenceService deployed with MLServer runtime (RawDeployment)
         - Model is ready and serving
 
     Test Steps:
-        1. Create InferenceService with OVMS runtime
+        1. Create InferenceService with MLServer runtime
         2. Wait for InferenceService status = Ready
         3. Send POST to inference URL with path traversal model name
         4. Send POST to inference URL with URL-encoded path traversal
@@ -86,7 +86,7 @@ class TestSpecialCharsModelName:
     )
     def test_special_model_name_returns_4xx(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         model_name: str,
         test_id: str,
     ) -> None:
@@ -98,7 +98,7 @@ class TestSpecialCharsModelName:
         And the response should NOT contain sensitive system file contents
         """
         status_code, response_body = send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=_VALID_BODY,
             model_name=model_name,
         )
@@ -119,7 +119,7 @@ class TestSpecialCharsModelName:
     def test_pod_remains_healthy_after_special_model_name_requests(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         initial_pod_state: dict[str, dict[str, Any]],
     ) -> None:
         """Verify that the model pod remains healthy after special character model name requests.
@@ -130,13 +130,13 @@ class TestSpecialCharsModelName:
         """
         for model_name, _ in _SPECIAL_MODEL_NAMES[:5]:  # test first 5 edge cases
             send_inference_request(
-                inference_service=negative_test_ovms_isvc,
+                inference_service=negative_test_mlserver_isvc,
                 body=_VALID_BODY,
                 model_name=model_name,
             )
 
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc,
+            isvc=negative_test_mlserver_isvc,
             initial_pod_state=initial_pod_state,
         )

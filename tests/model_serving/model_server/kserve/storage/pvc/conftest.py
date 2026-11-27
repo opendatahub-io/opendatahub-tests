@@ -17,7 +17,7 @@ from tests.model_serving.model_server.kserve.storage.pvc.utils import (
     get_predictor_pod_uids,
     wait_for_rollout_complete,
 )
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, ModelFormat, ModelVersion
 from utilities.general import download_model_data
 from utilities.inference_utils import create_isvc
 from utilities.infra import get_pods_by_isvc_label
@@ -135,7 +135,8 @@ def pvc_inference_service(
         "namespace": unprivileged_model_namespace.name,
         "runtime": serving_runtime_from_template.name,
         "storage_uri": f"pvc://{model_pvc.name}/{ci_bucket_downloaded_model_data}",
-        "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        "model_format": ModelFormat.ONNX,
+        "model_version": ModelVersion.V1,
         "deployment_mode": request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT),
         "wait_for_predictor_pods": True,
     }

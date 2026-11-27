@@ -26,7 +26,14 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     wait_for_local_model_cache_nodes_downloaded,
     wait_for_shared_pvc_cache_condition,
 )
-from utilities.constants import KServeDeploymentType, ModelCarImage, ModelFormat, Protocols, StorageClassName
+from utilities.constants import (
+    KServeDeploymentType,
+    ModelCarImage,
+    ModelFormat,
+    ModelVersion,
+    Protocols,
+    StorageClassName,
+)
 from utilities.inference_utils import create_isvc
 from utilities.infra import s3_endpoint_secret
 
@@ -56,13 +63,13 @@ def modelcar_shared_pvc_cache(
     unprivileged_model_namespace: Namespace,
     shared_model_cache_pvc: PersistentVolumeClaim,
 ) -> Generator[LocalModelNamespaceCache, Any, Any]:
-    """Import the standard MNIST OCI ModelCar into the pre-provisioned RWX claim."""
+    """Import the MLServer ONNX (ResNet-50) OCI ModelCar into the pre-provisioned RWX claim."""
     with LocalModelNamespaceCache(
         client=admin_client,
-        name=f"mnist-oci-{shortuuid.uuid()[:8].lower()}",
+        name=f"onnx-oci-{shortuuid.uuid()[:8].lower()}",
         namespace=unprivileged_model_namespace.name,
-        source_model_uri=ModelCarImage.MNIST_8_1,
-        model_size="100Mi",
+        source_model_uri=ModelCarImage.MLSERVER_ONNX,
+        model_size="1Gi",
         pvc_ref=shared_model_cache_pvc.name,
     ) as cache:
         wait_for_shared_pvc_cache_condition(
@@ -100,8 +107,9 @@ def modelcar_shared_pvc_isvc(
         name=isvc_name,
         namespace=unprivileged_model_namespace.name,
         runtime=serving_runtime_from_template.name,
-        storage_uri=ModelCarImage.MNIST_8_1,
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        storage_uri=ModelCarImage.MLSERVER_ONNX,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
         min_replicas=2,
@@ -190,7 +198,7 @@ def mnist_local_model_cache(
 def mnist_onnx_local_model_cache_inference_service(
     unprivileged_client: DynamicClient,
     unprivileged_model_namespace: Namespace,
-    ovms_kserve_serving_runtime: ServingRuntime,
+    mlserver_kserve_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     mnist_local_model_cache: LocalModelNamespaceCache,
 ) -> Generator[InferenceService, Any, Any]:
@@ -204,9 +212,10 @@ def mnist_onnx_local_model_cache_inference_service(
         client=unprivileged_client,
         name=f"{Protocols.HTTP}-{ModelFormat.ONNX}-lmcache-{shortuuid.uuid()[:8].lower()}",
         namespace=unprivileged_model_namespace.name,
-        runtime=ovms_kserve_serving_runtime.name,
+        runtime=mlserver_kserve_serving_runtime.name,
         storage_uri=f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/",
-        model_format=ovms_kserve_serving_runtime.instance.spec.supportedModelFormats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
         timeout=900,

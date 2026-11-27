@@ -12,17 +12,17 @@ from kubernetes.dynamic import DynamicClient
 from ocp_resources.inference_service import InferenceService
 
 from tests.model_serving.model_server.kserve.negative.utils import (
-    VALID_OVMS_INFERENCE_BODY,
+    VALID_MLSERVER_INFERENCE_BODY,
     assert_pods_healthy,
     send_inference_request,
 )
 
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
 
 def _make_body_with_input_override(**overrides: Any) -> str:
-    """Derive a serialized body from VALID_OVMS_INFERENCE_BODY with input field overrides."""
-    body = copy.deepcopy(VALID_OVMS_INFERENCE_BODY)
+    """Derive a serialized body from VALID_MLSERVER_INFERENCE_BODY with input field overrides."""
+    body = copy.deepcopy(VALID_MLSERVER_INFERENCE_BODY)
     body["inputs"][0].update(overrides)
     return json.dumps(body)
 
@@ -36,11 +36,11 @@ class TestWrongInputDataType:
     """Test class for verifying error handling when input tensor has wrong data type.
 
     Preconditions:
-        - InferenceService deployed with OVMS runtime expecting FP32 inputs
+        - InferenceService deployed with MLServer runtime expecting FP32 inputs
         - Model is ready and serving
 
     Test Steps:
-        1. Create InferenceService with OVMS runtime
+        1. Create InferenceService with MLServer runtime
         2. Wait for InferenceService status = Ready
         3. Send inference request with string values where FP32 is expected
         4. Send inference request with mismatched datatype declaration
@@ -60,7 +60,7 @@ class TestWrongInputDataType:
     )
     def test_wrong_data_type_returns_error(
         self,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         invalid_input_body: str,
     ) -> None:
         """Verify that wrong input data types return an error status code.
@@ -70,7 +70,7 @@ class TestWrongInputDataType:
         Then the response should have HTTP status code 400 or 422
         """
         status_code, response_body = send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=invalid_input_body,
         )
 
@@ -81,7 +81,7 @@ class TestWrongInputDataType:
     def test_model_pod_remains_healthy_after_wrong_dtype(
         self,
         admin_client: DynamicClient,
-        negative_test_ovms_isvc: InferenceService,
+        negative_test_mlserver_isvc: InferenceService,
         initial_pod_state: dict[str, dict[str, Any]],
     ) -> None:
         """Verify that the model pod remains healthy after receiving wrong data type inputs.
@@ -91,11 +91,11 @@ class TestWrongInputDataType:
         Then the same pods should still be running without additional restarts
         """
         send_inference_request(
-            inference_service=negative_test_ovms_isvc,
+            inference_service=negative_test_mlserver_isvc,
             body=STRING_VALUES_AS_FP32_BODY,
         )
         assert_pods_healthy(
             admin_client=admin_client,
-            isvc=negative_test_ovms_isvc,
+            isvc=negative_test_mlserver_isvc,
             initial_pod_state=initial_pod_state,
         )

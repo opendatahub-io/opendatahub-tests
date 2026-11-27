@@ -26,6 +26,8 @@ from tests.model_serving.model_server.kserve.negative.utils import (
 )
 from utilities.constants import (
     KServeDeploymentType,
+    ModelFormat,
+    ModelVersion,
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
@@ -100,45 +102,40 @@ def invalid_s3_credentials_secret(
 
 
 @pytest.fixture(scope="package")
-def ovms_serving_runtime(
+def negative_mlserver_serving_runtime(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
 ) -> Generator[ServingRuntime, Any, Any]:
-    """Create OVMS serving runtime shared across all negative tests."""
+    """Create MLServer serving runtime shared across all negative tests."""
     with ServingRuntimeFromTemplate(
         client=admin_client,
-        name="neg-ovms-runtime",
+        name="neg-mlserver-runtime",
         namespace=negative_test_namespace.name,
-        template_name=RuntimeTemplates.OVMS_KSERVE,
+        template_name=RuntimeTemplates.MLSERVER,
         multi_model=False,
-        enable_http=True,
-        enable_grpc=False,
     ) as runtime:
         yield runtime
 
 
 @pytest.fixture(scope="package")
-def negative_test_ovms_isvc(
+def negative_test_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    ovms_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
-    """Create InferenceService with OVMS runtime shared across all negative tests."""
+    """Create InferenceService with MLServer runtime shared across all negative tests."""
     storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
-    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
-    if not supported_formats:
-        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
-
     with create_isvc(
         client=admin_client,
-        name="neg-ovms-isvc",
+        name="neg-mlserver-isvc",
         namespace=negative_test_namespace.name,
-        runtime=ovms_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=supported_formats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=True,
     ) as isvc:
@@ -146,27 +143,24 @@ def negative_test_ovms_isvc(
 
 
 @pytest.fixture(scope="class")
-def invalid_s3_credentials_ovms_isvc(
+def invalid_s3_credentials_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    ovms_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     invalid_s3_credentials_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     """InferenceService that references a real bucket path with intentionally wrong S3 keys."""
     storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
-    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
-    if not supported_formats:
-        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
-
     with create_isvc(
         client=admin_client,
         name="neg-bad-s3-isvc",
         namespace=negative_test_namespace.name,
-        runtime=ovms_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=invalid_s3_credentials_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=supported_formats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=False,
         wait=False,
@@ -176,10 +170,10 @@ def invalid_s3_credentials_ovms_isvc(
 
 
 @pytest.fixture(scope="class")
-def wrong_model_format_ovms_isvc(
+def wrong_model_format_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    ovms_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
@@ -189,7 +183,7 @@ def wrong_model_format_ovms_isvc(
         client=admin_client,
         name="neg-wrong-fmt-isvc",
         namespace=negative_test_namespace.name,
-        runtime=ovms_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
         model_format=WRONG_MODEL_FORMAT,
@@ -202,27 +196,24 @@ def wrong_model_format_ovms_isvc(
 
 
 @pytest.fixture(scope="class")
-def corrupted_model_ovms_isvc(
+def corrupted_model_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    ovms_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
 ) -> Generator[InferenceService, Any, Any]:
     """InferenceService pointing to a zero-byte / corrupted model artifact in S3."""
     storage_uri = f"s3://{ci_s3_bucket_name}/{CORRUPTED_MODEL_S3_PATH}/"
-    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
-    if not supported_formats:
-        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
-
     with create_isvc(
         client=admin_client,
         name="neg-corrupted-isvc",
         namespace=negative_test_namespace.name,
-        runtime=ovms_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=supported_formats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=False,
         wait=False,
@@ -249,24 +240,21 @@ def bad_storage_class_pvc(
 
 
 @pytest.fixture(scope="class")
-def bad_pvc_ovms_isvc(
+def bad_pvc_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    ovms_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     bad_storage_class_pvc: PersistentVolumeClaim,
 ) -> Generator[InferenceService, Any, Any]:
     """InferenceService backed by a PVC that cannot be provisioned."""
-    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
-    if not supported_formats:
-        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
-
     with create_isvc(
         client=admin_client,
         name="neg-bad-pvc-isvc",
         namespace=negative_test_namespace.name,
-        runtime=ovms_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_uri=f"pvc://{bad_storage_class_pvc.name}/models/",
-        model_format=supported_formats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=False,
         wait=False,
@@ -278,14 +266,14 @@ def bad_pvc_ovms_isvc(
 @pytest.fixture(scope="class")
 def healthy_isvc_pod_restart_baseline(
     admin_client: DynamicClient,
-    negative_test_ovms_isvc: InferenceService,
+    negative_test_mlserver_isvc: InferenceService,
 ) -> dict[str, int]:
     """Capture per-pod restart totals for the healthy ISVC before a failing neighbor is introduced."""
-    pods = get_pods_by_isvc_label(client=admin_client, isvc=negative_test_ovms_isvc)
+    pods = get_pods_by_isvc_label(client=admin_client, isvc=negative_test_mlserver_isvc)
     if not pods:
         raise AssertionError(
-            f"No pods found for InferenceService {negative_test_ovms_isvc.name!r} "
-            f"in namespace {negative_test_ovms_isvc.namespace!r} while capturing restart baseline"
+            f"No pods found for InferenceService {negative_test_mlserver_isvc.name!r} "
+            f"in namespace {negative_test_mlserver_isvc.namespace!r} while capturing restart baseline"
         )
     baseline: dict[str, int] = {}
     for pod in pods:
@@ -301,7 +289,7 @@ def healthy_isvc_pod_restart_baseline(
 @pytest.fixture(scope="class")
 def kserve_control_plane_restart_baseline(
     admin_client: DynamicClient,
-    negative_test_ovms_isvc: InferenceService,
+    negative_test_mlserver_isvc: InferenceService,
 ) -> dict[str, int]:
     """Snapshot control-plane restart totals before any failing neighbor ISVC exists."""
     applications_namespace: str = py_config["applications_namespace"]
@@ -312,36 +300,33 @@ def kserve_control_plane_restart_baseline(
 
 
 @pytest.fixture(scope="class")
-def neighbor_failing_ovms_isvc(
+def neighbor_failing_mlserver_isvc(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    ovms_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     invalid_s3_credentials_secret: Secret,
-    negative_test_ovms_isvc: InferenceService,
+    negative_test_mlserver_isvc: InferenceService,
     healthy_isvc_pod_restart_baseline: dict[str, int],
     kserve_control_plane_restart_baseline: dict[str, int],
 ) -> Generator[InferenceService, Any, Any]:
     """Failing ISVC deployed alongside a healthy neighbor for isolation testing.
 
-    Depends on ``negative_test_ovms_isvc`` to ensure the healthy ISVC
+    Depends on ``negative_test_mlserver_isvc`` to ensure the healthy ISVC
     is Ready before this failing one is introduced. Pulls in restart baselines
     only for ordering so snapshots run before this ISVC is created.
     """
     _ = (healthy_isvc_pod_restart_baseline, kserve_control_plane_restart_baseline)
     storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
-    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
-    if not supported_formats:
-        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
-
     with create_isvc(
         client=admin_client,
         name="neg-fail-neighbor-isvc",
         namespace=negative_test_namespace.name,
-        runtime=ovms_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=invalid_s3_credentials_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=supported_formats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         external_route=False,
         wait=False,
@@ -353,7 +338,7 @@ def neighbor_failing_ovms_isvc(
 @pytest.fixture(scope="class")
 def initial_pod_state(
     admin_client: DynamicClient,
-    negative_test_ovms_isvc: InferenceService,
+    negative_test_mlserver_isvc: InferenceService,
 ) -> dict[str, dict[str, Any]]:
     """Capture initial pod state (UIDs, restart counts) before tests run.
 
@@ -363,7 +348,7 @@ def initial_pod_state(
     """
     pods = get_pods_by_isvc_label(
         client=admin_client,
-        isvc=negative_test_ovms_isvc,
+        isvc=negative_test_mlserver_isvc,
     )
 
     pod_state: dict[str, dict[str, Any]] = {}
@@ -398,28 +383,25 @@ def auth_service_account(
 
 
 @pytest.fixture(scope="class")
-def negative_test_ovms_isvc_with_auth(
+def negative_test_mlserver_isvc_with_auth(
     admin_client: DynamicClient,
     negative_test_namespace: Namespace,
-    ovms_serving_runtime: ServingRuntime,
+    negative_mlserver_serving_runtime: ServingRuntime,
     ci_s3_bucket_name: str,
     negative_test_s3_secret: Secret,
     auth_service_account: ServiceAccount,
 ) -> Generator[InferenceService, Any, Any]:
-    """OVMS InferenceService with auth enabled (kube-rbac-proxy sidecar)."""
+    """MLServer InferenceService with auth enabled (kube-rbac-proxy sidecar)."""
     storage_uri = f"s3://{ci_s3_bucket_name}/test-dir/"
-    supported_formats = ovms_serving_runtime.instance.spec.supportedModelFormats
-    if not supported_formats:
-        raise ValueError(f"ServingRuntime '{ovms_serving_runtime.name}' has no supportedModelFormats")
-
     with create_isvc(
         client=admin_client,
-        name="neg-auth-ovms-isvc",
+        name="neg-auth-mlserver-isvc",
         namespace=negative_test_namespace.name,
-        runtime=ovms_serving_runtime.name,
+        runtime=negative_mlserver_serving_runtime.name,
         storage_key=negative_test_s3_secret.name,
         storage_path=urlparse(storage_uri).path,
-        model_format=supported_formats[0].name,
+        model_format=ModelFormat.ONNX,
+        model_version=ModelVersion.V1,
         deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
         model_service_account=auth_service_account.name,
         enable_auth=True,
@@ -431,14 +413,14 @@ def negative_test_ovms_isvc_with_auth(
 @pytest.fixture(scope="class")
 def auth_view_role(
     unprivileged_client: DynamicClient,
-    negative_test_ovms_isvc_with_auth: InferenceService,
+    negative_test_mlserver_isvc_with_auth: InferenceService,
 ) -> Generator[Role, Any, Any]:
     """Role granting view access to the auth-protected ISVC."""
     with create_isvc_view_role(
         client=unprivileged_client,
-        isvc=negative_test_ovms_isvc_with_auth,
-        name=f"{negative_test_ovms_isvc_with_auth.name}-view",
-        resource_names=[negative_test_ovms_isvc_with_auth.name],
+        isvc=negative_test_mlserver_isvc_with_auth,
+        name=f"{negative_test_mlserver_isvc_with_auth.name}-view",
+        resource_names=[negative_test_mlserver_isvc_with_auth.name],
     ) as role:
         yield role
 
@@ -510,12 +492,12 @@ def unauthorized_sa_token(
 @pytest.fixture(scope="class")
 def initial_pod_state_auth(
     admin_client: DynamicClient,
-    negative_test_ovms_isvc_with_auth: InferenceService,
+    negative_test_mlserver_isvc_with_auth: InferenceService,
 ) -> dict[str, dict[str, Any]]:
     """Capture pod state for the auth-protected ISVC."""
     pods = get_pods_by_isvc_label(
         client=admin_client,
-        isvc=negative_test_ovms_isvc_with_auth,
+        isvc=negative_test_mlserver_isvc_with_auth,
     )
 
     pod_state: dict[str, dict[str, Any]] = {}

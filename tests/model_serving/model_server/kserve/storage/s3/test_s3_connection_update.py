@@ -5,7 +5,6 @@ from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
 
 from tests.model_serving.model_server.kserve.storage.s3.constants import (
-    AGE_GENDER_INFERENCE_TYPE,
     MINIO_CONNECTION_DATA_CONNECTION_CONFIG,
     MINIO_INFERENCE_CONFIG,
     MINIO_RUNTIME_CONFIG,
@@ -21,14 +20,16 @@ from tests.model_serving.model_server.utils import (
     verify_inference_response,
 )
 from utilities.constants import KServeDeploymentType, MinIo, Protocols, Timeout
-from utilities.inference_utils import create_isvc
-from utilities.manifests.openvino import OPENVINO_INFERENCE_CONFIG
+from utilities.inference_utils import Inference, create_isvc
+from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+
+MODEL_ENV_VARIABLES = [{"name": key, "value": value} for key, value in MINIO_INFERENCE_CONFIG["env-vars"].items()]
 
 pytestmark = [pytest.mark.tier1, pytest.mark.rawdeployment, pytest.mark.minio]
 
 
 @pytest.mark.parametrize(
-    "unprivileged_model_namespace, minio_pod, unprivileged_minio_data_connection, ovms_kserve_serving_runtime",
+    "unprivileged_model_namespace, minio_pod, unprivileged_minio_data_connection, mlserver_kserve_serving_runtime",
     [
         pytest.param(
             {"name": f"{MinIo.Metadata.NAME}-connection-update"},
@@ -48,7 +49,7 @@ class TestS3ConnectionUpdate:
         unprivileged_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
         unprivileged_minio_data_connection: Secret,
-        ovms_kserve_serving_runtime: ServingRuntime,
+        mlserver_kserve_serving_runtime: ServingRuntime,
     ) -> None:
         """Test steps:
 
@@ -64,8 +65,9 @@ class TestS3ConnectionUpdate:
             namespace=unprivileged_model_namespace.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             model_format=MINIO_INFERENCE_CONFIG["model-format"],
-            runtime=ovms_kserve_serving_runtime.name,
+            runtime=mlserver_kserve_serving_runtime.name,
             model_version=MINIO_INFERENCE_CONFIG["model-version"],
+            model_env_variables=MODEL_ENV_VARIABLES,
             external_route=True,
             wait=False,
             wait_for_predictor_pods=False,
@@ -89,8 +91,8 @@ class TestS3ConnectionUpdate:
             )
             verify_inference_response(
                 inference_service=isvc,
-                inference_config=OPENVINO_INFERENCE_CONFIG,
-                inference_type=AGE_GENDER_INFERENCE_TYPE,
+                inference_config=ONNX_INFERENCE_CONFIG,
+                inference_type=Inference.INFER,
                 protocol=Protocols.HTTPS,
                 use_default_query=True,
             )
@@ -100,7 +102,7 @@ class TestS3ConnectionUpdate:
         unprivileged_client: DynamicClient,
         unprivileged_model_namespace: Namespace,
         unprivileged_minio_data_connection: Secret,
-        ovms_kserve_serving_runtime: ServingRuntime,
+        mlserver_kserve_serving_runtime: ServingRuntime,
     ) -> None:
         """Test steps:
 
@@ -116,7 +118,7 @@ class TestS3ConnectionUpdate:
             namespace=unprivileged_model_namespace.name,
             deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
             model_format=MINIO_INFERENCE_CONFIG["model-format"],
-            runtime=ovms_kserve_serving_runtime.name,
+            runtime=mlserver_kserve_serving_runtime.name,
             model_version=MINIO_INFERENCE_CONFIG["model-version"],
             external_route=True,
             connections=unprivileged_minio_data_connection.name,

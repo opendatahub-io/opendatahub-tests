@@ -18,7 +18,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     wait_for_isvc_model_status_states,
 )
 
-pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")]
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
 
 
 @pytest.mark.tier3
@@ -28,12 +28,12 @@ class TestModelFormatMismatch:
     def test_isvc_reports_failed_to_load_with_wrong_model_format(
         self,
         admin_client: DynamicClient,
-        wrong_model_format_ovms_isvc: InferenceService,
+        wrong_model_format_mlserver_isvc: InferenceService,
     ) -> None:
         """Given a model format not in the runtime's supportedModelFormats, KServe must reject the spec.
 
         When:
-            An OVMS RawDeployment InferenceService is created declaring a format
+            An MLServer RawDeployment InferenceService is created declaring a format
             not listed in the runtime's ``supportedModelFormats``.
 
         Then:
@@ -48,7 +48,7 @@ class TestModelFormatMismatch:
         )
         try:
             wait_for_isvc_model_status_states(
-                isvc=wrong_model_format_ovms_isvc,
+                isvc=wrong_model_format_mlserver_isvc,
                 target_model_state="FailedToLoad",
                 transition_status="InvalidSpec",
             )

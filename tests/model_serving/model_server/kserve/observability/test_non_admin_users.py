@@ -6,17 +6,14 @@ from tests.model_serving.model_server.utils import (
 )
 from utilities.constants import (
     KServeDeploymentType,
+    ModelCarImage,
     ModelName,
-    ModelStorage,
     Protocols,
     RuntimeTemplates,
 )
 from utilities.inference_utils import Inference
-from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
+from utilities.manifests.onnx import ONNX_RESNET50_INFERENCE_CONFIG
 from utilities.monitoring import validate_metrics_field
-
-# The test deploys an OVMS runtime, whose image is not built for arm64
-pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
 
 
 @pytest.mark.parametrize(
@@ -26,11 +23,11 @@ pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
             {"name": "test-non-admin-metrics"},
             {
                 "name": f"{ModelName.MNIST}-runtime",
-                "template-name": RuntimeTemplates.OVMS_KSERVE,
+                "template-name": RuntimeTemplates.MLSERVER,
                 "multi-model": False,
             },
             {
-                "storage-uri": ModelStorage.OCI.MNIST_8_1,
+                "storage-uri": ModelCarImage.MLSERVER_ONNX,
                 "deployment-mode": KServeDeploymentType.RAW_DEPLOYMENT,
             },
         )
@@ -43,7 +40,7 @@ class TestRawUnprivilegedUserMetrics:
     """Validate that an unprivileged user can access model metrics via UserWorkloadMonitoring.
 
     Steps:
-        1. Deploy an OVMS model car inference service as a non-admin user with metrics enabled.
+        1. Deploy an MLServer model car inference service as a non-admin user with metrics enabled.
         2. Send multiple inference requests to the model.
         3. Query Prometheus and verify the success request count matches expectations.
     """
@@ -62,15 +59,15 @@ class TestRawUnprivilegedUserMetrics:
 
         run_inference_multiple_times(
             isvc=model_car_inference_service,
-            inference_config=ONNX_INFERENCE_CONFIG,
+            inference_config=ONNX_RESNET50_INFERENCE_CONFIG,
             inference_type=Inference.INFER,
             protocol=Protocols.HTTPS,
             iterations=total_runs,
         )
 
         metrics_query = (
-            f'ovms_requests_success{{namespace="{model_car_inference_service.namespace}", '
-            f'name="{model_car_inference_service.name}"}}'
+            f'model_infer_request_success_total{{namespace="{model_car_inference_service.namespace}", '
+            f'model="{model_car_inference_service.name}"}}'
         )
 
         validate_metrics_field(
