@@ -43,3 +43,7 @@ class AiSafetyImages:
         "quay.io/trustyai_testing/nonexistent-image"
         "@sha256:0000000000000000000000000000000000000000000000000000000000000000"
     )
+    # IBM CLEAR community adapter (eval-hub-contrib). Digest pins v0.7.2 multi-arch manifest.
+    CLEAR_ADAPTER: str = (
+        "quay.io/evalhub/community-ibm-clear@sha256:283c317104df80e552ec5c76bb0efa9b485674404d2ec8532a1ca3bfe7e3e954"
+    )
