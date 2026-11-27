@@ -193,6 +193,46 @@ def wait_for_ai_guardrail_bound(ai_guardrail: AIGuardrail, timeout: int = 300) -
         )
 
 
+def _ai_guardrail_binding_withdrawn(ai_guardrail: AIGuardrail, reason: str) -> bool:
+    status = ai_guardrail.instance.status or {}
+    accepted = next(
+        (condition for condition in status.get("conditions") or [] if condition["type"] == "Accepted"),
+        None,
+    )
+    return bool(
+        accepted
+        and accepted["status"] == "False"
+        and accepted.get("reason") == reason
+        and not status.get("bindingRevision")
+        and not status.get("providerEndpoint")
+    )
+
+
+def wait_for_ai_guardrail_binding_withdrawn(ai_guardrail: AIGuardrail, reason: str, timeout: int = 300) -> None:
+    """Wait until an AIGuardrail is refused and no longer publishes its provider binding.
+
+    Args:
+        ai_guardrail: AIGuardrail to watch.
+        reason: Expected reason of the Accepted=False condition.
+        timeout: Maximum seconds to wait.
+    """
+    try:
+        for withdrawn in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=_ai_guardrail_binding_withdrawn,
+            ai_guardrail=ai_guardrail,
+            reason=reason,
+        ):
+            if withdrawn:
+                return
+    except TimeoutExpiredError:
+        pytest.fail(
+            f"AIGuardrail {ai_guardrail.namespace}/{ai_guardrail.name} binding not withdrawn with reason {reason}; "
+            f"status={(ai_guardrail.instance.status or {})}"
+        )
+
+
 def _guardrail_checks_compiled(admin_client: DynamicClient, check_headers: list[str]) -> bool:
     plugins_configmap = ConfigMap(
         client=admin_client,
