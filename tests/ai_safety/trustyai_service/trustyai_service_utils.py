@@ -4,6 +4,7 @@ import os
 from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import quote
 
 import requests
 import structlog
@@ -53,6 +54,9 @@ class TrustyAIServiceClient:
         )
         REQUESTS: str = "requests"  # Endpoint used to get all scheduled metrics for a given metric type
         INFO_NAMES: str = "info/names"  # Endpoint used to apply name mappings
+        INFO_INFERENCE_IDS: str = "info/inference/ids"  # Endpoint used to list stored inference IDs
+        EXPLAINER_LOCAL_LIME: str = "explainers/local/lime"  # Local LIME explanation endpoint
+        EXPLAINER_LOCAL_SHAP: str = "explainers/local/shap"  # Local SHAP explanation endpoint
 
     def __init__(self, token: str, service: TrustyAIService, client: DynamicClient):
         self.token = token
@@ -91,6 +95,7 @@ class TrustyAIServiceClient:
         data: str | bytes | None = None,
         json: dict[str, Any] | None = None,
         extra_headers: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> Any:
         """Sends HTTP request to specified TrustyAIService endpoint.
 
@@ -100,6 +105,7 @@ class TrustyAIServiceClient:
             data (str | bytes | None): Request body data.
             json (dict[str, Any] | None): JSON data to send.
             extra_headers (dict[str, str] | None): Additional headers to merge with defaults.
+            timeout (float | None): Optional request timeout in seconds.
 
         Returns:
             Any: Response from the request.
@@ -110,7 +116,9 @@ class TrustyAIServiceClient:
 
         url = f"https://{self.service_route.host}/{endpoint.lstrip('/')}"
         headers = {**self.headers, **(extra_headers or {})}
-        base_kwargs = {"url": url, "headers": headers, "verify": self.cert_path}
+        base_kwargs: dict[str, Any] = {"url": url, "headers": headers, "verify": self.cert_path}
+        if timeout is not None:
+            base_kwargs["timeout"] = timeout
 
         method = method.upper()
         if method not in ("GET", "POST", "DELETE"):
@@ -121,6 +129,57 @@ class TrustyAIServiceClient:
             return requests.post(**base_kwargs, data=data, json=json)  # type: ignore[arg-type]
         elif method == "DELETE":
             return requests.delete(**base_kwargs, json=json)  # type: ignore[arg-type]
+
+    def get_inference_ids(
+        self,
+        model_name: str,
+        inference_type: str = "organic",
+        limit: int = 10000,
+        timeout: float | None = None,
+    ) -> requests.Response:
+        """Gets stored inference IDs for a model.
+
+        Args:
+            model_name (str): Stored TrustyAI model name.
+            inference_type (str): Inference type filter accepted by the service.
+            limit (int): Maximum number of IDs to return.
+            timeout (float | None): Optional request timeout in seconds.
+
+        Returns:
+            requests.Response: Response containing the stored inference IDs.
+        """
+        endpoint = (
+            f"{self.Endpoints.INFO_INFERENCE_IDS}/{quote(model_name, safe='')}"
+            f"?type={quote(inference_type, safe='')}&limit={limit}"
+        )
+        return self._send_request(endpoint=endpoint, method="GET", timeout=timeout)
+
+    def request_local_explanation(
+        self,
+        algorithm: str,
+        payload: dict[str, Any],
+        timeout: float | None = None,
+    ) -> requests.Response:
+        """Requests one local LIME or SHAP explanation.
+
+        Args:
+            algorithm (str): Local explainer name, either ``lime`` or ``shap``.
+            payload (dict[str, Any]): Local explanation request body.
+            timeout (float | None): Optional request timeout in seconds.
+
+        Returns:
+            requests.Response: Response from the local explainer endpoint.
+
+        Raises:
+            ValueError: If the algorithm is not supported.
+        """
+        endpoints = {
+            "lime": self.Endpoints.EXPLAINER_LOCAL_LIME,
+            "shap": self.Endpoints.EXPLAINER_LOCAL_SHAP,
+        }
+        if algorithm not in endpoints:
+            raise ValueError(f"Unsupported local explanation algorithm: {algorithm}")
+        return self._send_request(endpoint=endpoints[algorithm], method="POST", json=payload, timeout=timeout)
 
     def get_model_metadata(self) -> requests.Response:
         """Gets metadata information about the model from TrustyAIService.
@@ -133,11 +192,13 @@ class TrustyAIServiceClient:
     def upload_data(
         self,
         data_path: str,
+        timeout: float | None = None,
     ) -> requests.Response:
         """Uploads data file to TrustyAIService.
 
         Args:
             data_path (str): Path to data file to upload.
+            timeout (float | None): Optional request timeout in seconds.
 
         Returns:
             requests.Response: Response from upload request.
@@ -147,7 +208,12 @@ class TrustyAIServiceClient:
             data = file.read()
 
         LOGGER.info(f"Uploading data to TrustyAIService: {data_path}")
-        return self._send_request(endpoint=self.Endpoints.DATA_UPLOAD, method="POST", data=data)
+        return self._send_request(
+            endpoint=self.Endpoints.DATA_UPLOAD,
+            method="POST",
+            data=data,
+            timeout=timeout,
+        )
 
     def upload_gzip_data(self, data_path: str) -> requests.Response:
         """Uploads gzip-compressed data to TrustyAI's /data/upload endpoint.
@@ -395,7 +461,9 @@ def wait_for_isvc_deployment_registered_by_trustyai_service(
     """
     label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="deployment", runtime_name=runtime_name)
     pod_label_selector = create_isvc_label_selector_str(isvc=isvc, resource_type="pod", runtime_name=runtime_name)
-    trustyai_service = TrustyAIService(name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True)
+    trustyai_service = TrustyAIService(
+        client=client, name=TRUSTYAI_SERVICE_NAME, namespace=isvc.namespace, ensure_exists=True
+    )
 
     expected_sink_host = f"{trustyai_service.name}.{isvc.namespace}.svc.cluster.local"
 
