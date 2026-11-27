@@ -21,7 +21,8 @@ workbenches/
 |   |       |-- test_upgrade_stopped.py   # Stopped notebook stays stopped
 |   |       +-- test_upgrade_creation.py  # New notebook + mutating webhook (post only)
 |   +-- operator/
-|       +-- test_imagestream_health.py    # ImageStream validation tests
+|       |-- test_imagestream_health.py    # ImageStream validation tests
+|       +-- test_workbenches_module_health.py  # Platform-to-module handoff
 +-- notebook_images/                      # N-1 workbench image upgrade survival tests
     |-- utils.py                          # Image resolution, log/HTTP validation helpers
     +-- upgrade/
@@ -35,6 +36,7 @@ workbenches/
 
 ### Current Test Suites
 
+- **`notebooks_server/operator/test_workbenches_module_health.py`** - Read-only smoke and component health check on modular installs with Workbenches managed in the DSC. Verifies `default-workbenches` is ready for its current generation and reports the `platformVersion` supplied by `odh-workbenches-config` in the applications namespace.
 - **`notebooks_server/operator/test_imagestream_health.py`** - Validates that ImageStreams are properly imported and resolved. Uses compound label selectors (`opendatahub.io/notebook-image` or `opendatahub.io/runtime-image` combined with `app.kubernetes.io/part-of`) to scope checks per component. Validates correct ImageStream counts, tag digest references (`@sha256:`), and `ImportSuccess` conditions for workbench notebook images (11 expected), workbench runtime images (14 expected), and trainer images (3 expected)
 - **`notebooks_server/controller/test_spawning.py`** - Tests basic notebook creation via Notebook CR and validates pod creation. Also tests Auth proxy container resource customization via annotations
 - **`notebooks_server/controller/test_custom_images.py`** - Validates custom workbench images contain required Python packages by spawning a workbench, installing any missing packages, and executing import verification
@@ -44,7 +46,8 @@ workbenches/
 ## Test Markers
 
 ```python
-@pytest.mark.smoke         # Quick validation tests (imagestream health, basic spawning)
+@pytest.mark.smoke         # Core checks (module health, ImageStreams, basic spawning)
+@pytest.mark.component_health  # Component readiness checks
 @pytest.mark.tier1         # Comprehensive validation tests
 @pytest.mark.slow          # Long-running tests (custom image validation)
 @pytest.mark.pre_upgrade   # Tests to run before platform upgrade
@@ -62,6 +65,9 @@ uv run pytest tests/workbenches/
 ### Run Tests by Component
 
 ```bash
+# Run the Workbenches module health check on a supported modular cluster
+uv run pytest tests/workbenches/notebooks_server/operator/test_workbenches_module_health.py
+
 # Run ImageStream health tests
 uv run pytest tests/workbenches/notebooks_server/operator/test_imagestream_health.py
 
@@ -90,6 +96,17 @@ uv run pytest --post-upgrade tests/workbenches/notebook_images/upgrade/
 # Run smoke tests only
 uv run pytest -m smoke tests/workbenches/
 ```
+
+### Preflight for Dedicated Modular Workbenches Jobs
+
+For jobs that require modular, platform-managed Workbenches, run this check before the rest of the Workbenches suite:
+
+```bash
+uv run pytest --junitxml=workbenches-preflight.xml \
+  tests/workbenches/notebooks_server/operator/test_workbenches_module_health.py::test_workbenches_module_health
+```
+
+Proceed only if the command succeeds **and** the report records one passing test. Treat a skip as a provisioning failure in these jobs; pytest can exit successfully for a skipped test, even with `-x`. In general-purpose runs, legacy installations and DSCs that do not manage Workbenches are expected skips (`SKIP_EXPECTED_LEGACY_WORKBENCHES` and `SKIP_EXPECTED_WORKBENCHES_NOT_MANAGED` respectively). Missing resources or failure to converge on an in-scope installation remain test failures.
 
 ## Additional Resources
 
