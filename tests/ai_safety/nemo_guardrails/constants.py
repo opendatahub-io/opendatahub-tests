@@ -97,3 +97,25 @@ CLEAN_PROMPT = "What is the weather like today?"
 # NeMo Guardrails API endpoints
 CHAT_ENDPOINT = "/v1/chat/completions"
 CHECK_ENDPOINT = "/v1/guardrail/checks"
+
+# TrustyAI admin discoverability endpoints (admin service port / kube-rbac-proxy-admin)
+ADMIN_SERVICE_PORT = 444
+ADMIN_INFO_ENDPOINT = "/admin/info"
+ADMIN_INFO_RAILS_ENDPOINT = "/admin/info/rails"
+ADMIN_INFO_ACTIONS_ENDPOINT = "/admin/info/actions"
+ADMIN_INFO_UNKNOWN_SUBPATH = "/admin/info/does-not-exist"
+INVALID_BEARER_TOKEN = "totally-invalid"  # pragma: allowlist secret
+
+# In-pod token files mounted on the admin API caller pod (avoid logging bearer tokens)
+ADMIN_VALID_TOKEN_FILE = "/var/run/secrets/nemo-admin-tokens/valid/token"
+ADMIN_INVALID_TOKEN_FILE = "/var/run/secrets/nemo-admin-tokens/invalid/token"
+
+# Expected fork endpoint catalog entries exposed by GET /admin/info
+EXPECTED_ADMIN_CATALOG_PATHS = (
+    ADMIN_INFO_ENDPOINT,
+    ADMIN_INFO_RAILS_ENDPOINT,
+    ADMIN_INFO_ACTIONS_ENDPOINT,
+    CHECK_ENDPOINT,
+)
+
+NEMO_API_TOKEN_SECRET_VALUE = "test-token-123"  # pragma: allowlist secret
