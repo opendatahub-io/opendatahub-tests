@@ -3,6 +3,7 @@
 - Remember [The Zen of Python](https://www.python.org/dev/peps/pep-0020/)
 - The repository styleguide is based on the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
 - The repository uses [pre-commit](https://pre-commit.com/) to enforce the styleguide.
+- Commit messages must include `Signed-off-by` and follow Conventional Commits; see [Commit messages](DEVELOPER_GUIDE.md#commit-messages).
 
 ## Naming
 

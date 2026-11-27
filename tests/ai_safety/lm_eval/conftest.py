@@ -3,6 +3,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+import structlog
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
@@ -16,6 +17,7 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 from ocp_resources.serving_runtime import ServingRuntime
 from pytest import Config, FixtureRequest
+from pytest_testconfig import config as py_config
 
 from tests.ai_safety.image_constants import AiSafetyImages
 from tests.ai_safety.lm_eval.constants import (
@@ -26,9 +28,18 @@ from tests.ai_safety.lm_eval.constants import (
     LMEVAL_OCI_TAG,
 )
 from tests.ai_safety.lm_eval.utils import get_lmevaljob_pod
-from utilities.constants import ApiGroups, KServeDeploymentType, Labels, MinIo, Protocols, RuntimeTemplates
+from utilities.constants import (
+    ApiGroups,
+    KServeDeploymentType,
+    Labels,
+    OCIRegistry,
+    Protocols,
+    RuntimeTemplates,
+    SeaweedFs,
+)
 from utilities.exceptions import MissingParameter
-from utilities.general import b64_encoded_string
+from utilities.general import b64_encoded_string, get_s3_secret_dict
+from utilities.image_constants import SharedImages
 from utilities.inference_utils import create_isvc
 from utilities.resources.route import Route as TLSRoute
 from utilities.serving_runtime import ServingRuntimeFromTemplate
@@ -36,6 +47,8 @@ from utilities.serving_runtime import ServingRuntimeFromTemplate
 VLLM_EMULATOR: str = "vllm-emulator"
 VLLM_EMULATOR_PORT: int = 8000
 LMEVALJOB_NAME: str = "lmeval-test-job"
+
+LOGGER = structlog.get_logger(name=__name__)
 
 
 @pytest.fixture(scope="function")
@@ -158,6 +171,143 @@ def oci_credentials_secret(
         yield secret
 
 
+@pytest.fixture(scope="class")
+def oci_registry_seaweedfs_secret(
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+    seaweedfs_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """SeaweedFS storage credentials in the OCI registry namespace."""
+    seaweedfs_fqdn = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
+    with Secret(
+        client=admin_client,
+        name="oci-registry-seaweedfs-credentials",
+        namespace=oci_namespace.name,
+        data_dict=get_s3_secret_dict(
+            aws_access_key=SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            aws_secret_access_key=SeaweedFs.Credentials.SECRET_KEY_VALUE,
+            aws_s3_bucket=SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+            aws_s3_endpoint=f"http://{seaweedfs_fqdn}:{SeaweedFs.Metadata.DEFAULT_PORT}",
+            aws_default_region=OCIRegistry.Storage.STORAGE_DRIVER_REGION,
+        ),
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def oci_registry_pod_with_seaweedfs(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+    seaweedfs_service: Service,
+    oci_registry_seaweedfs_secret: Secret,
+) -> Generator[Pod, Any, Any]:
+    """OCI registry backed by the shared SeaweedFS S3 API, with credentials supplied by a Secret.
+
+    Uses zot, except on ppc64le clusters where a multi-arch registry image is used instead.
+    """
+    fixture_config = getattr(request, "param", {})
+    is_ppc64le = py_config.get("cluster_architecture") == "ppc64le"
+    pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
+
+    if labels := fixture_config.get("labels"):
+        pod_labels.update(labels)
+
+    seaweedfs_fqdn = f"{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local"
+    seaweedfs_endpoint = f"{seaweedfs_fqdn}:{SeaweedFs.Metadata.DEFAULT_PORT}"
+
+    # The multi-arch registry image is configured through REGISTRY_* env vars instead of ZOT_*
+    if is_ppc64le:
+        s3_prefix = "REGISTRY_STORAGE_S3_"
+        registry_env = [
+            {"name": "REGISTRY_STORAGE", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+            {
+                "name": "REGISTRY_HTTP_ADDR",
+                "value": f"{OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS}:{OCIRegistry.Metadata.DEFAULT_PORT}",
+            },
+            {"name": "REGISTRY_LOG_LEVEL", "value": "info"},
+        ]
+    else:
+        s3_prefix = "ZOT_STORAGE_STORAGEDRIVER_"
+        registry_env = [
+            {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
+            {"name": "ZOT_HTTP_ADDRESS", "value": OCIRegistry.Metadata.DEFAULT_HTTP_ADDRESS},
+            {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
+            {"name": "ZOT_LOG_LEVEL", "value": "info"},
+        ]
+
+    with Pod(
+        client=admin_client,
+        name=OCIRegistry.Metadata.NAME,
+        namespace=oci_namespace.name,
+        containers=[
+            {
+                "args": fixture_config.get("args"),
+                "env": [
+                    *registry_env,
+                    {
+                        "name": f"{s3_prefix}ROOTDIRECTORY",
+                        "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
+                    },
+                    {
+                        "name": f"{s3_prefix}BUCKET",
+                        "value": SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS,
+                    },
+                    {"name": f"{s3_prefix}REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
+                    {"name": f"{s3_prefix}REGIONENDPOINT", "value": f"http://{seaweedfs_endpoint}"},
+                    {
+                        "name": f"{s3_prefix}ACCESSKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": oci_registry_seaweedfs_secret.name, "key": "AWS_ACCESS_KEY_ID"},
+                        },
+                    },
+                    {
+                        "name": f"{s3_prefix}SECRETKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": oci_registry_seaweedfs_secret.name,
+                                "key": "AWS_SECRET_ACCESS_KEY",
+                            },
+                        },
+                    },
+                    {
+                        "name": f"{s3_prefix}SECURE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
+                    },
+                    {
+                        "name": f"{s3_prefix}FORCEPATHSTYLE",
+                        "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_FORCEPATHSTYLE,
+                    },
+                ],
+                "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "name": OCIRegistry.Metadata.NAME,
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "volumeMounts": [
+                    {
+                        "name": "zot-data",
+                        "mountPath": "/var/lib/registry",
+                    }
+                ],
+            }
+        ],
+        volumes=[
+            {
+                "name": "zot-data",
+                "emptyDir": {},
+            }
+        ],
+        label=pod_labels,
+        annotations=fixture_config.get("annotations"),
+    ) as oci_pod:
+        oci_pod.wait_for_condition(condition="Ready", status="True")
+        yield oci_pod
+
+
 @pytest.fixture(scope="function")
 def lmevaljob_local_offline_oci(
     request: FixtureRequest,
@@ -165,7 +315,7 @@ def lmevaljob_local_offline_oci(
     model_namespace: Namespace,
     patched_dsc_lmeval_allow_all: DataScienceCluster,
     oci_credentials_secret: Secret,
-    oci_registry_pod_with_minio: Pod,
+    oci_registry_pod_with_seaweedfs: Pod,
     lmeval_data_downloader_pod: Pod,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
@@ -209,6 +359,7 @@ def lmevaljob_vllm_emulator(
     vllm_emulator_deployment: Deployment,
     vllm_emulator_service: Service,
     vllm_emulator_route: Route,
+    lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
         client=admin_client,
@@ -220,7 +371,23 @@ def lmevaljob_vllm_emulator(
         batch_size="1",
         allow_online=True,
         allow_code_execution=False,
+        limit="0.01",
         outputs={"pvcManaged": {"size": "5Gi"}},
+        pod={
+            "container": {
+                "env": [
+                    {
+                        "name": "HF_TOKEN",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": lmeval_hf_access_token.name,
+                                "key": "HF_ACCESS_TOKEN",
+                            },
+                        },
+                    },
+                ],
+            },
+        },
         model_args=[
             {"name": "model", "value": "emulatedModel"},
             {
@@ -376,53 +543,21 @@ def vllm_emulator_route(
 
 
 @pytest.fixture(scope="function")
-def lmeval_minio_deployment(
-    admin_client: DynamicClient, minio_namespace: Namespace, pvc_minio_namespace: PersistentVolumeClaim
-) -> Generator[Deployment, Any, Any]:
-    minio_app_label = {"app": MinIo.Metadata.NAME}
-    # TODO: Unify with minio_llm_deployment fixture once datasets and models are in new model image
-    with Deployment(
-        client=admin_client,
-        name=MinIo.Metadata.NAME,
-        namespace=minio_namespace.name,
-        replicas=1,
-        selector={"matchLabels": minio_app_label},
-        template={
-            "metadata": {"labels": minio_app_label},
-            "spec": {
-                "volumes": [
-                    {"name": "minio-storage", "persistentVolumeClaim": {"claimName": pvc_minio_namespace.name}}
-                ],
-                "containers": [
-                    {
-                        "name": MinIo.Metadata.NAME,
-                        "image": AiSafetyImages.MINIO_SERVER,
-                        "args": ["server", "/data", "--console-address", ":9001"],
-                        "env": [
-                            {"name": "MINIO_ROOT_USER", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
-                            {"name": "MINIO_ROOT_PASSWORD", "value": MinIo.Credentials.SECRET_KEY_VALUE},
-                        ],
-                        "ports": [{"containerPort": MinIo.Metadata.DEFAULT_PORT}, {"containerPort": 9001}],
-                        "volumeMounts": [{"name": "minio-storage", "mountPath": "/data"}],
-                    }
-                ],
-            },
-        },
-        label=minio_app_label,
-        wait_for_resource=True,
-    ) as deployment:
-        deployment.wait_for_replicas(timeout=1200)
-        yield deployment
-
-
-@pytest.fixture(scope="function")
-def lmeval_minio_copy_pod(
-    admin_client: DynamicClient, minio_namespace: Namespace, lmeval_minio_deployment: Deployment, minio_service: Service
+def lmeval_seaweedfs_copy_pod(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+    seaweedfs_pod: Pod,
+    seaweedfs_service: Service,
 ) -> Generator[Pod, Any, Any]:
+    """Copy the lmeval dataset and flan model fixtures into the shared SeaweedFS bucket."""
+    seaweedfs_filer_endpoint = (
+        f"http://{seaweedfs_service.name}.{seaweedfs_service.namespace}.svc.cluster.local:"
+        f"{SeaweedFs.Metadata.FILER_PORT}/buckets/{SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS}"
+    )
     with Pod(
         client=admin_client,
-        name="copy-to-minio",
-        namespace=minio_namespace.name,
+        name="copy-to-seaweedfs",
+        namespace=seaweedfs_namespace.name,
         restart_policy="Never",
         volumes=[{"name": "shared-data", "emptyDir": {}}],
         init_containers=[
@@ -455,16 +590,14 @@ def lmeval_minio_copy_pod(
         ],
         containers=[
             {
-                "name": "minio-uploader",
-                "image": AiSafetyImages.MINIO_MC,
+                "name": "seaweedfs-uploader",
+                "image": SharedImages.SEAWEEDFS,
                 "command": ["/bin/sh", "-c"],
                 "args": [
-                    f"export MC_CONFIG_DIR=/shared/.mc && "
-                    f"mc alias set myminio http://{minio_service.name}:{MinIo.Metadata.DEFAULT_PORT} "
-                    f"{MinIo.Credentials.ACCESS_KEY_VALUE} {MinIo.Credentials.SECRET_KEY_VALUE} && "
-                    "mc mb --ignore-existing myminio/models && "
-                    "mc cp --recursive /shared/datasets/ myminio/models/datasets/ && "
-                    "mc cp --recursive /shared/flan/ myminio/models/flan/"
+                    (
+                        f"/usr/bin/weed filer.copy /shared/datasets/ {seaweedfs_filer_endpoint}/ && "
+                        f"/usr/bin/weed filer.copy /shared/flan/ {seaweedfs_filer_endpoint}/"
+                    ),
                 ],
                 "volumeMounts": [{"name": "shared-data", "mountPath": "/shared"}],
                 "securityContext": {
@@ -482,13 +615,46 @@ def lmeval_minio_copy_pod(
 
 
 @pytest.fixture(scope="function")
+def lmeval_seaweedfs_data_connection(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    model_namespace: Namespace,
+    seaweedfs_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """Create a data connection Secret pointing at the shared SeaweedFS-backed bucket."""
+    data_dict = get_s3_secret_dict(
+        aws_access_key=SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+        aws_secret_access_key=SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        aws_s3_bucket=request.param["bucket"],
+        aws_s3_endpoint=(
+            f"{Protocols.HTTP}://{seaweedfs_service.instance.spec.clusterIP}:{SeaweedFs.Metadata.DEFAULT_PORT}"
+        ),
+        aws_s3_region="us-south",
+    )
+    with Secret(
+        client=admin_client,
+        name="aws-connection-seaweedfs-data-connection",
+        namespace=model_namespace.name,
+        data_dict=data_dict,
+        label={
+            Labels.OpenDataHub.DASHBOARD: "true",
+            Labels.OpenDataHubIo.MANAGED: "true",
+        },
+        annotations={
+            f"{ApiGroups.OPENDATAHUB_IO}/connection-type": "s3",
+            "openshift.io/display-name": "SeaweedFS Data Connection",
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="function")
 def lmevaljob_s3_offline(
     admin_client: DynamicClient,
     model_namespace: Namespace,
-    lmeval_minio_deployment: Deployment,
-    minio_service: Service,
-    lmeval_minio_copy_pod: Pod,
-    minio_data_connection: Secret,
+    seaweedfs_pod: Pod,
+    lmeval_seaweedfs_copy_pod: Pod,
+    lmeval_seaweedfs_data_connection: Secret,
 ) -> Generator[LMEvalJob, Any, Any]:
     with LMEvalJob(
         client=admin_client,
@@ -502,11 +668,14 @@ def lmevaljob_s3_offline(
         offline={
             "storage": {
                 "s3": {
-                    "accessKeyId": {"name": minio_data_connection.name, "key": "AWS_ACCESS_KEY_ID"},
-                    "secretAccessKey": {"name": minio_data_connection.name, "key": "AWS_SECRET_ACCESS_KEY"},
-                    "bucket": {"name": minio_data_connection.name, "key": "AWS_S3_BUCKET"},
-                    "endpoint": {"name": minio_data_connection.name, "key": "AWS_S3_ENDPOINT"},
-                    "region": {"name": minio_data_connection.name, "key": "AWS_DEFAULT_REGION"},
+                    "accessKeyId": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_ACCESS_KEY_ID"},
+                    "secretAccessKey": {
+                        "name": lmeval_seaweedfs_data_connection.name,
+                        "key": "AWS_SECRET_ACCESS_KEY",
+                    },
+                    "bucket": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_S3_BUCKET"},
+                    "endpoint": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_S3_ENDPOINT"},
+                    "region": {"name": lmeval_seaweedfs_data_connection.name, "key": "AWS_DEFAULT_REGION"},
                     "path": "",
                     "verifySSL": False,
                 }
@@ -516,40 +685,45 @@ def lmevaljob_s3_offline(
         yield job
 
 
+def _lmevaljob_pod(admin_client: DynamicClient, lmevaljob: LMEvalJob) -> Generator[Pod, Any, Any]:
+    """Shared body for the lmevaljob_*_pod fixtures: fetch the pod for a given LMEvalJob."""
+    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob)
+
+
 @pytest.fixture(scope="function")
 def lmevaljob_hf_pod(admin_client: DynamicClient, lmevaljob_hf: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_hf)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_hf)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_local_offline_pod(
     admin_client: DynamicClient, lmevaljob_local_offline: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_local_offline)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_local_offline)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_local_offline_pod_oci(
     admin_client: DynamicClient, lmevaljob_local_offline_oci: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_local_offline_oci)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_local_offline_oci)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_vllm_emulator_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_s3_offline_pod(admin_client: DynamicClient, lmevaljob_s3_offline: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_s3_offline)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_s3_offline)
 
 
 @pytest.fixture(scope="function")
 def lmevaljob_gpu_pod(admin_client: DynamicClient, lmevaljob_gpu: LMEvalJob) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_gpu)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_gpu)
 
 
 @pytest.fixture(scope="function")
@@ -731,6 +905,7 @@ def lmevaljob_vllm_emulator_https(
     vllm_emulator_deployment: Deployment,
     vllm_emulator_service: Service,
     vllm_emulator_tls_route: TLSRoute,
+    lmeval_hf_access_token: Secret,
 ) -> Generator[LMEvalJob, Any, Any]:
     """LMEvalJob targeting the vLLM emulator via HTTPS TLS-terminated route."""
     route_host = vllm_emulator_tls_route.instance.spec.host
@@ -744,7 +919,23 @@ def lmevaljob_vllm_emulator_https(
         batch_size="1",
         allow_online=True,
         allow_code_execution=False,
+        limit="0.01",
         outputs={"pvcManaged": {"size": "5Gi"}},
+        pod={
+            "container": {
+                "env": [
+                    {
+                        "name": "HF_TOKEN",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": lmeval_hf_access_token.name,
+                                "key": "HF_ACCESS_TOKEN",
+                            },
+                        },
+                    },
+                ],
+            },
+        },
         model_args=[
             {"name": "model", "value": "emulatedModel"},
             {
@@ -764,7 +955,7 @@ def lmevaljob_vllm_emulator_https(
 def lmevaljob_vllm_emulator_https_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator_https: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https)
 
 
 @pytest.fixture(scope="function")
@@ -813,4 +1004,4 @@ def lmevaljob_vllm_emulator_https_verify_cert(
 def lmevaljob_vllm_emulator_https_verify_cert_pod(
     admin_client: DynamicClient, lmevaljob_vllm_emulator_https_verify_cert: LMEvalJob
 ) -> Generator[Pod, Any, Any]:
-    yield get_lmevaljob_pod(client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https_verify_cert)
+    yield from _lmevaljob_pod(admin_client=admin_client, lmevaljob=lmevaljob_vllm_emulator_https_verify_cert)

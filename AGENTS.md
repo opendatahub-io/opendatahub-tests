@@ -10,12 +10,17 @@ You are an expert QE engineer writing maintainable pytest tests that other engin
 ### Validation (run before committing)
 
 ```bash
-# Run all pre-commit checks
+# Install file + commit-msg hooks (Signed-off-by, Conventional Commits)
+pre-commit install -t pre-commit -t commit-msg
+
+# Run all pre-commit file checks (does not validate commit messages)
 pre-commit run --all-files
 
 # Run tox (CI validation)
 tox
 ```
+
+Commits MUST use `git commit -s` so the message includes a `Signed-off-by: Name <email>` trailer, and MUST follow Conventional Commits (`type: subject`, subject 10–80 characters). See [Commit messages](./docs/DEVELOPER_GUIDE.md#commit-messages).
 
 ### Test Execution
 
@@ -86,6 +91,8 @@ utilities/                # Shared utility functions
 - Write Google-format docstrings for utility functions
 - Tests should have a concise docstring (Given-When-Then for tests, one-line for fixtures)
 - Run `pre-commit run --all-files` before suggesting changes
+- Sign off every commit with `git commit -s` (`Signed-off-by` trailer required)
+- Use Conventional Commits (`type: subject`; allowed types: `build`, `ci`, `chore`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`; subject 10–80 characters)
 
 ### ⚠️ Ask First
 

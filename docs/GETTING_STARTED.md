@@ -42,6 +42,26 @@ OC_BINARY_PATH=/usr/local/bin/oc uv run pytest
 
 **Note:** Ensure your local `oc` binary is executable and compatible with your target cluster version.
 
+## Helm CLI Binary
+
+Tests for components installed via Helm (e.g. OpenShell) automatically download the `helm` CLI binary from the target cluster's console CLI download service, the same way as the `oc` binary above. Unlike `oc`, this only happens lazily when such tests are selected, not on every run.
+
+### Using a Local helm Binary
+
+If you already have the `helm` binary installed locally, you can avoid the download by setting the `HELM_BINARY_PATH` environment variable:
+
+```bash
+export HELM_BINARY_PATH=/usr/local/bin/helm
+```
+
+Or run tests with the variable:
+
+```bash
+HELM_BINARY_PATH=/usr/local/bin/helm uv run pytest
+```
+
+**Note:** Ensure your local `helm` binary is executable and compatible with your target cluster version.
+
 ## Must gather
 
 In order to collect must-gather on failure point one may use `--collect-must-gather` to the pytest command. e.g.
@@ -143,9 +163,9 @@ To skip a test that is affected by a known Jira bug, use `pytest.mark.xfail` wit
 ```python
 from utilities.jira import is_jira_issue_open
 
+
 @pytest.mark.xfail(condition=is_jira_issue_open(jira_id="RHOAIENG-12345"), reason="RHOAIENG-12345", run=False)
-def test_example(self):
-    ...
+def test_example(self): ...
 ```
 
 - `condition=is_jira_issue_open(...)` checks the Jira issue status at collection time. If the issue is open, the test is marked as xfail.

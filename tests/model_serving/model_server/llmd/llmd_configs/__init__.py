@@ -6,23 +6,34 @@ from .config_fast_image import (
     TinyLlamaFast1Config,
     TinyLlamaFast2Config,
 )
+from .config_kv_cache_offload import KvCacheCpuOffloadConfig, KvCacheDiskOffloadConfig
 from .config_models import (
     Qwen3MoeDummyGpuConfig,
     TinyLlamaHfConfig,
+    TinyLlamaHfConnectionConfig,
     TinyLlamaHfGpuConfig,
     TinyLlamaOciConfig,
+    TinyLlamaOciConnectionConfig,
+    TinyLlamaOciGpuAuthConfig,
     TinyLlamaOciGpuConfig,
     TinyLlamaS3Config,
+    TinyLlamaS3ConnectionConfig,
+    TinyLlamaS3ConnectionSmokeConfig,
     TinyLlamaS3GpuConfig,
+    TinyLlamaS3GpuNoSchedulerConfig,
 )
 from .config_multinode_moe import MultinodeMoeDpEpConfig
+from .config_multinode_moe_dp_ep_prefill_decode import MultinodeMoeDpEpPrefillDecodeConfig
 from .config_precise_prefix_cache import PrecisePrefixCacheProducerConfig, PrecisePrefixCacheScorerConfig
 from .config_singlenode_prefill_decode import SingleNodePrefillDecodeConfig
 
 __all__ = [
     "EstimatedPrefixCacheConfig",
+    "KvCacheCpuOffloadConfig",
+    "KvCacheDiskOffloadConfig",
     "LLMISvcConfig",
     "MultinodeMoeDpEpConfig",
+    "MultinodeMoeDpEpPrefillDecodeConfig",
     "PrecisePrefixCacheProducerConfig",
     "PrecisePrefixCacheScorerConfig",
     "Qwen3MoeDummyGpuConfig",
@@ -32,9 +43,15 @@ __all__ = [
     "TinyLlamaFast1Config",
     "TinyLlamaFast2Config",
     "TinyLlamaHfConfig",
+    "TinyLlamaHfConnectionConfig",
     "TinyLlamaHfGpuConfig",
     "TinyLlamaOciConfig",
+    "TinyLlamaOciConnectionConfig",
+    "TinyLlamaOciGpuAuthConfig",
     "TinyLlamaOciGpuConfig",
     "TinyLlamaS3Config",
+    "TinyLlamaS3ConnectionConfig",
+    "TinyLlamaS3ConnectionSmokeConfig",
     "TinyLlamaS3GpuConfig",
+    "TinyLlamaS3GpuNoSchedulerConfig",
 ]

@@ -51,7 +51,7 @@ from utilities.constants import (
     RuntimeTemplates,
 )
 from utilities.inference_utils import create_isvc
-from utilities.infra import create_inference_token, get_kserve_storage_initialize_image, update_configmap_data
+from utilities.infra import create_inference_token, update_configmap_data
 from utilities.logger import RedactedString
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
@@ -114,9 +114,15 @@ def trustyai_service(
 def kserve_raw_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, Any]:
     """Configure KServe for KServeRaw support by adding logger configuration."""
 
-    storage_initializer_image = get_kserve_storage_initialize_image(client=admin_client)
+    cm = ConfigMap(
+        client=admin_client,
+        name="inferenceservice-config",
+        namespace=py_config["applications_namespace"],
+        ensure_exists=True,
+    )
+    agent_image = json.loads(cm.instance.data.agent)["image"]
     logger_config = {
-        "image": storage_initializer_image,
+        "image": agent_image,
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -128,13 +134,6 @@ def kserve_raw_config(admin_client: DynamicClient) -> Generator[ConfigMap, Any, 
     }
 
     data = {"logger": json.dumps(obj=logger_config)}
-
-    cm = ConfigMap(
-        client=admin_client,
-        name="inferenceservice-config",
-        namespace=py_config["applications_namespace"],
-        ensure_exists=True,
-    )
 
     with ResourceEditor(
         patches={

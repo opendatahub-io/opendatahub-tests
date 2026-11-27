@@ -5,7 +5,8 @@ from utilities.constants import Protocols
 from utilities.inference_utils import Inference
 from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+# The auth tests deploy an OVMS runtime, whose image is not built for arm64
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
 
 
 @pytest.mark.smoke

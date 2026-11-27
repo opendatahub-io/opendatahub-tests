@@ -1,8 +1,9 @@
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 from ocp_resources.prometheus import Prometheus
 
+from tests.model_serving.model_server.llmd.api_compat import OpenAICompatibilityValidator
+from tests.model_serving.model_server.llmd.constants import SOAK_TEST_DURATION
 from tests.model_serving.model_server.llmd.llmd_configs import (
     PrecisePrefixCacheProducerConfig,
     PrecisePrefixCacheScorerConfig,
@@ -12,10 +13,12 @@ from tests.model_serving.model_server.llmd.utils import (
     assert_scheduler_routing,
     get_llmd_inference_pool_pods,
     get_llmd_router_scheduler_pod,
+    get_llmd_tokenizer_pods,
     get_llmd_vllm_pods,
     ns_from_file,
     send_prefix_cache_requests,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 NUM_REQUESTS = 12
 PREFIX_CACHE_PROMPT = (
@@ -27,7 +30,7 @@ PREFIX_CACHE_PROMPT = (
 
 NAMESPACE = ns_from_file(file=__file__)
 
-pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
+pytestmark = [pytest.mark.llmd_gpu]
 
 
 @pytest.mark.parametrize(
@@ -38,7 +41,7 @@ pytestmark = [pytest.mark.tier2, pytest.mark.llmd_gpu]
     ],
     indirect=True,
 )
-@pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected")
+@pytest.mark.usefixtures("valid_aws_config")
 class TestSingleNodePrecisePrefixCache:
     """Deploy TinyLlama on GPU with 2 replicas and precise prefix cache routing,
     then verify cache hits via Prometheus metrics.
@@ -64,9 +67,10 @@ class TestSingleNodePrecisePrefixCache:
 
         1. Assert the router-scheduler pod exists and is Running.
         2. Assert exactly 2 workload pods are found.
-        3. Send identical chat completion requests with a shared long prompt.
-        4. Query Prometheus and assert all traffic was routed to a single pod with correct prefix cache hit counts.
-        5. Assert the scheduler made at least the expected number of routing decisions.
+        3. Assert that exactly one tokenizer pod exists.
+        4. Send identical chat completion requests with a shared long prompt.
+        5. Query Prometheus and assert all traffic was routed to a single pod with correct prefix cache hit counts.
+        6. Assert the scheduler made at least the expected number of routing decisions.
         """
         config = request.node.callspec.params["llmisvc"]
 
@@ -76,6 +80,8 @@ class TestSingleNodePrecisePrefixCache:
 
         vllm_pods = get_llmd_vllm_pods(client=unprivileged_client, llmisvc=llmisvc)
         inferencepool_pods = get_llmd_inference_pool_pods(client=unprivileged_client, llmisvc=llmisvc)
+        tokenizer_pods = get_llmd_tokenizer_pods(client=unprivileged_client, llmisvc=llmisvc)
+
         # Single-node: all vLLM pods are InferencePool members (no headless workers).
         assert len(vllm_pods) == config.expected_vllm_pod_count, (
             f"Expected {config.expected_vllm_pod_count} vLLM pods, found {len(vllm_pods)}"
@@ -84,6 +90,8 @@ class TestSingleNodePrecisePrefixCache:
             f"Expected {config.expected_inference_pool_pod_count} InferencePool pods, found {len(inferencepool_pods)}"
         )
         assert len(vllm_pods) == len(inferencepool_pods), "Single-node: all vLLM pods should be InferencePool members"
+
+        assert len(tokenizer_pods) == 1, f"Expected 1 tokenizer pod, found {len(tokenizer_pods)}"
 
         successful = send_prefix_cache_requests(
             llmisvc=llmisvc,
@@ -101,3 +109,15 @@ class TestSingleNodePrecisePrefixCache:
             block_size=request.node.callspec.params["llmisvc"].block_size,
         )
         assert_scheduler_routing(router_pod=router_pod, min_decisions=successful)
+
+    @pytest.mark.soak
+    @pytest.mark.order(after="test_singlenode_precise_prefix_cache")
+    @pytest.mark.parametrize("verification", OpenAICompatibilityValidator.ALL_VERIFICATIONS)
+    def test_openai_api_compat_soak(
+        self,
+        admin_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+        verification: str,
+    ):
+        with OpenAICompatibilityValidator.from_llmisvc(client=admin_client, llmisvc=llmisvc) as v:
+            getattr(v, verification)(duration=SOAK_TEST_DURATION)

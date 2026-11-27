@@ -2,7 +2,6 @@ from typing import Any
 
 import pytest
 from kubernetes.dynamic import DynamicClient
-from ocp_resources.llm_inference_service import LLMInferenceService
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LocalModelNamespaceCache,
@@ -15,17 +14,20 @@ from tests.model_serving.model_server.llmd.utils import (
     send_chat_completions,
     workaround_503_no_healthy_upstream,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 pytestmark = [
     pytest.mark.smoke,
-    pytest.mark.llmd_cpu,
-    pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected"),
+    # TinyLlama CPU inference uses the vllm-cpu runtime image, which is not built for arm64
+    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config"),
 ]
 
 NAMESPACE = ns_from_file(file=__file__)
 
 
-@pytest.mark.parametrize("unprivileged_model_namespace", [{"name": NAMESPACE}], indirect=True)
+@pytest.mark.parametrize(
+    "unprivileged_model_namespace", [pytest.param({"name": NAMESPACE}, id="model-cache")], indirect=True
+)
 class TestLLMDModelCacheSmoke:
     """Smoke coverage for KServe local model namespace cache with ``LLMInferenceService`` workloads.
 

@@ -1,4 +1,3 @@
-import math
 import os
 import tempfile
 import time
@@ -17,7 +16,7 @@ from ogx_client.types.file import File
 from ogx_client.types.vector_stores.vector_store_file import VectorStoreFile
 from timeout_sampler import retry
 
-from tests.ogx.constants import OGX_CORE_POD_FILTER
+from tests.ogx.constants import OGX_CORE_POD_FILTER, POSTGRES_IMAGE, ModelInfo
 from tests.ogx.datasets import Dataset
 from utilities.exceptions import UnexpectedResourceCountError
 from utilities.path_utils import resolve_repo_path
@@ -145,7 +144,10 @@ def create_ogx_server(
         name: Name for the OGXServer resource.
         namespace: Target namespace.
         config: OGXServerSpec configuration dict as returned by ``build_ogx_server_config``
-            (keys: distribution, workload, tls, etc.).
+            (keys: distribution, workload, tls, etc.) or
+            ``build_genai_playground_server_config`` (keys: distribution,
+            overrideConfig, workload, network). When ``overrideConfig`` is set,
+            the referenced ConfigMap must already exist in the namespace.
         teardown: Whether to delete the resource on exit.
     """
 
@@ -154,9 +156,14 @@ def create_ogx_server(
         name=name,
         namespace=namespace,
         distribution=config["distribution"],
-        workload=config.get("workload"),
+        base_config=config.get("baseConfig"),
+        disabled_apis=config.get("disabledAPIs"),
+        monitoring=config.get("monitoring"),
         network=config.get("network"),
+        override_config=config.get("overrideConfig"),
+        praxis_mode=config.get("praxis_mode"),
         tls=config.get("tls"),
+        workload=config.get("workload"),
         wait_for_resource=True,
         teardown=teardown,
     ) as ogx_server:
@@ -169,24 +176,28 @@ def create_ogx_server(
     exceptions_dict={ResourceNotFoundError: [], UnexpectedResourceCountError: []},
 )
 def wait_for_unique_ogx_pod(client: DynamicClient, namespace: str) -> Pod:
-    """Wait until exactly one OgxServer pod is found in the
+    """Wait until exactly one active OgxServer pod is found in the
     namespace (multiple pods may indicate known bug RHAIENG-1819)."""
     pods = list(
         Pod.get(
             client=client,
             namespace=namespace,
             label_selector=OGX_CORE_POD_FILTER,
+            raw=True,
         )
     )
-    if not pods:
-        raise ResourceNotFoundError(f"No pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}")
-    if len(pods) != 1:
+    active_pods = [pod for pod in pods if not getattr(pod.metadata, "deletionTimestamp", None)]
+    if not active_pods:
+        raise ResourceNotFoundError(
+            f"No active pods found with label selector {OGX_CORE_POD_FILTER} in namespace {namespace}"
+        )
+    if len(active_pods) != 1:
         raise UnexpectedResourceCountError(
-            f"Expected exactly 1 pod with label selector {OGX_CORE_POD_FILTER} "
-            f"in namespace {namespace}, found {len(pods)}. "
+            f"Expected exactly 1 active pod with label selector {OGX_CORE_POD_FILTER} "
+            f"in namespace {namespace}, found {len(active_pods)}. "
             f"(possibly due to known bug RHAIENG-1819)"
         )
-    return pods[0]
+    return Pod(client=client, namespace=namespace, name=active_pods[0].metadata.name)
 
 
 @retry(wait_timeout=90, sleep=5)
@@ -239,7 +250,7 @@ def vector_store_create_file_from_url(url: str, ogx_client: OgxClient, vector_st
         response.raise_for_status()
 
         content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-        path_part = url.split("/")[-1].split("?")[0]
+        path_part = url.rsplit("/", maxsplit=1)[-1].split("?", maxsplit=1)[0]
 
         if content_type == "application/pdf" or path_part.lower().endswith(".pdf"):
             file_suffix = ".pdf"
@@ -395,50 +406,145 @@ def vector_store_upload_dataset(
         )
 
 
-def extract_retrieved_contexts(response: Any) -> list[str]:
-    """
-    Extract unique retrieved contexts from a OGX Responses API output.
+def _is_vision_model(model_id: str) -> bool:
+    model_id_lower = model_id.lower()
+    return "vision" in model_id_lower or "-vl-" in model_id_lower or model_id_lower.endswith("-vl")
 
-    De-duplicates results so that repeated file_search_call hits (e.g. from
-    chained tool calls) don't inflate ContextPrecision/ContextRecall scores.
+
+def select_ogx_model(
+    models: list[Any],
+    providers: list[Any],
+    configured_model: str = "",
+) -> ModelInfo:
+    """Select the appropriate LLM and embedding model from OGX client response objects."""
+    llm_models = [model for model in models if model.custom_metadata.get("model_type") == "llm"]
+    if not llm_models:
+        raise ValueError("No LLM models found in OGX client")
+
+    selected_llm = None
+    if configured_model:
+        selected_llm = next(
+            (model for model in llm_models if model.id == configured_model),
+            None,
+        )
+        if not selected_llm:
+            selected_llm = next(
+                (model for model in llm_models if configured_model in model.id),
+                None,
+            )
+        if not selected_llm:
+            LOGGER.warning(
+                f"Configured OGX_CORE_INFERENCE_MODEL='{configured_model}' "
+                f"not found in registered models: {[m.id for m in llm_models]}"
+            )
+
+    if not selected_llm:
+        selected_llm = next(
+            (model for model in llm_models if "qwen" in model.id.lower() and not _is_vision_model(model.id)),
+            None,
+        )
+    if not selected_llm:
+        selected_llm = next(
+            (model for model in llm_models if not _is_vision_model(model.id)),
+            llm_models[0],
+        )
+
+    model_id = selected_llm.id
+
+    provider_ids = [p.provider_id for p in providers]
+    if "sentence-transformers" in provider_ids:
+        target_provider_id = "sentence-transformers"
+    elif "vllm-embedding" in provider_ids:
+        target_provider_id = "vllm-embedding"
+    else:
+        raise ValueError("No embedding provider found")
+
+    embedding_model = next(
+        (
+            model
+            for model in models
+            if model.custom_metadata.get("model_type") == "embedding"
+            and model.custom_metadata.get("provider_id") == target_provider_id
+        ),
+        None,
+    )
+    if embedding_model is None:
+        raise ValueError(f"No embedding model found for provider: {target_provider_id}")
+    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
+
+    LOGGER.info(f"Detected model: {model_id}")
+    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
+    LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
+
+    return ModelInfo(
+        model_id=model_id,
+        embedding_model=embedding_model,
+        embedding_dimension=embedding_dimension,
+    )
+
+
+def dummy_vector_io_factory(provider_name: str) -> list[dict[str, str]]:
+    """Dummy factory returning sample vector I/O environment variables.
 
     Args:
-        response: Response object from client.responses.create()
+        provider_name: Name of the vector I/O provider.
 
     Returns:
-        List of unique retrieved context strings, in first-seen order
+        List of environment variable dicts for vector I/O provider.
     """
-    retrieved_contexts: list[str] = []
-    seen: set[str] = set()
-
-    for output_item in response.output:
-        if (
-            hasattr(output_item, "type")
-            and output_item.type == "file_search_call"
-            and hasattr(output_item, "results")
-            and output_item.results
-        ):
-            for result in output_item.results:
-                text = getattr(result, "text", None)
-                if text and text not in seen:
-                    seen.add(text)
-                    retrieved_contexts.append(text)
-
-    return retrieved_contexts
+    return [{"name": "VECTOR_IO_ENV", "value": provider_name}]
 
 
-def mean_ragas_score(scores: list[float | None]) -> float:
-    """Compute mean of RAGAS per-sample scores, filtering out NaN values.
+def dummy_files_factory(provider_name: str) -> list[dict[str, str]]:
+    """Dummy factory returning sample files provider environment variables.
 
-    Returns 0.0 with a warning if every score is None or NaN.
+    Args:
+        provider_name: Name of the files provider.
+
+    Returns:
+        List of environment variable dicts for files provider.
     """
-    logger = structlog.get_logger(name=__name__)
-    valid = [s for s in scores if s is not None and not math.isnan(s)]
-    if not valid:
-        logger.warning(
-            event="All RAGAS scores are None or NaN — no usable results produced",
-            total_scores=len(scores),
-            raw_scores=scores,
-        )
-        return 0.0
-    return sum(valid) / len(valid)
+    return [{"name": "FILES_ENV", "value": provider_name}]
+
+
+def get_postgres_deployment_template(app_label: str, database: str) -> dict[str, Any]:
+    """Return a Kubernetes pod template for a PostgreSQL deployment.
+
+    Credentials are sourced from the ``ogx-distribution-secret``, so every
+    Postgres instance built from this template shares the same user and password.
+
+    Args:
+        app_label: Value of the pod's ``app`` label. Must match both the owning
+            Deployment's selector and the Service's selector.
+        database: Name of the database created when the instance first starts.
+
+    Returns:
+        Pod template dict suitable for a Deployment's ``template`` field.
+    """
+    return {
+        "metadata": {"labels": {"app": app_label}},
+        "spec": {
+            "containers": [
+                {
+                    "name": "postgres",
+                    "image": POSTGRES_IMAGE,
+                    "ports": [{"containerPort": 5432}],
+                    "env": [
+                        {"name": "POSTGRESQL_DATABASE", "value": database},
+                        {
+                            "name": "POSTGRESQL_USER",
+                            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-user"}},
+                        },
+                        {
+                            "name": "POSTGRESQL_PASSWORD",
+                            "valueFrom": {
+                                "secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-password"}
+                            },
+                        },
+                    ],
+                    "volumeMounts": [{"name": "postgresdata", "mountPath": "/var/lib/pgsql/data"}],
+                },
+            ],
+            "volumes": [{"name": "postgresdata", "emptyDir": {}}],
+        },
+    }

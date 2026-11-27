@@ -21,7 +21,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
 )
 from utilities.infra import get_pods_by_isvc_label
 
-pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("valid_aws_config")]
+pytestmark = [pytest.mark.rawdeployment, pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")]
 
 VALID_BODY_RAW: str = json.dumps(VALID_OVMS_INFERENCE_BODY)
 

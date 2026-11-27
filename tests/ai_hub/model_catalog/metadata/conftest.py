@@ -1,4 +1,5 @@
 import random
+from collections.abc import Generator
 from typing import Any
 
 import pytest
@@ -8,15 +9,24 @@ from ocp_resources.pod import Pod
 
 from tests.ai_hub.constants import CATALOG_CONTAINER
 from tests.ai_hub.model_catalog.constants import (
+    DEFAULT_CATALOGS,
     MODEL_ARTIFACT_TYPE,
     PERFORMANCE_DATA_DIR,
     VALIDATED_CATALOG_ID,
 )
 from tests.ai_hub.model_catalog.metadata.constants import ALL_ARTIFACT_CATEGORIES
-from tests.ai_hub.model_catalog.metadata.utils import get_labels_from_configmaps
+from tests.ai_hub.model_catalog.metadata.utils import get_labels_from_configmaps, wait_for_source_status_restored
 from tests.ai_hub.model_catalog.search.utils import fetch_all_artifacts_with_dynamic_paging
-from tests.ai_hub.model_catalog.utils import get_models_from_catalog_api
-from tests.ai_hub.utils import execute_get_command
+from tests.ai_hub.model_catalog.utils import (
+    get_models_from_catalog_api,
+    get_shipped_catalog,
+    wait_for_model_catalog_api,
+)
+from tests.ai_hub.utils import (
+    execute_get_command,
+    get_model_catalog_pod,
+    wait_for_model_catalog_pod_ready_after_deletion,
+)
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -206,3 +216,43 @@ def expected_missing_categories(request: pytest.FixtureRequest) -> set[str]:
     """Return the set of artifact categories expected to be absent, derived from the required categories."""
     required = getattr(request, "param", ALL_ARTIFACT_CATEGORIES)
     return ALL_ARTIFACT_CATEGORIES - required
+
+
+@pytest.fixture(scope="class")
+def shipped_default_catalog_models(
+    admin_client: DynamicClient, model_registry_namespace: str
+) -> dict[str, list[dict[str, Any]]]:
+    """Models read from each default catalog file shipped in the running pod."""
+    pod = get_model_catalog_pod(client=admin_client, model_registry_namespace=model_registry_namespace)[0]
+    return {
+        source_id: get_shipped_catalog(pod=pod, catalog_file=source["properties"]["yamlCatalogPath"])["models"]
+        for source_id, source in DEFAULT_CATALOGS.items()
+    }
+
+
+@pytest.fixture(scope="class")
+def source_status_base_url(model_catalog_rest_url: list[str]) -> str:
+    """Return the v1 base URL used by the source-status endpoint."""
+    return model_catalog_rest_url[0].replace("/v1alpha1/", "/v1/")
+
+
+@pytest.fixture(scope="class")
+def restore_catalog_status(
+    admin_client: DynamicClient,
+    model_registry_namespace: str,
+    model_catalog_rest_url: list[str],
+    source_status_base_url: str,
+    model_registry_rest_headers: dict[str, str],
+) -> Generator[None]:
+    """Restore persisted catalog statuses after status-clearing tests."""
+    yield
+    wait_for_model_catalog_pod_ready_after_deletion(
+        client=admin_client,
+        model_registry_namespace=model_registry_namespace,
+    )
+    wait_for_model_catalog_api(url=model_catalog_rest_url[0], headers=model_registry_rest_headers)
+    wait_for_source_status_restored(
+        base_url=source_status_base_url,
+        headers=model_registry_rest_headers,
+        source_id=VALIDATED_CATALOG_ID,
+    )

@@ -1,3 +1,4 @@
+import math
 from typing import Any
 
 from ocp_resources.deployment import Deployment
@@ -7,7 +8,8 @@ from ocp_resources.secret import Secret
 from ocp_resources.service import Service
 
 from tests.ai_hub.image_constants import AiHubImages
-from utilities.constants import ModelCarImage, ModelFormat, RuntimeTemplates
+from utilities.constants import ModelFormat, RuntimeTemplates
+from utilities.image_constants import SharedImages
 
 
 class ModelRegistryEndpoints:
@@ -15,6 +17,9 @@ class ModelRegistryEndpoints:
 
 
 MR_OPERATOR_NAME: str = "model-registry-operator"
+CATALOG_CONTROLLER_MANAGER_NAME: str = "catalog-controller-manager"
+AIHUB_CONTROLLER_MANAGER_NAME: str = "aihub-controller-manager"
+MLFLOW_INSTANCE_NAME: str = "mlflow"
 MODEL_NAME: str = "my-model"
 MODEL_DICT: dict[str, Any] = {
     "model_name": MODEL_NAME,
@@ -28,7 +33,7 @@ MODEL_DICT: dict[str, Any] = {
     "model_metadata": {
         "int_key": 1,
         "bool_key": False,
-        "float_key": 3.14,
+        "float_key": math.pi,
         "str_key": "str_value",
     },
 }
@@ -42,7 +47,7 @@ MR_DB_IMAGE_DIGEST: str = AiHubImages.MYSQL
 MR_DB_MYSQL_ARGS: list[str] = ["--datadir", "/var/lib/mysql/datadir"]
 # MySQL 8.4 from registry.redhat.io — supports amd64/arm64/s390x/ppc64le.
 # Uses run-mysqld entrypoint which sets MYSQL_DATADIR internally, no args needed.
-MR_DB_IMAGE_DIGEST_S390X: str = AiHubImages.MYSQL_S390X
+MR_DB_IMAGE_DIGEST_S390X_PPC: str = AiHubImages.MYSQL_S390X_PPC
 MODEL_REGISTRY_DB_SECRET_STR_DATA: dict[str, str] = {
     "database-name": "model_registry",
     "database-password": "TheBlurstOfTimes",  # pragma: allowlist secret
@@ -74,6 +79,7 @@ DEFAULT_CUSTOM_MODEL_CATALOG: str = "model-catalog-sources"
 SAMPLE_MODEL_NAME1 = "mistralai/Mistral-7B-Instruct-v0.3"
 CUSTOM_CATALOG_ID1: str = "sample_custom_catalog1"
 DEFAULT_MODEL_CATALOG_CM: str = "default-catalog-sources"
+MODEL_CATALOG_API_PATH: str = "/api/model_catalog/v1alpha1/"
 MCP_CATALOG_API_PATH: str = "/api/mcp_catalog/v1alpha1/"
 AGENT_CATALOG_API_PATH: str = "/api/agent_catalog/v1alpha1/"
 KUBERBACPROXY_STR: str = "KubeRBACProxyAvailable"
@@ -89,7 +95,7 @@ MODEL_REGISTRY_BASE_URI: str = "/api/model_registry/v1alpha3/"
 MODEL_ARTIFACT: dict[str, Any] = {
     "name": "model-artifact-rest-api",
     "description": "Model artifact created via rest call",
-    "uri": ModelCarImage.MLSERVER_ONNX,
+    "uri": SharedImages.MLSERVER_ONNX,
     "state": "UNKNOWN",
     "modelFormatName": ModelFormat.ONNX,
     "modelFormatVersion": "v1",
@@ -123,10 +129,10 @@ MODEL_ARTIFACT_VLLM: dict[str, Any] = {
     },
 }
 MR_ISVC_RESOURCES_Z: dict[str, dict[str, str]] = {
-    "limits": {"cpu": "8", "memory": "12Gi"},
-    "requests": {"cpu": "4", "memory": "8Gi"},
+    "limits": {"cpu": "6", "memory": "12Gi"},
+    "requests": {"cpu": "2", "memory": "8Gi"},
 }
-MR_ISVC_ARGS_Z: list[str] = ["--enforce-eager", "--max-model-len=256", "--max-num-seqs=20"]
+MR_ISVC_ARGS_Z: list[str] = ["--enforce-eager", "--max-model-len=256", "--max-num-seqs=20", "--dtype=float"]
 MR_ISVC_VOLUMES_Z: list[dict[str, Any]] = [
     {"name": "shared-memory", "emptyDir": {"medium": "Memory", "sizeLimit": "32Gi"}},
     {"name": "tmp", "emptyDir": {}},
@@ -141,9 +147,20 @@ MR_RUNTIME_CONTAINERS_Z: dict[str, Any] = {
     "kserve-container": {
         "env": [
             {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
+            {"name": "TORCH_COMPILE_DISABLE", "value": "1"},
             {"name": "VLLM_WORKER_MULTIPROC_METHOD", "value": "spawn"},
             {"name": "OMP_NUM_THREADS", "value": "8"},
         ]
     },
 }
 MR_MODEL_SERVER_URL_PATH_Z: str = ""
+EXTERNAL_ADDRESS_REST_ANNOTATION: str = "routing.opendatahub.io/external-address-rest"
+KUBE_RBAC_PROXY_PORT: int = 8443
+CURL_CONNECT_TIMEOUT_EXIT_CODE: int = 28
+ROUTER_INGRESS_PEER: dict[str, Any] = {
+    "namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "ingress"}},
+}
+AUTOML_BFF_PEER: dict[str, Any] = {
+    "namespaceSelector": {"matchLabels": {"opendatahub.io/generated-namespace": "true"}},
+    "podSelector": {"matchLabels": {"deployment": "automl-ui"}},
+}

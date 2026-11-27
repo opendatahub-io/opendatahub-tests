@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+import pytest
+import requests
+import structlog
+
+from tests.ai_gateway.models_as_a_service.maas_subscription.utils import (
+    chat_payload_for_url,
+    poll_expected_status,
+)
+from tests.ai_gateway.models_as_a_service.utils import build_maas_headers
+
+LOGGER = structlog.get_logger(name=__name__)
+
+MAAS_SUBSCRIPTION_HEADER = "x-maas-subscription"
+
+
+@pytest.mark.usefixtures(
+    "maas_unprivileged_model_namespace",
+    "maas_subscription_controller_enabled_latest",
+    "maas_gateway_api",
+    "maas_api_gateway_reachable",
+    "maas_inference_service_tinyllama_premium",
+    "maas_model_tinyllama_premium",
+    "maas_auth_policy_tinyllama_premium",
+    "maas_subscription_tinyllama_premium",
+)
+class TestSubscriptionEnforcementTinyLlama:
+    """Tests that MaaSSubscription correctly enforces subscription selection & limits."""
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "premium"}], indirect=True)
+    def test_subscribed_user_gets_200(
+        self,
+        request_session_http: requests.Session,
+        model_url_tinyllama_premium: str,
+        api_key_bound_to_premium_subscription: str,
+    ) -> None:
+        """
+        Verify a premium user with a subscription-bound API key can access the premium model.
+
+        Uses poll_expected_status to tolerate data-plane propagation delay
+        between the control-plane fixtures reporting Ready and the Envoy
+        upstream becoming routable.
+        """
+        resp = poll_expected_status(
+            request_session_http=request_session_http,
+            model_url=model_url_tinyllama_premium,
+            headers=build_maas_headers(token=api_key_bound_to_premium_subscription),
+            payload=chat_payload_for_url(model_url=model_url_tinyllama_premium),
+            expected_statuses={200},
+        )
+        LOGGER.info(f"test_subscribed_user_gets_200 -> {resp.status_code}")
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:200]}"
+
+    @pytest.mark.parametrize("ocp_token_for_actor", [{"type": "premium"}], indirect=True)
+    def test_explicit_subscription_header_works(
+        self,
+        request_session_http: requests.Session,
+        model_url_tinyllama_premium: str,
+        maas_headers_for_actor_api_key: dict[str, str],
+        maas_subscription_tinyllama_premium,
+    ) -> None:
+        """
+        - Send valid x-maas-subscription
+        - Expect 200
+        """
+        headers = dict(maas_headers_for_actor_api_key)
+        headers[MAAS_SUBSCRIPTION_HEADER] = maas_subscription_tinyllama_premium.name
+
+        resp = request_session_http.post(
+            url=model_url_tinyllama_premium,
+            headers=headers,
+            json=chat_payload_for_url(model_url=model_url_tinyllama_premium),
+            timeout=60,
+        )
+        LOGGER.info(f"test_explicit_subscription_header_works -> {resp.status_code}")
+
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:200]}"

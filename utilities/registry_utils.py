@@ -14,3 +14,14 @@ def pull_manifest_from_oci_registry(registry_url: str, repo: str, tag: str) -> d
     LOGGER.info(f"Manifest pull: {response.status_code}")
     assert response.status_code == 200, f"Failed to pull manifest: {response.status_code}"
     return response.json()
+
+
+def pull_blob_from_oci_registry(registry_url: str, repo: str, digest: str) -> bytes:
+    """Pull a blob by digest from an OCI registry."""
+    response = requests.get(
+        f"{registry_url}/v2/{repo}/blobs/{digest}",
+        timeout=10,
+    )
+    LOGGER.info(f"Blob pull: {response.status_code}")
+    assert response.status_code == 200, f"Failed to pull blob {digest}: {response.status_code}"
+    return response.content

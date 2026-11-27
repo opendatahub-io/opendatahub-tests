@@ -5,8 +5,10 @@ import uuid
 from typing import Any
 
 import structlog
+from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
+from ocp_resources.cluster_operator import ClusterOperator
 from ocp_resources.deployment import Deployment
 from ocp_resources.inference_graph import InferenceGraph
 from ocp_resources.inference_service import InferenceService
@@ -14,15 +16,25 @@ from ocp_resources.namespace import Namespace
 from ocp_resources.pod import Pod
 from ocp_resources.resource import Resource
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
+from urllib3.exceptions import HTTPError
 
 import utilities.infra
 from utilities.constants import MODELMESH_SERVING, Annotations, KServeDeploymentType
 from utilities.exceptions import ResourceValueMismatch, UnexpectedResourceCountError
+from utilities.image_constants import SharedImages
 
 # Constants for image validation
 SHA256_DIGEST_PATTERN = r"@sha256:[a-f0-9]{64}$"
 
 LOGGER = structlog.get_logger(name=__name__)
+
+# ANSI stripping functionality
+_ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[?!>]?[0-9;:]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[()][A-B0-2]|[=>NODMHc78])")
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from a string."""
+    return _ANSI_ESCAPE_RE.sub(repl="", string=text)
 
 
 def get_s3_secret_dict(
@@ -75,22 +87,24 @@ def b64_encoded_string(string_to_encode: str) -> str:
 
 
 def namespace_fs_group(client: DynamicClient, namespace: str) -> int | None:
-    """Return fsGroup from OpenShift namespace SCC uid-range annotation when present."""
+    """Return fsGroup from the namespace's effective OpenShift SCC group range."""
     ns = Namespace(client=client, name=namespace)
     if not ns.exists:
         return None
     annotations = ns.instance.metadata.annotations or {}
-    uid_range = annotations.get("openshift.io/sa.scc.uid-range")
-    if not uid_range:
+    group_range = annotations.get("openshift.io/sa.scc.supplemental-groups")
+    if group_range is None:
+        group_range = annotations.get("openshift.io/sa.scc.uid-range")
+    if not group_range:
         return None
-    return int(uid_range.split("/")[0])
+    first_block = group_range.split(",")[0]
+    return int(first_block.split("/")[0].split("-")[0])
 
 
 def download_model_data(
     client: DynamicClient,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
     model_namespace: str,
+    credentials_secret_name: str,
     model_pvc_name: str,
     bucket_name: str,
     aws_endpoint_url: str,
@@ -105,9 +119,9 @@ def download_model_data(
 
     Args:
         client (DynamicClient): Admin client
-        aws_access_key_id (str): AWS access key
-        aws_secret_access_key (str): AWS secret key
         model_namespace (str): Namespace of the model
+        credentials_secret_name (str): Name of the Secret in model_namespace containing
+            AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
         model_pvc_name (str): Name of the PVC
         bucket_name (str): Name of the bucket
         aws_endpoint_url (str): AWS endpoint URL
@@ -148,35 +162,58 @@ def download_model_data(
         ]
         download_destination = pvc_model_path
 
-    init_containers = [
-        {
-            "name": "init-container",
-            "image": "quay.io/quay/busybox@sha256:92f3298bf80a1ba949140d77987f5de081f010337880cd771f7e7fc928f8c74d",
-            "command": init_command,
-            "args": init_container_args,
-            "volumeMounts": [init_volume_mount],
-        }
-    ]
-    containers = [
-        {
-            "name": "model-downloader",
-            "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
-            "args": [
-                f"s3://{bucket_name}/{model_path}/",
-                download_destination,
-            ],
-            "env": [
-                {"name": "AWS_ACCESS_KEY_ID", "value": aws_access_key_id},
-                {"name": "AWS_SECRET_ACCESS_KEY", "value": aws_secret_access_key},
-                {"name": "S3_USE_HTTPS", "value": "1"},
-                {"name": "AWS_ENDPOINT_URL", "value": aws_endpoint_url},
-                {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
-                {"name": "S3_VERIFY_SSL", "value": "false"},
-                {"name": "awsAnonymousCredential", "value": "false"},
-            ],
-            "volumeMounts": [volume_mount],
-        }
-    ]
+    restricted_security_context = {
+        "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": ["ALL"]},
+        "runAsNonRoot": True,
+        "seccompProfile": {"type": "RuntimeDefault"},
+    }
+
+    init_container: dict[str, Any] = {
+        "name": "init-container",
+        "image": SharedImages.UBI_MINIMAL,
+        "command": init_command,
+        "args": init_container_args,
+        "volumeMounts": [init_volume_mount],
+    }
+    downloader_container: dict[str, Any] = {
+        "name": "model-downloader",
+        "resources": {"requests": {"cpu": "2", "memory": "8Gi"}, "limits": {"cpu": "4", "memory": "16Gi"}},
+        "image": utilities.infra.get_kserve_storage_initialize_image(client=client),
+        "args": [
+            f"s3://{bucket_name}/{model_path}/",
+            download_destination,
+        ],
+        "env": [
+            {
+                "name": "AWS_ACCESS_KEY_ID",
+                "valueFrom": {
+                    "secretKeyRef": {"name": credentials_secret_name, "key": "AWS_ACCESS_KEY_ID"},
+                },
+            },
+            {
+                "name": "AWS_SECRET_ACCESS_KEY",
+                "valueFrom": {
+                    "secretKeyRef": {"name": credentials_secret_name, "key": "AWS_SECRET_ACCESS_KEY"},
+                },
+            },
+            {"name": "S3_USE_HTTPS", "value": "1"},
+            {"name": "AWS_ENDPOINT_URL", "value": aws_endpoint_url},
+            {"name": "AWS_DEFAULT_REGION", "value": aws_default_region},
+            {"name": "S3_VERIFY_SSL", "value": "false"},
+            {"name": "awsAnonymousCredential", "value": "false"},
+            {"name": "AWS_MAX_ATTEMPTS", "value": "10"},
+            {"name": "AWS_RETRY_MODE", "value": "adaptive"},
+        ],
+        "volumeMounts": [volume_mount],
+    }
+
+    if restricted_scc_init:
+        init_container["securityContext"] = restricted_security_context
+        downloader_container["securityContext"] = restricted_security_context
+
+    init_containers = [init_container]
+    containers = [downloader_container]
     volumes = [{"name": model_pvc_name, "persistentVolumeClaim": {"claimName": model_pvc_name}}]
 
     pod_kwargs: dict[str, Any] = {
@@ -197,7 +234,6 @@ def download_model_data(
         pod_kwargs["node_selector"] = node_selector
 
     with Pod(**pod_kwargs) as pod:
-        pod.wait_for_status(status=Pod.Status.RUNNING)
         LOGGER.info("Waiting for model download to complete")
         pod.wait_for_status(status=Pod.Status.SUCCEEDED, timeout=25 * 60)
 
@@ -235,21 +271,6 @@ def create_isvc_label_selector_str(isvc: InferenceService, resource_type: str, r
 
     else:
         raise ValueError(f"Unknown deployment mode {deployment_mode}")
-
-
-def get_pod_images(pod: Pod) -> list[str]:
-    """Get all container images from a pod.
-
-    Args:
-        pod: The pod to get images from
-
-    Returns:
-        List of container image strings
-    """
-    containers = [container.image for container in pod.instance.spec.containers]
-    if pod.instance.spec.initContainers:
-        containers.extend([init.image for init in pod.instance.spec.initContainers])
-    return containers
 
 
 def validate_image_format(image: str) -> tuple[bool, str]:
@@ -313,6 +334,7 @@ def validate_container_images(
     pod: Pod,
     valid_image_refs: set[str],
     skip_patterns: list[str] | None = None,
+    skip_container_names: set[str] | None = None,
 ) -> list[str]:
     """
     Validate all container images in a pod against a set of valid image references.
@@ -320,16 +342,24 @@ def validate_container_images(
     Args:
         pod: The pod whose images to validate
         valid_image_refs: Set of valid image references to check against
-        skip_patterns: List of patterns to skip validation for (e.g. ["openshift-service-mesh"])
+        skip_patterns: List of image substrings to skip (for example an injected mesh image path)
+        skip_container_names: Container names to skip, such as an injected istio-proxy sidecar
 
     Returns:
         List of validation error messages, empty if all validations pass
     """
     validation_errors = []
     skip_patterns = skip_patterns or []
+    skip_container_names = skip_container_names or set()
+    containers = list(pod.instance.spec.containers)
+    if pod.instance.spec.initContainers:
+        containers.extend(pod.instance.spec.initContainers)
 
-    pod_images = get_pod_images(pod=pod)
-    for image in pod_images:
+    for container in containers:
+        if container.name in skip_container_names:
+            LOGGER.warning(f"Skipping container {container.name} on pod {pod.name}")
+            continue
+        image = container.image
         # Skip images matching any skip patterns
         if any(pattern in image for pattern in skip_patterns):
             LOGGER.warning(f"Skipping image {image} as it matches skip patterns")
@@ -520,29 +550,84 @@ def wait_for_pods_running(
 
 
 def wait_for_oauth_openshift_deployment(client: DynamicClient) -> None:
+    """Wait for the oauth-openshift deployment to pick up an OAuth edit.
+
+    The authentication operator re-renders the deployment some time after the
+    edit, so a settled deployment may still run the old configuration: first
+    wait for the rollout to start (generation bump or the transient
+    ReplicaSetUpdated reason), then for the deployment to settle again. A
+    rollout that never starts raises TimeoutExpiredError.
+
+    A finished deployment rollout does not mean authentication works again
+    yet: the kube-apiserver authenticators keep failing TokenReview for a
+    short window after the oauth-openshift pods are updated (until the
+    authentication ClusterOperator reports Progressing=False and
+    Available=True again). Wait for that too, so callers do not race the
+    reconvergence with requests whose auth depends on TokenReview.
+    """
     deployment_obj = Deployment(
         client=client, name="oauth-openshift", namespace="openshift-authentication", ensure_exists=True
     )
 
-    _log = f"Wait for {deployment_obj.name} -> Type: Progressing -> Reason:"
+    def _progressing_reason() -> str | None:
+        for condition in deployment_obj.instance.status.conditions or []:
+            if condition.type == "Progressing":
+                return condition.reason
+        return None
 
-    def _wait_sampler(_reason: str) -> None:
-        sampler = TimeoutSampler(
-            wait_timeout=240,
-            sleep=5,
-            func=lambda: deployment_obj.instance.status.conditions,
+    def _settled() -> bool:
+        instance = deployment_obj.instance
+        status = instance.status
+        return (
+            status is not None
+            and status.observedGeneration == instance.metadata.generation
+            and _progressing_reason() == "NewReplicaSetAvailable"
         )
-        for sample in sampler:
-            for _spl in sample:
-                if _spl.type == "Progressing" and _spl.reason == _reason:
-                    return
 
-    for reason in ("ReplicaSetUpdated", "NewReplicaSetAvailable"):
-        LOGGER.info(f"{_log} {reason}")
-        _wait_sampler(_reason=reason)
+    entry_generation = deployment_obj.instance.metadata.generation
+
+    def _rollout_started() -> bool:
+        return deployment_obj.instance.metadata.generation > entry_generation or _progressing_reason() == (
+            "ReplicaSetUpdated"
+        )
+
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_rollout_started)
+    for sample in sampler:
+        if sample:
+            break
+
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_settled)
+    for sample in sampler:
+        if sample:
+            break
+
+    _wait_for_authentication_clusteroperator(client=client)
+
+
+def _wait_for_authentication_clusteroperator(client: DynamicClient) -> None:
+    """Wait until the authentication ClusterOperator is Available and not Progressing."""
+
+    def _auth_reconciled() -> bool:
+        conditions = {
+            condition.get("type"): condition.get("status")
+            for condition in cluster_operator.instance.status.conditions or []
+        }
+        return conditions.get("Progressing") == "False" and conditions.get("Available") == "True"
+
+    cluster_operator = ClusterOperator(client=client, name="authentication", ensure_exists=True)
+    sampler = TimeoutSampler(wait_timeout=240, sleep=5, func=_auth_reconciled)
+    for sample in sampler:
+        if sample:
+            LOGGER.info("authentication ClusterOperator reconciled (Available=True, Progressing=False)")
+            return
 
 
 def collect_pod_information(pod: Pod) -> None:
+    """Save pod YAML and regular/init container logs without interrupting cleanup.
+
+    Args:
+        pod: Pod whose diagnostics should be saved to the artifact directory.
+    """
     # Import here to avoid circular import (must_gather_collector -> infra -> general)
     from utilities.must_gather_collector import get_base_dir, get_must_gather_collector_dir
 
@@ -550,15 +635,20 @@ def collect_pod_information(pod: Pod) -> None:
         base_dir_name = get_must_gather_collector_dir() or get_base_dir()
         LOGGER.info(f"Collecting pod information for {pod.name}: {base_dir_name}")
         os.makedirs(base_dir_name, exist_ok=True)
+        instance = pod.instance
         yaml_file_path = os.path.join(base_dir_name, f"{pod.name}.yaml")
         with open(yaml_file_path, "w") as fd:
-            fd.write(pod.instance.to_str())
-        # get all the containers of the pod:
-
-        containers = [container["name"] for container in pod.instance.status.containerStatuses]
+            fd.write(instance.to_str())
+        containers = [
+            container["name"] for container in instance.spec.containers + (instance.spec.get("initContainers") or [])
+        ]
         for container in containers:
-            file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
-            with open(file_path, "w") as fd:
-                fd.write(pod.log(container=container))
+            try:
+                logs = pod.log(container=container, timestamps=True, _request_timeout=30)
+                file_path = os.path.join(base_dir_name, f"{pod.name}_{container}.log")
+                with open(file_path, "w") as fd:
+                    fd.write(logs)
+            except ApiException, HTTPError, OSError:
+                LOGGER.warning(f"For pod: {pod.name} container: {container} log collection failed.")
     except Exception:  # noqa: BLE001
         LOGGER.warning(f"For pod: {pod.name} information gathering failed.")

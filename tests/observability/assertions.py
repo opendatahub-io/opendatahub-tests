@@ -1,0 +1,151 @@
+"""Assertions shared by release-contract query tests."""
+
+from tests.observability.contract import ContractRecord, PipelineHealthRecord
+from tests.observability.query import RawQueryResult, SignalQueryResult
+from tests.observability.rollout import RolloutState
+
+
+class QueryContractError(AssertionError):
+    """Raised when a raw response does not satisfy its reviewed contract."""
+
+
+def assert_pipeline_health_contract(result: SignalQueryResult, contract: PipelineHealthRecord) -> None:
+    """Assert a signal response without forcing traces or logs through a PromQL schema."""
+    if contract.rollout_state is RolloutState.SKIPPED:
+        raise QueryContractError(
+            f"{contract.identifier}: pipeline-health check is skipped until its activation prerequisite is established"
+        )
+    if result.transport_error:
+        raise QueryContractError(f"{contract.identifier}: signal transport failed: {result.transport_error}")
+    if result.parse_error:
+        raise QueryContractError(f"{contract.identifier}: signal response could not be parsed: {result.parse_error}")
+    if result.backend_status == "error" or result.backend_error_type or result.backend_error:
+        raise QueryContractError(f"{contract.identifier}: backend response contained an error")
+    if result.http_status not in contract.expected_http_status:
+        raise QueryContractError(
+            f"{contract.identifier}: expected HTTP {contract.expected_http_status}, got {result.http_status}"
+        )
+    if result.result_count < contract.minimum_results and not (
+        contract.empty_result_valid and result.result_count == 0
+    ):
+        raise QueryContractError(
+            f"{contract.identifier}: expected at least {contract.minimum_results} results, got {result.result_count}"
+        )
+    label_names = {name for name, _value in result.labels}
+    missing_labels = set(contract.required_labels) - label_names
+    if missing_labels:
+        raise QueryContractError(f"{contract.identifier}: missing labels: {sorted(missing_labels)}")
+    attribute_names = {name for name, _value in result.attributes}
+    missing_attributes = set(contract.required_attributes) - attribute_names
+    if missing_attributes:
+        raise QueryContractError(f"{contract.identifier}: missing attributes: {sorted(missing_attributes)}")
+    missing_edges = set(contract.required_edges) - set(result.edges)
+    if missing_edges:
+        raise QueryContractError(f"{contract.identifier}: missing edges: {sorted(missing_edges)}")
+
+
+def assert_query_contract(result: RawQueryResult, contract: ContractRecord) -> None:
+    """Assert transport, Prometheus, result type, labels, and empty-state behavior."""
+    if result.http_status not in contract.expected_http_status:
+        raise QueryContractError(
+            f"{contract.identifier}: expected HTTP {contract.expected_http_status}, got {result.http_status}"
+        )
+    if result.prometheus_status != contract.expected_prometheus_status:
+        raise QueryContractError(
+            f"{contract.identifier}: expected Prometheus status {contract.expected_prometheus_status!r}, "
+            f"got {result.prometheus_status!r}"
+        )
+    if result.result_type != contract.expected_result_type:
+        raise QueryContractError(
+            f"{contract.identifier}: expected result type {contract.expected_result_type!r}, got {result.result_type!r}"
+        )
+    if result.warnings and not contract.warnings_allowed:
+        raise QueryContractError(f"{contract.identifier}: unexpected Prometheus warnings: {result.warnings}")
+    if contract.expected_prometheus_status == "success" and (result.error_type or result.error):
+        raise QueryContractError(
+            f"{contract.identifier}: Prometheus success contained error fields: "
+            f"error_type={result.error_type!r}, error={result.error!r}"
+        )
+    if len(result.series) < contract.minimum_series:
+        raise QueryContractError(
+            f"{contract.identifier}: expected at least {contract.minimum_series} series, got {len(result.series)}"
+        )
+    if not result.series and not contract.empty_result_valid:
+        raise QueryContractError(f"{contract.identifier}: empty result is not a contracted UI state")
+    if result.series:
+        labels = {label for series in result.series for label, _value in series.labels}
+        missing_labels = set(contract.required_labels) - labels
+        if missing_labels:
+            raise QueryContractError(f"{contract.identifier}: missing labels: {sorted(missing_labels)}")
+
+
+def assert_namespace_isolation(result: RawQueryResult, allowed_namespaces: set[str]) -> None:
+    """Reject any returned series carrying a namespace outside the persona scope."""
+    if "*" in allowed_namespaces:
+        return
+    namespace_labels = {"namespace", "k8s_namespace_name", "namespace_name"}
+    for series in result.series:
+        labels = dict(series.labels)
+        returned_namespaces = {labels[label_name] for label_name in namespace_labels if label_name in labels}
+        if not returned_namespaces:
+            raise QueryContractError(f"{result.datasource}: series has no namespace label for isolation validation")
+        foreign_namespaces = returned_namespaces - allowed_namespaces
+        if foreign_namespaces:
+            raise QueryContractError(
+                f"{result.datasource}: foreign namespace series returned: {sorted(foreign_namespaces)}"
+            )
+
+
+def assert_authorization_response(result: RawQueryResult, expected: str) -> None:
+    """Assert the exact reviewed denial, filtering, or isolation contract."""
+    if expected == "review-required":
+        raise QueryContractError("authorization response must be reviewed before a negative assertion runs")
+    if expected in {"403", "404"}:
+        if result.http_status != int(expected):
+            raise QueryContractError(f"expected HTTP {expected}, got {result.http_status}")
+        if result.series:
+            raise QueryContractError(f"HTTP {expected} authorization response must not return series")
+        return
+    if expected == "success-empty":
+        if result.http_status is None or not 200 <= result.http_status < 300:
+            raise QueryContractError(f"expected successful empty response, got HTTP {result.http_status}")
+        if result.prometheus_status != "success" or result.series:
+            raise QueryContractError("expected Prometheus success with no returned series")
+        return
+    if expected == "success-filtered":
+        if result.http_status is None or not 200 <= result.http_status < 300:
+            raise QueryContractError(f"expected successful filtered response, got HTTP {result.http_status}")
+        if result.prometheus_status != "success":
+            raise QueryContractError(f"expected Prometheus success, got {result.prometheus_status!r}")
+        if not result.series:
+            raise QueryContractError("expected Prometheus success with at least one filtered series")
+        return
+    if expected == "isolation-only":
+        if result.http_status is None or not 200 <= result.http_status < 300:
+            raise QueryContractError(f"expected successful isolation response, got HTTP {result.http_status}")
+        if result.prometheus_status != "success":
+            raise QueryContractError(f"expected Prometheus success, got {result.prometheus_status!r}")
+        if result.error_type or result.error:
+            raise QueryContractError(
+                "isolation response contained Prometheus error fields: "
+                f"error_type={result.error_type!r}, error={result.error!r}"
+            )
+        if not result.series:
+            raise QueryContractError("expected populated response for namespace isolation validation")
+        return
+    if expected != "not-applicable":
+        raise QueryContractError(f"unsupported authorization response contract: {expected}")
+
+
+def assert_capability_is_available(contract: ContractRecord) -> None:
+    """Prevent unavailable or environment-blocked capabilities from passing as product data."""
+    if contract.capability == "not-shipped":
+        raise QueryContractError(f"{contract.identifier}: capability is explicitly not-shipped")
+    if contract.capability == "environment-blocked":
+        raise QueryContractError(f"{contract.identifier}: capability is environment-blocked")
+
+
+def assert_capability_unavailable(contract: ContractRecord) -> None:
+    """Assert that a capability declaration is explicit rather than inferred from an empty query."""
+    if contract.capability not in {"not-shipped", "environment-blocked"}:
+        raise QueryContractError(f"{contract.identifier}: capability is shipped, not unavailable")

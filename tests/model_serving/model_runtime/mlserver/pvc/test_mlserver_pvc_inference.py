@@ -13,7 +13,6 @@ from ocp_resources.inference_service import InferenceService
 from tests.model_serving.model_runtime.mlserver.constant import MODEL_CONFIGS
 from tests.model_serving.model_runtime.mlserver.utils import validate_inference_request
 from utilities.constants import KServeDeploymentType, ModelFormat, Protocols
-from utilities.infra import get_pods_by_isvc_label
 
 pytestmark = pytest.mark.usefixtures("valid_aws_config")
 
@@ -32,7 +31,7 @@ pytestmark = pytest.mark.usefixtures("valid_aws_config")
             {"pvc-size": "5Gi"},
             {"model-dir": "mlserver/model_repository/sklearn"},
             {"name": ModelFormat.SKLEARN, "deployment_mode": KServeDeploymentType.STANDARD},
-            {"name": "sklearn", "deployment_mode": KServeDeploymentType.STANDARD},
+            {"name": "sklearn", "deployment_mode": KServeDeploymentType.STANDARD, "enable_external_route": True},
             id="sklearn-pvc-Standard",
             marks=pytest.mark.smoke,
         ),
@@ -72,18 +71,7 @@ class TestMLServerPvcInference:
 
         model_format_config = MODEL_CONFIGS[model_format]
 
-        # Get pod from InferenceService
-        pods = get_pods_by_isvc_label(
-            client=mlserver_pvc_inference_service.client,
-            isvc=mlserver_pvc_inference_service,
-        )
-        if not pods:
-            raise RuntimeError(f"No pods found for InferenceService {mlserver_pvc_inference_service.name}")
-        pod = pods[0]
-
-        # Validate inference using REST protocol
         validate_inference_request(
-            pod_name=pod.name,
             isvc=mlserver_pvc_inference_service,
             response_snapshot=mlserver_response_snapshot,
             input_query=model_format_config["rest_query"],

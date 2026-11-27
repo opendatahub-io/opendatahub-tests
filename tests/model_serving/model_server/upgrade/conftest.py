@@ -1,3 +1,4 @@
+import json
 from collections.abc import Generator
 from typing import Any
 
@@ -11,15 +12,21 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.gateway import Gateway
 from ocp_resources.inference_service import InferenceService
-from ocp_resources.llm_inference_service import LLMInferenceService
+from ocp_resources.job import Job
 from ocp_resources.namespace import Namespace
+from ocp_resources.resource import ResourceEditor
 from ocp_resources.role import Role
 from ocp_resources.role_binding import RoleBinding
 from ocp_resources.secret import Secret
 from ocp_resources.service_account import ServiceAccount
 from ocp_resources.serving_runtime import ServingRuntime
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_runtime.vllm.utils import skip_if_not_deployment_mode
+from tests.model_serving.model_server.kserve.inference_service_lifecycle.constants import (
+    ISVC_LOGGER_MODE,
+    ISVC_LOGGER_SINK_URL,
+)
 from tests.model_serving.model_server.llmd.llmd_configs.config_upgrade import (
     LLMD_KUEUE_CLUSTER_QUEUE,
     LLMD_KUEUE_CPU_QUOTA,
@@ -27,6 +34,22 @@ from tests.model_serving.model_server.llmd.llmd_configs.config_upgrade import (
     LLMD_KUEUE_MEMORY_QUOTA,
     LLMD_KUEUE_RESOURCE_FLAVOR,
     UpgradeAuthKueueConfig,
+)
+from tests.model_serving.model_server.upgrade.admission_check_upgrade_config import (
+    AC_ADMISSION_CHECK_NAME,
+    AC_BASELINE_CM,
+    AC_CLUSTER_QUEUE,
+    AC_CONTROLLER_NAME,
+    AC_CPU_QUOTA,
+    AC_JOB_CPU_LIMIT,
+    AC_JOB_CPU_REQUEST,
+    AC_JOB_MEMORY_LIMIT,
+    AC_JOB_MEMORY_REQUEST,
+    AC_JOB_NAME,
+    AC_LOCAL_QUEUE,
+    AC_MEMORY_QUOTA,
+    AC_NAMESPACE,
+    AC_RESOURCE_FLAVOR,
 )
 from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import (
     KSERVE_KUEUE_CLUSTER_QUEUE,
@@ -44,6 +67,7 @@ from tests.model_serving.model_server.upgrade.kserve_kueue_upgrade_config import
     KSERVE_KUEUE_UPGRADE_S3_SECRET,
 )
 from tests.model_serving.model_server.upgrade.utils import (
+    UPGRADE_AUTH_TOKEN_EXPIRATION_SECONDS,
     UPGRADE_AUTH_TOKEN_SECRET_NAME,
     _create_kueue_upgrade_resources,
     _ensure_kueue_available_for_upgrade,
@@ -57,6 +81,7 @@ from tests.model_serving.model_server.upgrade.utils import (
     save_auth_token_to_secret,
     save_baseline_to_configmap,
 )
+from tests.model_serving.model_server.utils import wait_for_isvc_agent_sidecar
 from utilities.constants import (
     KServeDeploymentType,
     ModelAndFormat,
@@ -66,6 +91,7 @@ from utilities.constants import (
     ModelVersion,
     Protocols,
     RuntimeTemplates,
+    Timeout,
 )
 from utilities.inference_utils import create_isvc
 from utilities.infra import (
@@ -79,13 +105,19 @@ from utilities.kueue_utils import (
     ClusterQueue,
     LocalQueue,
     ResourceFlavor,
+    Workload,
+    activate_admission_check,
+    create_admission_check,
     create_cluster_queue,
     create_local_queue,
     create_resource_flavor,
+    get_workload_for_job,
 )
 from utilities.llmd_constants import KServeGateway, LLMDGateway
 from utilities.llmd_utils import create_llmd_gateway
 from utilities.logger import RedactedString
+from utilities.resources.admission_check import AdmissionCheck
+from utilities.resources.llm_inference_service import LLMInferenceService
 from utilities.serving_runtime import ServingRuntimeFromTemplate
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -354,6 +386,82 @@ def capture_private_endpoint_upgrade_baseline(
     )
 
 
+# Inference Logging Upgrade Fixtures
+@pytest.fixture(scope="session")
+def logging_inference_service_fixture(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    serving_runtime_fixture: ServingRuntime,
+    s3_connection_fixture: Secret,
+    teardown_resources: bool,
+) -> Generator[InferenceService, Any, Any]:
+    """InferenceService with inference logging enabled (kserve-agent sidecar) for upgrade tests.
+
+    Pre-upgrade: creates the ISVC in the shared upgrade namespace and enables
+    inference logging by patching spec.predictor.logger, the same mechanism
+    TrustyAI uses for the models it monitors. The controller rolls the predictor
+    Deployment and the pod mutator webhook injects the kserve-agent sidecar into
+    the new pod. The logger spec intentionally stays patched: the ISVC is kept
+    alive across the upgrade and re-attached post-upgrade.
+    """
+    isvc_kwargs = {
+        "client": admin_client,
+        "name": "upgrade-logger-isvc",
+        "namespace": serving_runtime_fixture.namespace,
+    }
+
+    isvc = InferenceService(**isvc_kwargs)
+
+    if pytestconfig.option.post_upgrade:
+        yield isvc
+        isvc.clean_up()
+    else:
+        with create_isvc(
+            runtime=serving_runtime_fixture.name,
+            model_format=ModelAndFormat.OPENVINO_IR,
+            deployment_mode=KServeDeploymentType.RAW_DEPLOYMENT,
+            storage_key=s3_connection_fixture.name,
+            storage_path=ModelStoragePath.OPENVINO_EXAMPLE_MODEL,
+            model_version=ModelVersion.OPSET13,
+            external_route=False,
+            teardown=teardown_resources,
+            **isvc_kwargs,
+        ) as isvc:
+            ResourceEditor(
+                patches={
+                    isvc: {
+                        "spec": {
+                            "predictor": {
+                                "logger": {
+                                    "url": ISVC_LOGGER_SINK_URL,
+                                    "mode": ISVC_LOGGER_MODE,
+                                }
+                            }
+                        }
+                    }
+                }
+            ).update()
+            wait_for_isvc_agent_sidecar(client=admin_client, isvc=isvc)
+            isvc.wait_for_condition(
+                condition=InferenceService.Condition.READY,
+                status=InferenceService.Condition.Status.TRUE,
+                timeout=Timeout.TIMEOUT_10MIN,
+            )
+            yield isvc
+
+
+@pytest.fixture(scope="session")
+def capture_logging_upgrade_baseline(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    logging_inference_service_fixture: InferenceService,
+) -> None:
+    """Capture baseline values for the inference-logging ISVC."""
+    _capture_and_save_baseline(
+        pytestconfig=pytestconfig, admin_client=admin_client, isvc=logging_inference_service_fixture
+    )
+
+
 # Authentication Upgrade Fixtures
 @pytest.fixture(scope="session")
 def auth_namespace_fixture(
@@ -602,8 +710,11 @@ def auth_inference_token_fixture(
                 namespace=UPGRADE_NAMESPACE,
             )
         )
-
-    return RedactedString(value=create_inference_token(model_service_account=auth_service_account_fixture))
+    return RedactedString(
+        value=create_inference_token(
+            model_service_account=auth_service_account_fixture, expiration_seconds=UPGRADE_AUTH_TOKEN_EXPIRATION_SECONDS
+        )
+    )
 
 
 @pytest.fixture(scope="session")
@@ -1164,7 +1275,7 @@ def llmisvc_upgrade_no_auth(
         llmisvc.clean_up()
     else:
         with _create_llmisvc_from_config(
-            config_cls=config_cls,
+            config_cls=config_cls.build(client=admin_client),
             namespace=llmisvc_no_auth_namespace.name,
             client=admin_client,
             teardown=teardown_resources,
@@ -1198,7 +1309,7 @@ def llmisvc_upgrade_auth_and_kueue(
             llmisvc.clean_up()
     else:
         with _create_llmisvc_from_config(
-            config_cls=config_cls,
+            config_cls=config_cls.build(client=admin_client),
             namespace=llmisvc_auth_and_kueue_namespace.name,
             client=admin_client,
             teardown=teardown_resources,
@@ -1357,7 +1468,9 @@ def llmisvc_upgrade_token(
             subjects_name=sa.name,
         ).deploy()
 
-        token = create_inference_token(model_service_account=sa)
+        token = create_inference_token(
+            model_service_account=sa, expiration_seconds=UPGRADE_AUTH_TOKEN_EXPIRATION_SECONDS
+        )
         save_auth_token_to_secret(
             client=admin_client,
             namespace=namespace,
@@ -1634,3 +1747,272 @@ def skip_if_not_raw_deployment(
         isvc=kserve_kueue_upgrade_inference_service,
         deployment_types=KServeDeploymentType.RAW_DEPLOYMENT_MODES,
     )
+
+
+# AdmissionCheck upgrade test fixtures
+
+
+@pytest.fixture(scope="session")
+def admission_check_namespace(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Namespace for AdmissionCheck upgrade tests, with Kueue management label."""
+    ns = Namespace(client=admin_client, name=AC_NAMESPACE)
+
+    if pytestconfig.option.post_upgrade:
+        if not ns.exists:
+            pytest.fail(
+                f"[POST-UPGRADE] Namespace '{ns.name}' not found. Ensure pre-upgrade tests completed successfully."
+            )
+        yield ns
+        if teardown_resources:
+            ns.clean_up()
+    elif ns.exists:
+        pytest.fail(f"Unexpected existing namespace '{ns.name}'. Clear stale upgrade resources before pre-upgrade.")
+    else:
+        with create_ns(
+            admin_client=admin_client,
+            name=AC_NAMESPACE,
+            model_mesh_enabled=False,
+            add_dashboard_label=True,
+            add_kueue_label=True,
+            teardown=teardown_resources,
+        ) as ns:
+            yield ns
+
+
+@pytest.fixture(scope="session")
+def ensure_kueue_for_ac_upgrade(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    dsc_resource: DataScienceCluster,
+    admission_check_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[None, Any, Any]:
+    """Ensure Kueue DSC state for AdmissionCheck upgrade tests."""
+    yield from _ensure_kueue_available_for_upgrade(
+        pytestconfig=pytestconfig,
+        admin_client=admin_client,
+        dsc_resource=dsc_resource,
+        namespace=admission_check_namespace.name,
+        teardown_resources=teardown_resources,
+    )
+
+
+@pytest.fixture(scope="session")
+def admission_check_kueue_resources(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    ensure_kueue_for_ac_upgrade: None,
+    admission_check_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[dict, Any, Any]:
+    """Kueue resources for AdmissionCheck upgrade test.
+
+    Pre-upgrade: creates AdmissionCheck, ResourceFlavor, ClusterQueue, LocalQueue.
+    Post-upgrade: looks up existing resources, cleans up on teardown.
+    Yields dict with keys: local_queue, admission_check_name.
+    """
+    namespace = admission_check_namespace.name
+
+    if pytestconfig.option.post_upgrade:
+        local_queue = LocalQueue(
+            client=admin_client,
+            name=AC_LOCAL_QUEUE,
+            cluster_queue=AC_CLUSTER_QUEUE,
+            namespace=namespace,
+        )
+        cluster_queue = ClusterQueue(client=admin_client, name=AC_CLUSTER_QUEUE)
+        resource_flavor = ResourceFlavor(client=admin_client, name=AC_RESOURCE_FLAVOR)
+        admission_check = AdmissionCheck(
+            client=admin_client, name=AC_ADMISSION_CHECK_NAME, controller_name=AC_CONTROLLER_NAME
+        )
+        missing_resources = [
+            resource.name
+            for resource in (local_queue, cluster_queue, resource_flavor, admission_check)
+            if not resource.exists
+        ]
+        if missing_resources:
+            pytest.fail(f"[POST-UPGRADE] Missing Kueue resources: {missing_resources}")
+        yield {"local_queue": local_queue, "admission_check_name": AC_ADMISSION_CHECK_NAME}
+        if teardown_resources:
+            local_queue.clean_up()
+            cluster_queue.clean_up()
+            resource_flavor.clean_up()
+            admission_check.clean_up()
+    else:
+        stale_resources = [
+            name
+            for name, resource_cls, kwargs in [
+                (AC_ADMISSION_CHECK_NAME, AdmissionCheck, {"controller_name": AC_CONTROLLER_NAME}),
+                (AC_CLUSTER_QUEUE, ClusterQueue, {}),
+                (AC_RESOURCE_FLAVOR, ResourceFlavor, {}),
+            ]
+            if resource_cls(client=admin_client, name=name, **kwargs).exists
+        ]
+        if stale_resources:
+            pytest.fail(
+                f"Stale cluster-scoped Kueue resources found: {stale_resources}. "
+                "Clear stale upgrade resources before pre-upgrade."
+            )
+
+        with (
+            create_admission_check(
+                client=admin_client,
+                name=AC_ADMISSION_CHECK_NAME,
+                controller_name=AC_CONTROLLER_NAME,
+                teardown=teardown_resources,
+            ),
+            create_resource_flavor(
+                client=admin_client,
+                name=AC_RESOURCE_FLAVOR,
+                teardown=teardown_resources,
+            ),
+            create_cluster_queue(
+                client=admin_client,
+                name=AC_CLUSTER_QUEUE,
+                resource_groups=kueue_resource_groups(
+                    flavor_name=AC_RESOURCE_FLAVOR,
+                    cpu_quota=AC_CPU_QUOTA,
+                    memory_quota=AC_MEMORY_QUOTA,
+                ),
+                admission_checks=[AC_ADMISSION_CHECK_NAME],
+                teardown=teardown_resources,
+            ),
+            create_local_queue(
+                client=admin_client,
+                name=AC_LOCAL_QUEUE,
+                cluster_queue=AC_CLUSTER_QUEUE,
+                namespace=namespace,
+                teardown=teardown_resources,
+            ) as local_queue,
+        ):
+            activate_admission_check(client=admin_client, admission_check_name=AC_ADMISSION_CHECK_NAME)
+            yield {"local_queue": local_queue, "admission_check_name": AC_ADMISSION_CHECK_NAME}
+
+
+@pytest.fixture(scope="session")
+def admission_check_job(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    admission_check_namespace: Namespace,
+    admission_check_kueue_resources: dict,
+    teardown_resources: bool,
+) -> Generator[Job, Any, Any]:
+    """Batch Job submitted to Kueue with AdmissionCheck gating.
+
+    Pre-upgrade: creates a suspended Job with queue-name label.
+    Post-upgrade: looks up the existing Job.
+    """
+    namespace = admission_check_namespace.name
+    local_queue = admission_check_kueue_resources["local_queue"]
+
+    if pytestconfig.option.post_upgrade:
+        job = Job(client=admin_client, name=AC_JOB_NAME, namespace=namespace)
+        if not job.exists:
+            pytest.fail(
+                f"[POST-UPGRADE] Job '{AC_JOB_NAME}' not found in namespace '{namespace}'. "
+                "Ensure pre-upgrade tests completed successfully."
+            )
+        yield job
+        if teardown_resources:
+            job.clean_up()
+    elif Job(client=admin_client, name=AC_JOB_NAME, namespace=namespace).exists:
+        pytest.fail(
+            f"Unexpected existing Job '{AC_JOB_NAME}' in namespace '{namespace}'. "
+            "Clear stale upgrade resources before pre-upgrade."
+        )
+    else:
+        job = Job(
+            client=admin_client,
+            kind_dict={
+                "apiVersion": "batch/v1",
+                "kind": "Job",
+                "metadata": {
+                    "name": AC_JOB_NAME,
+                    "namespace": namespace,
+                    "labels": {"kueue.x-k8s.io/queue-name": local_queue.name},
+                },
+                "spec": {
+                    "suspend": True,
+                    "backoffLimit": 0,
+                    "template": {
+                        "spec": {
+                            "restartPolicy": "Never",
+                            "containers": [
+                                {
+                                    "name": "test",
+                                    "image": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
+                                    "command": ["echo", "admission-check-test"],
+                                    "resources": {
+                                        "requests": {"cpu": AC_JOB_CPU_REQUEST, "memory": AC_JOB_MEMORY_REQUEST},
+                                        "limits": {"cpu": AC_JOB_CPU_LIMIT, "memory": AC_JOB_MEMORY_LIMIT},
+                                    },
+                                }
+                            ],
+                        },
+                    },
+                },
+            },
+            teardown=teardown_resources,
+        )
+        job.deploy()
+        yield job
+        if teardown_resources:
+            job.clean_up()
+
+
+@pytest.fixture(scope="session")
+def admission_check_workload(
+    pytestconfig: pytest.Config,
+    admin_client: DynamicClient,
+    admission_check_namespace: Namespace,
+    admission_check_job: Job,
+    teardown_resources: bool,
+) -> Generator[Workload, Any, Any]:
+    """The Kueue Workload auto-created for the AdmissionCheck test Job.
+
+    Pre-upgrade: polls until Kueue creates the Workload, saves name to ConfigMap.
+    Post-upgrade: loads workload name from ConfigMap, returns the Workload.
+    """
+    namespace = admission_check_namespace.name
+
+    if pytestconfig.option.post_upgrade:
+        cm = ConfigMap(client=admin_client, name=AC_BASELINE_CM, namespace=namespace)
+        assert cm.exists, f"Baseline ConfigMap '{AC_BASELINE_CM}' not found"
+        baseline = json.loads(cm.instance.data["baseline"])
+        workload = Workload(client=admin_client, name=baseline["workload_name"], namespace=namespace)
+        yield workload
+        if teardown_resources:
+            workload.clean_up()
+            cm.clean_up()
+    else:
+        job_uid = admission_check_job.instance.metadata.uid
+        try:
+            for workload in TimeoutSampler(
+                wait_timeout=Timeout.TIMEOUT_4MIN,
+                sleep=5,
+                func=get_workload_for_job,
+                client=admin_client,
+                job_uid=job_uid,
+                namespace=namespace,
+            ):
+                if workload:
+                    break
+        except TimeoutExpiredError:
+            pytest.fail(f"Kueue did not create a Workload for Job '{admission_check_job.name}'")
+
+        LOGGER.info(f"Kueue created Workload '{workload.name}' for Job '{admission_check_job.name}'")
+        baseline = json.dumps({"workload_name": workload.name})
+        cm = ConfigMap(
+            client=admin_client,
+            name=AC_BASELINE_CM,
+            namespace=namespace,
+            data={"baseline": baseline},
+        )
+        cm.deploy()
+        yield workload
+        if teardown_resources:
+            cm.clean_up()

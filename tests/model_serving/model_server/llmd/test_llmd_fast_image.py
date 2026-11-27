@@ -1,8 +1,10 @@
 import re
 
 import pytest
-from ocp_resources.llm_inference_service import LLMInferenceService
+from kubernetes.dynamic import DynamicClient
 
+from tests.model_serving.model_server.llmd.api_compat import OpenAICompatibilityValidator
+from tests.model_serving.model_server.llmd.constants import SOAK_TEST_DURATION
 from tests.model_serving.model_server.llmd.llmd_configs import TinyLlamaFast1Config, TinyLlamaFast2Config
 from tests.model_serving.model_server.llmd.utils import (
     get_vllm_version,
@@ -11,8 +13,9 @@ from tests.model_serving.model_server.llmd.utils import (
     send_chat_completions,
     workaround_503_no_healthy_upstream,
 )
+from utilities.resources.llm_inference_service import LLMInferenceService
 
-pytestmark = [pytest.mark.tier1, pytest.mark.llmd_gpu, pytest.mark.fast_vllm]
+pytestmark = [pytest.mark.llmd_gpu]
 
 NAMESPACE = ns_from_file(file=__file__)
 
@@ -63,3 +66,14 @@ class TestLlmdFastImage:
         assert re.fullmatch(r"\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?(?:\+[a-zA-Z0-9.]+)?", version), (
             f"vLLM version '{version}' does not match expected semver format (e.g. '0.8.5')"
         )
+
+    @pytest.mark.soak
+    @pytest.mark.parametrize("verification", OpenAICompatibilityValidator.ALL_VERIFICATIONS)
+    def test_openai_api_compat(
+        self,
+        admin_client: DynamicClient,
+        llmisvc: LLMInferenceService,
+        verification: str,
+    ):
+        with OpenAICompatibilityValidator.from_llmisvc(client=admin_client, llmisvc=llmisvc) as v:
+            getattr(v, verification)(duration=SOAK_TEST_DURATION)

@@ -41,6 +41,22 @@ Session-scoped fixtures in `conftest.py` own almost all lifecycle logic. Tests a
 
 All Notebook CRs are built via `build_notebook_dict()` with `notebooks.opendatahub.io/inject-auth=true`, so auth sidecar and Gateway API routing are always in scope.
 
+### Kueue resources (namespace `upgrade-kueue-workbenches`)
+
+| Resource | Name | Role |
+| --- | --- | --- |
+| Namespace | `upgrade-kueue-workbenches` | Kueue-labeled namespace for queue-scheduled workbenches |
+| ResourceFlavor | `upgrade-kueue-flavor` | Generic resource flavor for the ClusterQueue |
+| ClusterQueue | `upgrade-kueue-cluster-queue` | Cluster-wide queue with CPU/memory quotas |
+| LocalQueue | `upgrade-kueue-local-queue` | Namespace-scoped queue pointing to the ClusterQueue |
+| HardwareProfile | `upgrade-kueue-hwp` | Queue-based scheduling profile (`scheduling.type=Queue`) |
+| Running notebook + PVC | `upgrade-kueue-notebook` | Kueue-admitted notebook survival subject |
+| Stopped notebook + PVC | `upgrade-kueue-stopped` | Kueue notebook stopped before upgrade |
+| New notebook + PVC | `upgrade-kueue-new` | Created post-upgrade to prove Kueue admission still works |
+| Baseline ConfigMap | `upgrade-kueue-baseline` | Bridge between pre and post phases (labels, generations) |
+
+Kueue notebooks use `resources={}` in `build_notebook_dict()` and annotate with `opendatahub.io/hardware-profile-name`, exercising the HardwareProfile webhook injection path.
+
 ### Baseline ConfigMap contract
 
 `capture_notebook_baseline` (pre-upgrade, no-op post-upgrade) writes JSON under key `baseline`:
@@ -62,22 +78,22 @@ All Notebook CRs are built via `build_notebook_dict()` with `notebooks.opendatah
 
 ```text
 upgrade_notebook_namespace
-├── upgrade_notebook_pvc ──► upgrade_notebook ──► upgrade_notebook_pod
-│                                              ├── upgrade_notebook_statefulset / service
-│                                              ├── upgrade_notebook_httproute
-│                                              └── auth_proxy_* / auth_delegator_crb
-├── stopped_notebook_pvc ──► stopped_notebook ──► stopped_notebook_pre_upgrade_shutdown
-│                                              ├── stopped_notebook_statefulset
-│                                              └── stopped_auth_proxy_* / stopped_auth_delegator_crb
-├── workbench_trusted_ca_bundle
-├── capture_notebook_baseline  (depends on running + stopped shutdown + CA bundles)
-└── (post only) new_notebook_pvc ──► new_notebook ──► new_notebook_pod / sts / svc / httproute / auth_*
+|-- upgrade_notebook_pvc --> upgrade_notebook --> upgrade_notebook_pod
+|                                             |-- upgrade_notebook_statefulset / service
+|                                             |-- upgrade_notebook_httproute
+|                                             +-- auth_proxy_* / auth_delegator_crb
+|-- stopped_notebook_pvc --> stopped_notebook --> stopped_notebook_pre_upgrade_shutdown
+|                                             |-- stopped_notebook_statefulset
+|                                             +-- stopped_auth_proxy_* / stopped_auth_delegator_crb
+|-- workbench_trusted_ca_bundle
+|-- capture_notebook_baseline  (depends on running + stopped shutdown + CA bundles)
++-- (post only) new_notebook_pvc --> new_notebook --> new_notebook_pod / sts / svc / httproute / auth_*
 ```
 
 Important fixture behaviours:
 
 - **Pre vs post branch**: create-with-context-manager when not `--post-upgrade`; attach-by-name when `--post-upgrade`.
-- **`stopped_notebook_pre_upgrade_shutdown`**: Ready → annotate stop → wait pod deleted → assert STS replicas=0. No-op post-upgrade.
+- **`stopped_notebook_pre_upgrade_shutdown`**: Ready -> annotate stop -> wait pod deleted -> assert STS replicas=0. No-op post-upgrade.
 - **`capture_notebook_baseline`**: Pulls stopped-notebook shutdown via fixture dependency so baseline always includes a stopped annotation value.
 - Teardown of long-lived upgrade resources is gated by `teardown_resources` and typically happens on the post-upgrade run.
 
@@ -89,38 +105,38 @@ Coverage is grouped by concern. Each bullet maps to one or more test methods.
 
 | Concern                                                 | Pre-upgrade                                      | Post-upgrade                                         |
 | ------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------- |
-| Pod Ready                                               | `test_notebook_running_before_upgrade`           | —                                                    |
+| Pod Ready                                               | `test_notebook_running_before_upgrade`           | -                                                    |
 | Pod not restarted (creationTimestamp)                   | baseline capture                                 | `test_notebook_not_restarted_after_upgrade`          |
 | Notebook CR not modified (generation)                   | baseline                                         | `test_notebook_cr_not_modified_after_upgrade`        |
 | StatefulSet not modified (generation)                   | baseline                                         | `test_statefulset_not_modified_after_upgrade`        |
-| StatefulSet healthy (readyReplicas, no pending rollout) | —                                                | `test_statefulset_healthy_after_upgrade`             |
+| StatefulSet healthy (readyReplicas, no pending rollout) | -                                                | `test_statefulset_healthy_after_upgrade`             |
 | Service ports/selector unchanged                        | baseline                                         | `test_service_not_modified_after_upgrade`            |
 | Workbench CA bundle exists (`ca-bundle.crt`)            | `test_ca_bundle_configmap_exists_before_upgrade` | `test_ca_bundle_configmap_exists_after_upgrade`      |
-| CA propagation consistency (odh ↔ workbench RVs)        | baseline RVs                                     | `test_ca_bundle_configmap_consistency_after_upgrade` |
+| CA propagation consistency (odh <-> workbench RVs)      | baseline RVs                                     | `test_ca_bundle_configmap_consistency_after_upgrade` |
 
 CA consistency rule: if `odh-trusted-ca-bundle` changes, `workbench-trusted-ca-bundle` must change too; if the source does not change, the workbench bundle must not change unexpectedly.
 
 ### 2. Auth / kube-rbac-proxy (`test_upgrade_auth.py`)
 
-Covered for both the **running** and **stopped** notebooks (stopped: Service/ConfigMap/CRB only — no pod sidecar check while stopped).
+Covered for both the **running** and **stopped** notebooks (stopped: Service/ConfigMap/CRB only - no pod sidecar check while stopped).
 
-| Concern                                                     | Pre                     | Post                    |
-| ----------------------------------------------------------- | ----------------------- | ----------------------- |
-| Sidecar container `kube-rbac-proxy` on running pod          | yes                     | yes                     |
-| Proxy Service exists with port `8443`                       | yes (running + stopped) | yes (running + stopped) |
-| Proxy ConfigMap exists                                      | yes (running + stopped) | yes (running + stopped) |
-| Auth-delegator ClusterRoleBinding → `system:auth-delegator` | yes (running + stopped) | yes (running + stopped) |
+| Concern                                                      | Pre                     | Post                    |
+| ------------------------------------------------------------ | ----------------------- | ----------------------- |
+| Sidecar container `kube-rbac-proxy` on running pod           | yes                     | yes                     |
+| Proxy Service exists with port `8443`                        | yes (running + stopped) | yes (running + stopped) |
+| Proxy ConfigMap exists                                       | yes (running + stopped) | yes (running + stopped) |
+| Auth-delegator ClusterRoleBinding -> `system:auth-delegator` | yes (running + stopped) | yes (running + stopped) |
 
 ### 3. Gateway API routing (`test_upgrade_routing.py`)
 
-| Concern                                                                       | Pre      | Post |
-| ----------------------------------------------------------------------------- | -------- | ---- |
-| HTTPRoute exists in applications namespace (`nb-<ns>-<name>`)                 | yes      | yes  |
-| ParentRef = `openshift-ingress/data-science-gateway`                          | yes      | yes  |
-| BackendRef → `<notebook>-kube-rbac-proxy:8443` + path `/notebook/<ns>/<name>` | yes      | yes  |
-| HTTPRoute generation unchanged                                                | baseline | yes  |
-| Exactly one HTTPRoute for the notebook (no duplicates)                        | —        | yes  |
-| ReferenceGrant `notebook-httproute-access` in notebook namespace              | yes      | yes  |
+| Concern                                                                        | Pre      | Post |
+| ------------------------------------------------------------------------------ | -------- | ---- |
+| HTTPRoute exists in applications namespace (`nb-<ns>-<name>`)                  | yes      | yes  |
+| ParentRef = `openshift-ingress/data-science-gateway`                           | yes      | yes  |
+| BackendRef -> `<notebook>-kube-rbac-proxy:8443` + path `/notebook/<ns>/<name>` | yes      | yes  |
+| HTTPRoute generation unchanged                                                 | baseline | yes  |
+| Exactly one HTTPRoute for the notebook (no duplicates)                         | -        | yes  |
+| ReferenceGrant `notebook-httproute-access` in notebook namespace               | yes      | yes  |
 
 ### 4. Stopped notebook semantics (`test_upgrade_stopped.py`)
 
@@ -131,22 +147,53 @@ Covered for both the **running** and **stopped** notebooks (stopped: Service/Con
 | `kubeflow-resource-stopped` annotation present | set by fixture | yes  |
 | Annotation timestamp value unchanged           | baseline       | yes  |
 
-### 5. Post-upgrade creation + webhook (`test_upgrade_creation.py`)
+### 5. Kueue scheduling (`test_upgrade_kueue.py`)
+
+Verifies that notebooks scheduled through Kueue queues (via HardwareProfile with `scheduling.type=Queue`) survive a platform upgrade with their management labels, queue infrastructure, and lifecycle state preserved.
+
+Operates in a **separate namespace** (`upgrade-kueue-workbenches`) with its own Kueue infrastructure and baseline ConfigMap. Constants live in `kueue_constants.py`.
+
+| Concern | Pre-upgrade | Post-upgrade |
+| --- | --- | --- |
+| Running notebook pod Ready with Kueue labels | yes | yes |
+| `kueue.x-k8s.io/managed`, `queue-name`, `cluster-queue-name`, `local-queue-name` labels present | yes | yes (preserved from baseline) |
+| Notebook CR generation unchanged | baseline | yes |
+| ResourceFlavor / ClusterQueue / LocalQueue exist | yes | yes |
+| Workload admitted to correct ClusterQueue | yes | yes |
+| Stopped notebook StatefulSet replicas = 0 | yes | yes |
+| Stopped notebook `kubeflow-resource-stopped` annotation preserved | set by fixture | yes (value unchanged) |
+| New kueue-managed notebook created post-upgrade | - | yes (pod Ready + labels + Workload admitted) |
+
+#### Kueue fixture dependency shape
+
+```text
+upgrade_kueue_namespace
+|-- upgrade_kueue_resource_flavor
+|-- upgrade_kueue_cluster_queue
+|-- upgrade_kueue_local_queue
+|-- upgrade_kueue_hardware_profile
+|-- upgrade_kueue_notebook_pvc --> upgrade_kueue_notebook --> upgrade_kueue_notebook_pod
+|-- upgrade_kueue_stopped_notebook_pvc --> upgrade_kueue_stopped_notebook --> upgrade_kueue_stopped_pre_upgrade_shutdown
+|-- capture_kueue_baseline (depends on running + stopped shutdown)
++-- (post only) new_kueue_notebook_pvc --> new_kueue_notebook --> new_kueue_notebook_pod
+```
+
+### 6. Post-upgrade creation + webhook (`test_upgrade_creation.py`)
 
 Post-upgrade only. Proves the upgraded controller and webhook can still reconcile a fresh Notebook CR (`upgrade-wb-new`).
 
-| Concern                                                                                    | Test                                                                             |
-| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| New pod reaches Ready                                                                      | `test_new_notebook_pod_ready`                                                    |
-| StatefulSet exists with 1 replica                                                          | `test_new_notebook_statefulset_exists`                                           |
-| Service exists                                                                             | `test_new_notebook_service_exists`                                               |
-| HTTPRoute + gateway parent + backend refs                                                  | `test_new_notebook_httproute_exists`                                             |
-| Auth sidecar injected                                                                      | `test_new_notebook_has_auth_sidecar`                                             |
-| Auth Service / ConfigMap / CRB reconciled                                                  | `test_new_notebook_auth_proxy_*` / `test_new_notebook_auth_delegator_crb_exists` |
-| Reconciliation lock cleared (`kubeflow-resource-stopped` ≠ `odh-notebook-controller-lock`) | `test_new_notebook_reconciliation_lock_cleared`                                  |
-| MutatingWebhookConfiguration exists                                                        | `test_mutating_webhook_exists`                                                   |
-| Webhook `failurePolicy=Fail`                                                               | `test_mutating_webhook_failure_policy`                                           |
-| Webhook targets `kubeflow.org/notebooks` CREATE + UPDATE                                   | `test_mutating_webhook_targets_notebooks`                                        |
+| Concern                                                                                     | Test                                                                             |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| New pod reaches Ready                                                                       | `test_new_notebook_pod_ready`                                                    |
+| StatefulSet exists with 1 replica                                                           | `test_new_notebook_statefulset_exists`                                           |
+| Service exists                                                                              | `test_new_notebook_service_exists`                                               |
+| HTTPRoute + gateway parent + backend refs                                                   | `test_new_notebook_httproute_exists`                                             |
+| Auth sidecar injected                                                                       | `test_new_notebook_has_auth_sidecar`                                             |
+| Auth Service / ConfigMap / CRB reconciled                                                   | `test_new_notebook_auth_proxy_*` / `test_new_notebook_auth_delegator_crb_exists` |
+| Reconciliation lock cleared (`kubeflow-resource-stopped` != `odh-notebook-controller-lock`) | `test_new_notebook_reconciliation_lock_cleared`                                  |
+| MutatingWebhookConfiguration exists                                                         | `test_mutating_webhook_exists`                                                   |
+| Webhook `failurePolicy=Fail`                                                                | `test_mutating_webhook_failure_policy`                                           |
+| Webhook targets `kubeflow.org/notebooks` CREATE + UPDATE                                    | `test_mutating_webhook_targets_notebooks`                                        |
 
 ## File Map
 
@@ -154,11 +201,13 @@ Post-upgrade only. Proves the upgraded controller and webhook can still reconcil
 upgrade/
 |-- README.md                 # This document
 |-- conftest.py               # Session fixtures, baseline capture/load, stop lifecycle
+|-- kueue_constants.py        # Shared constants for Kueue upgrade test resources
 |-- test_upgrade.py           # Running notebook survival + CA bundles
 |-- test_upgrade_auth.py      # kube-rbac-proxy for running and stopped notebooks
+|-- test_upgrade_creation.py  # New notebook + mutating webhook (post only)
+|-- test_upgrade_kueue.py     # Kueue-managed notebook scheduling survival
 |-- test_upgrade_routing.py   # HTTPRoute + ReferenceGrant
-|-- test_upgrade_stopped.py   # Stopped notebook stays stopped
-+-- test_upgrade_creation.py  # New notebook + mutating webhook (post only)
++-- test_upgrade_stopped.py   # Stopped notebook stays stopped
 ```
 
 ## Running
@@ -178,16 +227,19 @@ uv run pytest --post-upgrade tests/workbenches/notebooks_server/controller/upgra
 
 ## Out of Scope (covered elsewhere)
 
-| Concern                                                                            | Where                                                                                                                  |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| N-1 workbench image survival across IDEs (JupyterLab, Code Server, RStudio, Elyra) | [`../../../notebook_images/upgrade/`](../../../notebook_images/upgrade/)                                               |
-| Dashboard-driven image bump N-1 → N                                                | [`../../../notebook_images/upgrade/test_bump_jupyterlab.py`](../../../notebook_images/upgrade/test_bump_jupyterlab.py) |
-| ImageStream import health / digest tags                                            | [`../../operator/test_imagestream_health.py`](../../operator/test_imagestream_health.py)                               |
-| Non-upgrade spawn and auth resource customization                                  | [`../test_spawning.py`](../test_spawning.py)                                                                           |
-| Custom image package verification                                                  | [`../test_custom_images.py`](../test_custom_images.py)                                                                 |
+| Concern                                                                             | Where                                                                                                                  |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| N-1 workbench image survival across IDEs (JupyterLab, Code Server, RStudio, Elyra)  | [`../../../notebook_images/upgrade/`](../../../notebook_images/upgrade/)                                               |
+| Dashboard-driven image bump N-1 -> N                                                | [`../../../notebook_images/upgrade/test_bump_jupyterlab.py`](../../../notebook_images/upgrade/test_bump_jupyterlab.py) |
+| ImageStream import health / digest tags                                             | [`../../operator/test_imagestream_health.py`](../../operator/test_imagestream_health.py)                               |
+| Non-upgrade spawn and auth resource customization                                   | [`../test_spawning.py`](../test_spawning.py)                                                                           |
+| Custom image package verification                                                   | [`../test_custom_images.py`](../test_custom_images.py)                                                                 |
 
 ## Notes
 
 - Namespace `upgrade-workbenches` must not collide with `upgrade-notebook-images` used by the image upgrade suite.
-- Pre-upgrade tests that need a complete baseline should depend on (or use) `capture_notebook_baseline` via `@pytest.mark.usefixtures("capture_notebook_baseline")`.
+- Namespace `upgrade-kueue-workbenches` is separate from the main upgrade namespace because Kueue requires the `kueue.openshift.io/managed=true` label on the namespace.
+- Pre-upgrade tests that need a complete baseline should depend on (or use) `capture_notebook_baseline` / `capture_kueue_baseline` via `@pytest.mark.usefixtures(...)`.
+- Kueue upgrade tests require the Red Hat build of Kueue operator installed with `StatefulSet` in the supported frameworks and DSC Kueue component set to `Unmanaged`.
+- The `kueue_statefulset_framework_check` fixture (inherited from `controller/conftest.py`) validates the Kueue operator prerequisite before any Kueue tests run.
 - Most of the behavioural complexity lives in `conftest.py`; review fixtures before changing assertions.

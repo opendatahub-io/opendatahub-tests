@@ -49,10 +49,10 @@ Optional overrides via pytest-testconfig:
 
 ```bash
 # Pin a specific ImageStream tag (useful on already-upgraded clusters)
-uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_image_tag=3.4
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_image_tag:3.4
 
 # Force stable (3.x major.minor) or legacy EUS (year.release) tag selection
-uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_upgrade_track=stable
+uv run pytest --pre-upgrade tests/workbenches/notebook_images/upgrade/ --tc workbench_upgrade_track:stable
 ```
 
 ### Notes

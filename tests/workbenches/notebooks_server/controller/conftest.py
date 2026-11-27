@@ -109,7 +109,7 @@ def users_persistent_volume_claim(
         namespace=unprivileged_model_namespace.name,
         label={constants.Labels.OpenDataHub.DASHBOARD: "true"},
         accessmodes=PersistentVolumeClaim.AccessMode.RWO,
-        size="10Gi",
+        size=request.param.get("size", "10Gi"),
         volume_mode=PersistentVolumeClaim.VolumeMode.FILE,
     ) as pvc:
         yield pvc
@@ -155,7 +155,7 @@ def notebook_image(
         _ERR_INVALID_CUSTOM_IMAGE = (
             "custom_image must be a valid OCI image reference with a digest (@sha256:digest), "
             "e.g., 'quay.io/org/image@sha256:abc123...', "  # noqa: IMG001
-            "got: '{custom_image}'"
+            f"got: '{custom_image}'"
         )
         # Check for valid digest: @sha256: must be followed by non-empty content
         digest_marker = "@sha256:"

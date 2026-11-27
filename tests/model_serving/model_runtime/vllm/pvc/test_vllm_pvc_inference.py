@@ -23,7 +23,8 @@ pytestmark = pytest.mark.usefixtures("skip_if_no_supported_accelerator_type", "v
 
 
 @pytest.mark.vllm_nvidia_single_gpu
-@pytest.mark.vllm_amd_gpu
+# TODO: re-enable once this test is validated on AMD; it has only been verified on NVIDIA so far.
+# @pytest.mark.vllm_amd_gpu
 @pytest.mark.parametrize(
     "model_namespace, vllm_model_pvc, pvc_downloaded_model_data, serving_runtime, vllm_pvc_inference_service",
     [

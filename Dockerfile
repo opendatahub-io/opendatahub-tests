@@ -1,4 +1,4 @@
-FROM fedora:43
+FROM fedora:44
 
 ARG USER=odh
 ARG HOME=/home/$USER
@@ -32,7 +32,10 @@ RUN wget https://github.com/openshift/must-gather-clean/releases/download/v0.0.4
 # Install cosign v3.0.4 (multi-arch, no expiration)
 COPY --from=quay.io/securesign/cli-cosign@sha256:3df09cd1b4915e61d4de9c67416827b94e5900763e936e2909fd4d78e1ead8e8 /usr/local/bin/cosign /usr/bin/cosign
 
-RUN useradd -ms /bin/bash $USER && chown -R $USER:$USER $HOME
+# Pin uid to 1001 to match the uid the Jenkins tier jobs run the
+# container with (podman --user 1001:1001 --userns=keep-id), so the tests
+# workdir is writable by the container user.
+RUN useradd -u 1001 -ms /bin/bash $USER && chown -R $USER:$USER $HOME
 USER $USER
 WORKDIR $HOME_DIR
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx ${BIN_DIR}/

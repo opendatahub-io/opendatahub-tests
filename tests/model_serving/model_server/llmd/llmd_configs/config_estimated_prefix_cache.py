@@ -29,7 +29,10 @@ class EstimatedPrefixCacheConfig(TinyLlamaS3GpuConfig):
             {"name": "PYTHONHASHSEED", "value": cls.hash_seed},
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
-                "value": f"--prefix-caching-hash-algo {cls.hash_algo} --block-size {cls.block_size}",
+                "value": (
+                    f"--prefix-caching-hash-algo {cls.hash_algo} --block-size {cls.block_size}"
+                    " --enable-auto-tool-choice --tool-call-parser hermes"
+                ),
             },
         ]
 
@@ -72,7 +75,7 @@ class EstimatedPrefixCacheConfig(TinyLlamaS3GpuConfig):
                                 "--pool-namespace",
                                 "{{ .ObjectMeta.Namespace }}",
                                 "--pool-group",
-                                "inference.networking.x-k8s.io",
+                                "inference.networking.k8s.io",
                                 "--zap-encoder",
                                 "json",
                                 "--grpc-port",

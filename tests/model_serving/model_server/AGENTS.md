@@ -1,6 +1,6 @@
 # Model Server Test Component
 
-This directory contains integration tests for the **Serving Orchestration** (KServe) component of Red Hat OpenShift AI (RHOAI) and Open Data Hub (ODH). Tests validate InferenceService lifecycle, authentication, autoscaling, storage backends, observability, upgrade resilience, and LLM Deployment (LLMD) flows at the Kubernetes API level.
+This directory contains integration tests for the **Serving Orchestration** (KServe) component of Red Hat OpenShift AI (RHOAI) and Open Data Hub (ODH). Tests validate InferenceService lifecycle, authentication, autoscaling, storage backends, observability, upgrade resilience, and LLM Deployment (llm-d) flows at the Kubernetes API level.
 
 **Team**: Serving Orchestration (formerly Model Server / Model Serving)
 **CODEOWNERS**: `@threcc @mwaykole`
@@ -11,7 +11,8 @@ Every test function or test class should have a tier marker. Use the guide below
 
 **Exceptions** (do NOT need tier markers):
 
-- **GPU tests** — marked with `gpu` or `model_server_gpu`, run via the dedicated GPU Quality gate
+- **llm-d GPU tests** — marked with `llmd_gpu`, run via dedicated GPU quality gates (nvidia-1gpu, multigpus, amd)
+- **KServe/Triton GPU tests** — marked with `gpu` or `model_server_gpu`, run via the GPU quality gate
 - **Upgrade tests** — use `pre_upgrade` / `post_upgrade` markers instead
 
 ### Tier Definitions
@@ -35,9 +36,10 @@ Every test function or test class should have a tier marker. Use the guide below
 | Canary rollout | `tier2` | Advanced deployment strategy |
 | Model cache | `tier2` | LocalModelNamespaceCache flows |
 | Multi-node / workerSpec | `tier2` | Requires special hardware |
-| GPU (vLLM, NIM) | n/a | GPU tests use `gpu`/`model_server_gpu` marker; run via GPU Quality gate, not tier gating |
+| GPU (vLLM, NIM) | n/a | KServe/Triton GPU tests use `gpu`/`model_server_gpu` marker; run via GPU quality gate, not tier gating |
 | Negative / error handling | `tier3` | Invalid input, auth rejection, overload |
-| LLMD | `tier1` | LLM Deployment; smoke test → `smoke` |
+| llm-d CPU | `tier1` | LLM Deployment CPU tests; smoke test → `smoke` |
+| llm-d GPU | n/a | llm-d GPU tests use `llmd_gpu` marker; run via GPU quality gates (nvidia-1gpu, multigpus, amd), not tier gating |
 | Upgrade | n/a | Uses `pre_upgrade` / `post_upgrade` markers instead of tier markers |
 
 ### Marker Placement
@@ -49,6 +51,8 @@ Every test function or test class should have a tier marker. Use the guide below
 
 ## Required Markers
 
+<!-- Quality gate mapping: https://gitlab.cee.redhat.com/ods/jenkins/-/blob/master/resources/configs/components-testing/components/model-server/main.yaml -->
+
 Every test must have the following markers where applicable:
 
 | Marker | When Required |
@@ -56,10 +60,10 @@ Every test must have the following markers where applicable:
 | `smoke` / `tier1` / `tier2` / `tier3` | **Always** — exactly one per test (except GPU and upgrade tests) |
 | `pre_upgrade` / `post_upgrade` | Tests under `upgrade/` (replaces tier marker) |
 | `rawdeployment` | Tests targeting KServe RawDeployment (Standard) mode |
-| `gpu` / `model_server_gpu` | Tests requiring GPU nodes (replaces tier marker; runs via GPU Quality gate) |
+| `llmd_gpu` | llm-d GPU tests (replaces tier marker; runs via GPU quality gates) |
+| `gpu` / `model_server_gpu` | KServe/Triton GPU tests (replaces tier marker; runs via GPU quality gate) |
 | `multinode` | Tests requiring multiple nodes (workerSpec) |
 | `slow` | Tests expected to take >10 minutes (used in model_cache, platform tests) |
-| `llmd_cpu` / `llmd_gpu` | LLMD tests by resource requirement |
 | `kueue` / `keda` | Tests depending on Kueue/KEDA operators |
 | `minio` | Tests using MinIO storage |
 | `tls` / `metrics` | Tests validating TLS or metrics specifically |
@@ -135,7 +139,7 @@ class TestDescriptiveClassName:
 
 - `InferenceService` (ISVC): core serving primitive — model deployment, scaling, routing.
 - `ServingRuntime`: runtime template (OVMS, Triton, vLLM, etc.).
-- `LLMInferenceService` (LLMISVC): LLMD-specific CRD wrapping InferenceService with router, prefill, and scheduling config.
+- `LLMInferenceService` (LLMISVC): llm-d-specific CRD wrapping InferenceService with router, prefill, and scheduling config.
 - `LocalModelNamespaceCache`: namespace-scoped model cache — pre-downloads model to node PVCs.
 - `InferenceGraph`: DAG-based model routing (splitter, ensemble, sequence).
 
@@ -155,7 +159,8 @@ When reviewing PRs that touch this directory:
 
 - [ ] Every non-exempt test has exactly one tier marker (smoke/tier1/tier2/tier3)
 - [ ] Tier marker matches the subdirectory default from the classification table
-- [ ] GPU tests use `gpu`/`model_server_gpu` marker (no tier marker needed)
+- [ ] llm-d GPU tests use `llmd_gpu` marker (no tier marker needed)
+- [ ] KServe/Triton GPU tests use `gpu`/`model_server_gpu` marker (no tier marker needed)
 - [ ] Every test has a docstring
 - [ ] Fixtures use noun names and context managers
 - [ ] No `time.sleep()` — uses `TimeoutSampler` or `.wait_for_condition()`

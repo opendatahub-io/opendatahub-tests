@@ -1,0 +1,650 @@
+contract_version: 1.1.0
+release_stage: GA
+product_versions:
+  rhoai: ${RHOAI_VERSION}
+  opendatahub: ${OPENDATAHUB_VERSION}
+  dashboard: ${DASHBOARD_VERSION}
+  observability: ${OBSERVABILITY_VERSION}
+  serving_repository: ${SERVING_REPOSITORY}
+  serving_image: ${SERVING_IMAGE}
+  gpu_exporter_image: ${GPU_EXPORTER_IMAGE}
+  maas_image: ${MAAS_IMAGE}
+default_time_range: {}
+pipeline_health:
+  marker:
+    correlation_prefix: rhoai-observability
+    identity_fields: [run_id, namespace, workload, pod, emission_window]
+    signals: [metrics, traces, logs]
+  defaults:
+    propagation_timeout_seconds: 240
+    query_window_seconds: 240
+    http_timeout_seconds: 30
+    polling_interval_seconds: 5
+  records:
+    - id: model-metrics-pipeline
+      release_stage: GA
+      signal: metrics
+      stage: query
+      marker: namespace-workload-pod-window
+      source_query:
+        protocol: prometheus
+        route_key: cluster-thanos
+        path: /api/v1/query
+        method: GET
+        selector: existing-model-series
+      backend_query:
+        protocol: prometheus
+        route_key: cluster-thanos
+        path: /api/v1/query
+        method: GET
+      required_labels: [namespace]
+      required_attributes: []
+      required_edges: []
+      expected_http_status: [200]
+      expected_authorization: admin-and-namespace-scoped
+      minimum_results: 1
+      empty_result_valid: false
+      rollout_state: skipped
+      activation_release: GA
+      reason: Independent ingestion and backend evidence is not activated in the first pass.
+      next_activation_step: Establish source, scrape, store, and scoped-route evidence for the selected workload.
+    - id: model-traces-pipeline
+      release_stage: GA
+      signal: traces
+      stage: user-retrieval
+      marker: namespace-workload-pod-window
+      source_query:
+        protocol: otlp
+        discovery: in-cluster
+      backend_query:
+        protocol: tempo
+        discovery: in-cluster
+        search_path: /api/search
+        trace_path: /api/traces/{traceID}
+        method: GET
+      required_labels: []
+      required_attributes: [service.name]
+      required_edges: []
+      expected_http_status: [200]
+      expected_authorization: admin-and-namespace-scoped
+      minimum_results: 1
+      empty_result_valid: false
+      rollout_state: skipped
+      activation_release: GA
+      reason: The selected model workload has no reviewed trace-emission contract for the first pass.
+      next_activation_step: Prove a supported trace-producing workload and approve its Tempo attributes.
+    - id: model-logs-pipeline
+      release_stage: GA
+      signal: logs
+      stage: query
+      marker: namespace-workload-pod-window
+      source_query:
+        protocol: kubernetes-logs
+        discovery: in-cluster
+      backend_query:
+        protocol: loki
+        discovery: in-cluster
+        path: /loki/api/v1/query_range
+        method: GET
+        tenant: application
+      required_labels: [namespace, pod]
+      required_attributes: []
+      required_edges: []
+      expected_http_status: [200]
+      expected_authorization: admin-and-namespace-scoped
+      minimum_results: 1
+      empty_result_valid: false
+      rollout_state: skipped
+      activation_release: GA
+      reason: Loki ingestion and the selected workload log marker are not established in the first pass.
+      next_activation_step: Establish the application tenant, collector path, and namespace-scoped log evidence.
+    - id: model-correlation-pipeline
+      release_stage: GA
+      signal: correlation
+      stage: user-retrieval
+      marker: namespace-workload-pod-window
+      source_query:
+        protocol: korrel8r
+        discovery: in-cluster
+      backend_query:
+        protocol: korrel8r
+        discovery: in-cluster
+        domains_path: /api/v1alpha1/domains
+        objects_path: /api/v1alpha1/objects
+        graph_path: /api/v1alpha1/graphs/goals
+        method: GET
+        max_depth: 3
+      required_labels: []
+      required_attributes: []
+      required_edges: [metric, trace, log]
+      expected_http_status: [200]
+      expected_authorization: admin-and-namespace-scoped
+      minimum_results: 1
+      empty_result_valid: false
+      rollout_state: skipped
+      activation_release: GA
+      reason: Correlation is not activated until the enabled signal contracts are established.
+      next_activation_step: Activate only the edges backed by proven metrics, trace, and log contracts.
+    - id: maas-observe-promql
+      release_stage: GA
+      signal: metrics
+      stage: query
+      marker: limitador-scrape-series
+      source_query:
+        protocol: prometheus
+        fixture: existing-maas-limitador
+      backend_query:
+        protocol: observe-promql
+        discovery: release-selected
+        methods: [GET, POST]
+      required_labels: []
+      required_attributes: []
+      required_edges: []
+      expected_http_status: [200]
+      expected_authorization: configured-maas-persona
+      minimum_results: 1
+      empty_result_valid: false
+      rollout_state: skipped
+      activation_release: GA
+      reason: The supported Observe route and ExtProc deployment mode are not supplied for first-pass activation.
+      next_activation_step: Establish the owner-reviewed Observe route and exercise it through the existing MaaS fixtures.
+    - id: nemo-guardrails-tempo-upgrade
+      release_stage: GA
+      signal: traces
+      stage: user-retrieval
+      marker: release-n-baseline
+      source_query:
+        protocol: guardrails-inference
+        fixture: tests/ai_safety/nemo_guardrails
+      backend_query:
+        protocol: tempo
+        discovery: in-cluster
+        search_path: /api/search
+        trace_path: /api/traces/{traceID}
+        method: GET
+      required_labels: []
+      required_attributes: [service.name]
+      required_edges: []
+      expected_http_status: [200]
+      expected_authorization: cluster-admin
+      minimum_results: 1
+      empty_result_valid: false
+      rollout_state: skipped
+      activation_release: GA
+      reason: Release N pre/post upgrade orchestration and an accepted trace baseline are out of scope.
+      next_activation_step: Establish a report-only Release N baseline before any Release N+1 gate activation.
+records:
+  - id: cluster-system-health
+    dashboard: cluster
+    panel: system-health
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: up{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: cluster-deployed-models
+    dashboard: cluster
+    panel: deployed-models
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_deployment_ready{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, name]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: cluster-gpu-utilization
+    dashboard: cluster
+    panel: gpu-utilization
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: DCGM_FI_DEV_GPU_UTIL{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: cluster-gpu-utilization-by-project
+    dashboard: cluster
+    panel: gpu-utilization-by-project
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: accelerator_gpu_utilization{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: cluster-cpu
+    dashboard: cluster
+    panel: cpu
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: pod:container_cpu_usage:sum{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: cluster-memory
+    dashboard: cluster
+    panel: memory
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: container_memory_working_set_bytes{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: cluster-network
+    dashboard: cluster
+    panel: network
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: container_network_receive_bytes_total{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: models-model-deployment-variable
+    dashboard: models
+    panel: model-deployment-variable
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_deployment_ready{namespace=~"${namespace}",name=~"${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, name]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: models-model-table
+    dashboard: models
+    panel: model-table
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_deployment_ready{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, name]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: models-request-queue
+    dashboard: models
+    panel: request-queue
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_request_queue_depth{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, name]
+    empty_result_valid: true
+    empty_ui_state: Zero
+    capability: shipped
+    authorization_response: not-applicable
+  - id: models-replicas
+    dashboard: models
+    panel: replicas
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_replicas{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, name]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: models-latency
+    dashboard: models
+    panel: latency
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_request_latency_seconds{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, name]
+    empty_result_valid: true
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: models-ttft
+    dashboard: models
+    panel: ttft
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_vllm:time_to_first_token_seconds:rate5m{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: Not shipped
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: models-token-generation
+    dashboard: models
+    panel: token-generation
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_vllm:request_success_total:rate5m{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: Not shipped
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: models-throughput
+    dashboard: models
+    panel: throughput
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_vllm:time_per_output_token_seconds:rate5m{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: Not shipped
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: models-response-distribution
+    dashboard: models
+    panel: response-distribution
+    datasource: cluster-thanos
+    route: /api/v1/query
+    promql: kserve_request_latency_seconds_bucket{namespace="${namespace}",name="${model}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: Not shipped
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: accelerator-dcgm-source
+    dashboard: accelerators
+    panel: dcgm-gpu-utilization
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: DCGM_FI_DEV_GPU_UTIL{namespace="${namespace}",pod=~"${model}.*"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, pod]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: accelerator-gpu-utilization
+    dashboard: accelerators
+    panel: gpu-utilization
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: accelerator_gpu_utilization{namespace="${namespace}",pod=~"${model}.*"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, pod]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: accelerator-memory-used
+    dashboard: accelerators
+    panel: memory-used
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: accelerator_memory_used_bytes{namespace="${namespace}",pod=~"${model}.*"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, pod]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: accelerator-temperature
+    dashboard: accelerators
+    panel: temperature
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: DCGM_FI_DEV_GPU_TEMP{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: Not shipped
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: accelerator-power
+    dashboard: accelerators
+    panel: power
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: DCGM_FI_DEV_POWER_USAGE{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: Not shipped
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: gpu-aas-regression
+    dashboard: accelerators
+    panel: gpu-aas-regression
+    datasource: gpu-aas
+    route: /api/v1/query
+    promql: accelerator_gpu_utilization{namespace="${namespace}",pod=~"${model}.*"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace, pod]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: environment-blocked
+    authorization_response: not-applicable
+  - id: inference-vllm-series
+    dashboard: models
+    panel: vllm-inference
+    datasource: namespace-proxy
+    route: /api/prometheus/api/v1/query
+    promql: "{__name__=~\"kserve_vllm:.*\",namespace=\"${namespace}\",name=\"${model}\"}"
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: maas-authorized-hits
+    dashboard: maas
+    panel: token-usage
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: authorized_hits{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: maas-authorized-calls
+    dashboard: maas
+    panel: request-usage
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: authorized_calls{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    authorization_response: not-applicable
+  - id: maas-limited-calls
+    dashboard: maas
+    panel: rate-limited-requests
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: limited_calls{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: Not shipped
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: token-breakdown
+    release_stage: EA2
+    dashboard: maas
+    panel: prompt-completion-token-breakdown
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: authorized_hits{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: "Unavailable: not shipped"
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: showback
+    release_stage: GA
+    dashboard: maas
+    panel: showback
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: authorized_hits{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 0
+    required_labels: [namespace]
+    empty_result_valid: true
+    empty_ui_state: "Unavailable: not shipped"
+    capability: not-shipped
+    authorization_response: not-applicable
+  - id: namespace-proxy
+    dashboard: cluster
+    panel: namespace-proxy-isolation
+    datasource: namespace-proxy
+    route: /api/prometheus/api/v1/query
+    promql: up{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    # Confirmed on the RHOAI 3.6 probe cluster with an independently authenticated
+    # restricted service account: unauthorized namespaces return HTTP 403.
+    authorization_response: "403"
+  - id: tenancy-endpoint
+    dashboard: cluster
+    panel: tenancy-isolation
+    datasource: tenancy
+    route: /api/prometheus-tenancy/api/v1/query
+    promql: up{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    # Confirmed on the RHOAI 3.6 probe cluster with an independently authenticated
+    # restricted service account: unauthorized namespaces return HTTP 403.
+    authorization_response: "403"
+  - id: data-science-thanos
+    dashboard: cluster
+    panel: data-science-thanos-route
+    datasource: data-science-thanos
+    route: /api/v1/query
+    promql: up{namespace="${namespace}"}
+    expected_http_status: [200]
+    expected_prometheus_status: success
+    expected_result_type: vector
+    minimum_series: 1
+    required_labels: [namespace]
+    empty_result_valid: false
+    empty_ui_state: No data
+    capability: shipped
+    # The route has no user-bound authorization boundary: a live RHOAI 3.6 probe
+    # returned HTTP 200/success and populated data without Authorization. Require
+    # populated success so the known exposure is exercised by namespace isolation.
+    authorization_response: isolation-only

@@ -1,0 +1,1528 @@
+import base64
+import json
+import os
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager
+from json import JSONDecodeError
+from typing import Any
+from urllib.parse import quote, urlparse
+
+import requests
+import structlog
+from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
+from ocp_resources.config_map import ConfigMap
+from ocp_resources.custom_resource_definition import CustomResourceDefinition
+from ocp_resources.data_science_cluster import DataScienceCluster
+from ocp_resources.endpoints import Endpoints
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.group import Group
+from ocp_resources.ingress_config_openshift_io import Ingress as IngressConfig
+from ocp_resources.resource import NamespacedResource, ResourceEditor
+from requests import Response
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler
+
+from utilities.constants import (
+    MAAS_GATEWAY_NAME,
+    MAAS_GATEWAY_NAMESPACE,
+    ApiGroups,
+    DscComponents,
+)
+from utilities.llmd_utils import get_llm_inference_url
+from utilities.plugins.constant import OpenAIEnpoints, RestHeader
+from utilities.resources.aitenant import AITenant
+from utilities.resources.external_model import ExternalModel
+from utilities.resources.http_route import HTTPRoute
+from utilities.resources.llm_inference_service import LLMInferenceService
+from utilities.resources.maastenantconfig import MaasTenantConfig
+from utilities.resources.rate_limit_policy import RateLimitPolicy
+from utilities.resources.tenant import Tenant
+from utilities.resources.token_rate_limit_policy import TokenRateLimitPolicy
+
+LOGGER = structlog.get_logger(name=__name__)
+MODELS_INFO = OpenAIEnpoints.MODELS_INFO
+DSC_CRD_NAME = "datascienceclusters.datasciencecluster.opendatahub.io"
+MAAS_TENANT_CONFIG_CRD_NAME = f"maastenantconfigs.{ApiGroups.MAAS_IO}"
+LEGACY_TENANT_CRD_NAME = f"tenants.{ApiGroups.MAAS_IO}"
+DEFAULT_MAAS_TENANT_NAME = "default-tenant"
+MaaSTenantResource = MaasTenantConfig | Tenant
+
+AITENANT_INFRA_NAMESPACE: str = "ai-tenants"
+# Upper bound on pages fetched when searching active API keys (50 per page).
+MAX_API_KEY_SEARCH_PAGES: int = 20
+# OCP's built-in GatewayAPI class; override via AITENANT_GATEWAY_CLASS_NAME when absent.
+AIGATEWAY_GATEWAY_CLASS_NAME: str = os.environ.get("AITENANT_GATEWAY_CLASS_NAME") or "openshift-default"
+AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS: list[dict[str, Any]] = [
+    {
+        "name": "http",
+        "port": 80,
+        "protocol": "HTTP",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+    },
+    {
+        "name": "https",
+        "port": 443,
+        "protocol": "HTTPS",
+        "allowedRoutes": {"namespaces": {"from": "All"}},
+        "tls": {
+            "mode": "Terminate",
+            "certificateRefs": [
+                {"group": "", "kind": "Secret", "name": "data-science-gateway-service-tls"},
+            ],
+        },
+    },
+]
+
+
+def dsc_uses_aigateway_maas_schema(admin_client: DynamicClient) -> bool:
+    """True if DSC CRD has aigateway.modelsAsAService (3.5+); else use kserve.modelsAsService."""
+    crd = CustomResourceDefinition(client=admin_client, name=DSC_CRD_NAME, ensure_exists=True)
+    for version in crd.instance.spec.versions:
+        if not getattr(version, "storage", False):
+            continue
+        try:
+            aigateway_properties = version["schema"]["openAPIV3Schema"]["properties"]["spec"]["properties"][
+                "components"
+            ]["properties"]["aigateway"]["properties"]
+            models_as_a_service_property = aigateway_properties["modelsAsAService"]
+        except KeyError, TypeError:
+            return False
+        return models_as_a_service_property is not None
+    return False
+
+
+def cluster_has_maas_tenant_config_crd(admin_client: DynamicClient) -> bool:
+    """True if the cluster has the MaasTenantConfig CRD (3.5+)."""
+    tenant_config_crd = CustomResourceDefinition(client=admin_client, name=MAAS_TENANT_CONFIG_CRD_NAME)
+    return bool(tenant_config_crd.exists)
+
+
+def cluster_has_legacy_tenant_crd(admin_client: DynamicClient) -> bool:
+    """True if the cluster has the legacy Tenant CRD (pre-3.5)."""
+    legacy_tenant_crd = CustomResourceDefinition(client=admin_client, name=LEGACY_TENANT_CRD_NAME)
+    return bool(legacy_tenant_crd.exists)
+
+
+def get_default_maas_tenant(
+    admin_client: DynamicClient,
+    namespace: str,
+) -> MaaSTenantResource:
+    """Return the default MaaS tenant CR using the kind supported by the cluster."""
+    if cluster_has_maas_tenant_config_crd(admin_client):
+        return MaasTenantConfig(
+            client=admin_client,
+            name=DEFAULT_MAAS_TENANT_NAME,
+            namespace=namespace,
+            ensure_exists=True,
+        )
+    if cluster_has_legacy_tenant_crd(admin_client):
+        return Tenant(
+            client=admin_client,
+            name=DEFAULT_MAAS_TENANT_NAME,
+            namespace=namespace,
+            ensure_exists=True,
+        )
+    raise RuntimeError(f"No MaaS tenant CRD found on cluster for namespace '{namespace}'")
+
+
+def capture_maas_dsc_components_patch(
+    dsc_resource: DataScienceCluster,
+    uses_aigateway_maas_schema: bool,
+) -> dict[str, Any] | None:
+    """Capture the current MaaS-related DSC components slice for teardown restore."""
+    components = dsc_resource.instance.spec.components
+    if uses_aigateway_maas_schema:
+        try:
+            aigateway = components[DscComponents.AIGATEWAY]
+            return {
+                DscComponents.AIGATEWAY: {
+                    "managementState": aigateway.managementState,
+                    "modelsAsAService": {
+                        "managementState": aigateway.modelsAsAService.managementState,
+                    },
+                }
+            }
+        except AttributeError, KeyError, TypeError:
+            return None
+    try:
+        kserve = components[DscComponents.KSERVE]
+        return {
+            DscComponents.KSERVE: {
+                "modelsAsService": {
+                    "managementState": kserve.modelsAsService.managementState,
+                },
+            }
+        }
+    except AttributeError, KeyError, TypeError:
+        return None
+
+
+def restore_maas_dsc_components_patch(
+    dsc_resource: DataScienceCluster,
+    original_components_patch: dict[str, Any] | None,
+) -> None:
+    """Restore DSC MaaS components after a ResourceEditor session patch."""
+    if original_components_patch is not None:
+        with ResourceEditor(patches={dsc_resource: {"spec": {"components": original_components_patch}}}):
+            pass
+    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+
+
+def maas_under_kserve_component_patch(
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build DSC components patch for legacy MaaS under kserve (pre-3.5)."""
+    return {
+        DscComponents.KSERVE: {
+            "modelsAsService": {"managementState": models_as_a_service_state},
+        }
+    }
+
+
+def maas_component_patch(
+    admin_client: DynamicClient,
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+    aigateway_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build a version-aware DSC components patch for enabling or disabling MaaS."""
+    if dsc_uses_aigateway_maas_schema(admin_client):
+        return maas_under_aigateway_component_patch(
+            models_as_a_service_state=models_as_a_service_state,
+            aigateway_state=aigateway_state,
+        )
+    return maas_under_kserve_component_patch(models_as_a_service_state=models_as_a_service_state)
+
+
+def wait_for_maas_controller_ready(
+    dsc_resource: DataScienceCluster,
+    uses_aigateway_maas_schema: bool,
+    timeout: int = 900,
+) -> None:
+    """Wait for the MaaS controller readiness condition appropriate to the cluster version."""
+    maas_ready_condition = (
+        DscComponents.ConditionType.AIGATEWAY_READY
+        if uses_aigateway_maas_schema
+        else DscComponents.ConditionType.MODELS_AS_SERVICE_READY
+    )
+    dsc_resource.wait_for_condition(condition=maas_ready_condition, status="True", timeout=timeout)
+    dsc_resource.wait_for_condition(condition="Ready", status="True", timeout=600)
+
+
+def maas_under_aigateway_component_patch(
+    models_as_a_service_state: str = DscComponents.ManagementState.MANAGED,
+    aigateway_state: str = DscComponents.ManagementState.MANAGED,
+) -> dict[str, Any]:
+    """Build DSC components patch for MaaS nested under AIGateway.
+
+    Args:
+        models_as_a_service_state: Management state for aigateway.modelsAsAService.
+        aigateway_state: Management state for aigateway itself.
+
+    Returns:
+        Dict suitable for ResourceEditor under spec.components.
+    """
+    return {
+        DscComponents.AIGATEWAY: {
+            "managementState": aigateway_state,
+            "modelsAsAService": {"managementState": models_as_a_service_state},
+        }
+    }
+
+
+def host_from_ingress_domain(client) -> str:
+    """Return 'maas.<ingress-domain>'"""
+    ingress_config = IngressConfig(name="cluster", client=client, ensure_exists=True)
+    domain = ingress_config.instance.spec.get("domain")
+    assert domain, "Ingress 'cluster' missing spec.domain (ingresses.config.openshift.io)"
+    return f"maas.{domain}"
+
+
+def wait_for_authorino_auth_path(
+    admin_client: DynamicClient,
+    http_session: requests.Session,
+) -> None:
+    """Wait until gateway auth traffic works again after an Authorino rollout.
+
+    Authorino restarts make its single endpoint flap for the gateway envoys
+    (outlier detection ejects it after consecutive gRPC failures), so requests
+    through the maas default gateway hang or 500 for a short window even though
+    the Authorino deployment already reports Available. Probe the unauthenticated
+    maas-api path until the gateway answers, so tests do not race that window.
+    """
+    probe_url = f"https://{host_from_ingress_domain(client=admin_client)}/maas-api/v1/models"
+    for sample in TimeoutSampler(
+        wait_timeout=300,
+        sleep=5,
+        func=http_session.get,
+        exceptions_dict={requests.RequestException: []},
+        url=probe_url,
+        timeout=15,
+    ):
+        if sample.status_code < 500:
+            LOGGER.info(f"authorino auth path healthy ({probe_url} -> {sample.status_code})")
+            return
+        LOGGER.info(f"authorino auth path still settling ({probe_url} -> {sample.status_code})")
+
+
+def _first_ready_llmisvc(
+    client,
+    namespace: str = "llm",
+    label_selector: str | None = None,
+):
+    """
+    Return the first Ready LLMInferenceService in the given namespace,
+    or None if none are Ready.
+    """
+    for service in LLMInferenceService.get(
+        client=client,
+        namespace=namespace,
+        label_selector=label_selector,
+    ):
+        status = getattr(service.instance, "status", {}) or {}
+        conditions = status.get("conditions", [])
+        is_ready = any(
+            condition.get("type") == "Ready" and condition.get("status") == "True" for condition in conditions
+        )
+        if is_ready:
+            return service
+
+    return None
+
+
+def detect_scheme_via_llmisvc(client, namespace: str = "llm") -> str:
+    """Return https for external MaaS gateway traffic.
+
+    LLMISVC status URLs may report http; using that causes HTTP→HTTPS redirects
+    that turn POST into GET.
+    """
+    service = _first_ready_llmisvc(client=client, namespace=namespace)
+    if not service:
+        return "https"
+
+    url = get_llm_inference_url(llm_service=service)
+    scheme = (urlparse(url).scheme or "").lower()
+    if scheme == "http":
+        LOGGER.info(
+            f"detect_scheme_via_llmisvc: LLMISVC URL is http ({url}); using https to avoid HTTP→HTTPS POST→GET redirect"
+        )
+    return "https"
+
+
+def maas_auth_headers(token: str) -> dict[str, str]:
+    """Authorization header only (used for /v1/tokens with OCP user token)."""
+    return {"Authorization": f"Bearer {token}"}
+
+
+def mint_token(
+    base_url: str,
+    oc_user_token: str,
+    http_session: requests.Session,
+    minutes: int = 10,
+) -> tuple[Response, dict]:
+    """Mint a MaaS token."""
+    resp = http_session.post(
+        f"{base_url}/v1/tokens",
+        headers=maas_auth_headers(token=oc_user_token),
+        json={"ttl": f"{minutes}m"},
+        timeout=60,
+    )
+    try:
+        body = resp.json()
+    except JSONDecodeError, ValueError:
+        body = {}
+    return resp, body
+
+
+def b64url_decode(encoded_str: str) -> bytes:
+    padding = "=" * (-len(encoded_str) % 4)
+    padded_bytes = (encoded_str + padding).encode(encoding="utf-8")
+    return base64.urlsafe_b64decode(s=padded_bytes)
+
+
+@contextmanager
+def create_maas_group(
+    admin_client: DynamicClient,
+    group_name: str,
+    users: list[str] | None = None,
+) -> Generator[Group]:
+    """
+    Create an OpenShift Group with optional users and delete it on exit.
+    """
+    with Group(
+        client=admin_client,
+        name=group_name,
+        users=users or [],
+        wait_for_resource=True,
+    ) as group:
+        LOGGER.info(f"MaaS RBAC: created group {group_name} with users {users or []}")
+        yield group
+
+
+def build_maas_headers(token: str) -> dict:
+    """Return common MaaS headers for a given token."""
+    return {
+        "Authorization": f"Bearer {token}",
+        **RestHeader.HEADERS,
+    }
+
+
+def get_maas_models_response(
+    session: requests.Session,
+    base_url: str,
+    headers: dict,
+) -> requests.Response:
+    """
+    Issue GET /v1/models and return the raw Response.
+
+    Also validates the status code before returning.
+    """
+    models_url = f"{base_url}{MODELS_INFO}"
+    resp = session.get(url=models_url, headers=headers, timeout=60)
+
+    LOGGER.info(f"MaaS: /v1/models -> {resp.status_code} (url={models_url})")
+
+    assert resp.status_code == 200, f"/v1/models failed: {resp.status_code} {resp.text[:200]} (url={models_url})"
+
+    return resp
+
+
+@contextmanager
+def patch_llmisvc_with_maas_router(
+    llm_service: LLMInferenceService,
+) -> Generator[None]:
+    router_spec = {
+        "gateway": {"refs": [{"name": MAAS_GATEWAY_NAME, "namespace": MAAS_GATEWAY_NAMESPACE}]},
+        "route": {},
+    }
+
+    patch_body = {
+        "metadata": {
+            "annotations": {
+                "alpha.maas.opendatahub.io/tiers": "[]",
+                "security.opendatahub.io/enable-auth": "true",
+            }
+        },
+        "spec": {"router": router_spec},
+    }
+
+    with ResourceEditor(patches={llm_service: patch_body}):
+        yield
+
+
+def _resolve_request_model_id(models_list: list | None, model_id: str | None) -> str:
+    """Return the model id sent in the request body.
+
+    An explicit model id takes precedence; otherwise the first model listed by /v1/models is used.
+    """
+    if model_id:
+        return model_id
+
+    assert models_list, "No models returned from /v1/models"
+    first_model_id = models_list[0].get("id", "")
+    assert first_model_id, "First model from /v1/models has no 'id' field"
+    return first_model_id
+
+
+def verify_chat_completions(
+    request_session_http: requests.Session,
+    model_url: str,
+    headers: dict,
+    models_list: list | None = None,
+    *,
+    model_id: str | None = None,
+    prompt_text: str = "Hello from MaaS chat e2e test",
+    max_tokens: int = 50,
+    request_timeout_seconds: int = 60,
+    log_prefix: str = "MaaS",
+    expected_status_codes: tuple[int, ...] = (200,),
+) -> Response:
+    """
+    Common helper to verify /v1/chat/completions responds to a simple prompt.
+
+    - For the usual happy-path tests, leave expected_status_codes=(200,)
+      and this behaves exactly as before: assert HTTP 200 and validate the
+      basic response shape (choices, content, etc.).
+
+    - For special tests (e.g. rate limiting) you can pass a tuple like
+      expected_status_codes=(200, 429) and then inspect response.status_code
+      in the test. Only HTTP 200 responses will have their body validated.
+
+    - Pass model_id to target a specific model instead of the first entry of models_list,
+      which matters when the gateway lists models owned by other workloads.
+    """
+
+    request_model_id = _resolve_request_model_id(models_list=models_list, model_id=model_id)
+
+    payload_data = {
+        "model": request_model_id,
+        "messages": [{"role": "user", "content": prompt_text}],
+        "max_tokens": max_tokens,
+    }
+
+    LOGGER.info(f"{log_prefix}: POST {model_url} with payload keys={list(payload_data.keys())}")
+
+    response = request_session_http.post(
+        url=model_url,
+        headers=headers,
+        json=payload_data,
+        timeout=request_timeout_seconds,
+    )
+
+    LOGGER.info(f"{log_prefix}: POST {model_url} -> HTTP {response.status_code}")
+
+    assert response.status_code in expected_status_codes, (
+        f"/v1/chat/completions failed: HTTP {response.status_code} "
+        f"response={response.text[:200]} (url={model_url}), "
+        f"expected one of {expected_status_codes}"
+    )
+
+    if response.status_code == 200:
+        response_body = response.json()
+        completions_choices = response_body.get("choices", [])
+        assert isinstance(completions_choices, list) and completions_choices, (
+            "'choices' field missing or empty in /v1/chat/completions response"
+        )
+
+        first_choice = completions_choices[0]
+        message_section = first_choice.get("message", {}) or {}
+        content_text = message_section.get("content") or first_choice.get("text", "")
+
+        assert isinstance(content_text, str) and content_text.strip(), (
+            "First choice in /v1/chat/completions response has no text content"
+        )
+
+    return response
+
+
+def verify_streaming_chat_completions(
+    request_session_http: requests.Session,
+    model_url: str,
+    headers: dict,
+    models_list: list | None = None,
+    *,
+    model_id: str | None = None,
+    prompt_text: str = "Hello from MaaS streaming chat e2e test",
+    max_tokens: int = 50,
+    request_timeout_seconds: int = 60,
+    log_prefix: str = "MaaS streaming",
+    max_sse_lines: int = 1000,
+) -> tuple[str, int]:
+    """Verify a streaming (SSE) /v1/chat/completions call and return its reported usage.
+
+    Sends `stream: true` with `stream_options.include_usage: true` so the stream's terminal
+    event carries the token usage. This matters for usage logging: the MaaS gateway's
+    EnvoyFilter cannot parse text/event-stream bodies with json_to_metadata, so its companion
+    `sse_tokens` Lua filter reads the usage fields from the SSE chunks and records them. Without
+    include_usage the server reports no usage and the logged token count is zero.
+
+    Args:
+        request_session_http: HTTP session used to send the request.
+        model_url: Chat-completions URL of the model.
+        headers: Request headers, including the MaaS authorization header.
+        models_list: Models returned by /v1/models; the first model id is used when model_id
+            is not provided.
+        model_id: Explicit model id for the request body, overriding models_list.
+        prompt_text: User message sent to the model.
+        max_tokens: Maximum number of tokens to generate.
+        request_timeout_seconds: HTTP request timeout in seconds.
+        log_prefix: Prefix used in log messages.
+        max_sse_lines: Upper bound on SSE lines consumed, so a runaway stream fails loudly.
+
+    Returns:
+        The model name reported by the streamed chunks and the total tokens from the
+        terminal usage event.
+
+    Raises:
+        AssertionError: If the response is not a 200 event-stream, produces no content, or
+            reports no usage.
+    """
+    request_model_id = _resolve_request_model_id(models_list=models_list, model_id=model_id)
+
+    payload_data = {
+        "model": request_model_id,
+        "messages": [{"role": "user", "content": prompt_text}],
+        "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    LOGGER.info(f"{log_prefix}: POST {model_url} (stream=True) with payload keys={list(payload_data.keys())}")
+
+    streamed_model = ""
+    streamed_content = ""
+    usage_total_tokens: int | None = None
+    done_received = False
+
+    with request_session_http.post(
+        url=model_url,
+        headers=headers,
+        json=payload_data,
+        timeout=request_timeout_seconds,
+        stream=True,
+    ) as response:
+        LOGGER.info(f"{log_prefix}: POST {model_url} -> HTTP {response.status_code}")
+
+        assert response.status_code == 200, (
+            f"/v1/chat/completions streaming failed: HTTP {response.status_code} "
+            f"response={response.text[:200]} (url={model_url})"
+        )
+
+        content_type = response.headers.get("content-type", "")
+        assert "text/event-stream" in content_type, (
+            f"Expected text/event-stream content type for streaming response, got '{content_type}'"
+        )
+
+        for line_number, line in enumerate(response.iter_lines(), start=1):
+            assert line_number <= max_sse_lines, (
+                f"Streaming response exceeded {max_sse_lines} SSE lines without terminating"
+            )
+            if not line or not line.startswith(b"data:"):
+                continue
+
+            data = line.removeprefix(b"data:").strip()
+            if data == b"[DONE]":
+                done_received = True
+                break
+
+            chunk = json.loads(data)
+            streamed_model = chunk.get("model") or streamed_model
+            for choice in chunk.get("choices") or []:
+                streamed_content += (choice.get("delta") or {}).get("content") or ""
+
+            usage = chunk.get("usage")
+            if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int):
+                usage_total_tokens = usage["total_tokens"]
+                prompt_tokens = usage.get("prompt_tokens")
+                completion_tokens = usage.get("completion_tokens")
+                if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
+                    assert usage_total_tokens == prompt_tokens + completion_tokens, (
+                        f"Streaming usage total_tokens={usage_total_tokens} does not match "
+                        f"prompt_tokens={prompt_tokens} + completion_tokens={completion_tokens}"
+                    )
+
+    LOGGER.info(f"{log_prefix}: streaming model={streamed_model!r} total_tokens={usage_total_tokens}")
+
+    assert done_received, "Streaming response ended without a [DONE] event"
+    assert streamed_model, "Streaming response did not report a 'model' field"
+    assert streamed_content.strip(), "Streaming response produced no assistant content deltas"
+    assert usage_total_tokens is not None and usage_total_tokens > 0, (
+        "Streaming response did not report positive token usage; expected stream_options.include_usage "
+        f"to produce a terminal event with usage.total_tokens, got {usage_total_tokens!r}"
+    )
+
+    return streamed_model, usage_total_tokens
+
+
+def assert_mixed_200_and_429(
+    *,
+    actor_label: str,
+    status_codes_list: list[int],
+    context: str,
+    require_429: bool = True,
+) -> None:
+    assert status_codes_list, f"{actor_label}: no responses in {context}"
+
+    allowed_status_codes = {200, 429}
+    unexpected_status_codes = [code for code in status_codes_list if code not in allowed_status_codes]
+
+    assert not unexpected_status_codes, (
+        f"{actor_label}: unexpected HTTP status codes in {context}: {unexpected_status_codes}. "
+        f"Full sequence={status_codes_list}. "
+        "Likely wrong endpoint/route (404) or server/gateway issue (5xx)."
+    )
+
+    assert status_codes_list[0] == 200, (
+        f"{actor_label}: expected first status 200 in {context}, got {status_codes_list[0]} "
+        f"(status_codes={status_codes_list})"
+    )
+
+    if require_429:
+        assert 429 in status_codes_list, f"{actor_label}: expected 429 in {context}, but saw {status_codes_list}"
+
+        first_429_idx = status_codes_list.index(429)
+        start = first_429_idx + 1
+        tail_after_429 = status_codes_list[start:]
+
+        assert 200 not in tail_after_429, (
+            f"{actor_label}: saw 200 after first 429 in {context}. "
+            f"First 429 at index {first_429_idx}. Full sequence={status_codes_list}"
+        )
+
+
+def maas_token_ratelimitpolicy_spec() -> dict[str, Any]:
+    """
+    Deterministic TokenRateLimitPolicy limits for MaaS tests.
+
+    This returns only the 'limits' mapping, suitable for assigning to
+    spec['limits'] on the existing TokenRateLimitPolicy.
+    """
+    return {
+        "enterprise-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 240, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "enterprise"'}],
+        },
+        "free-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 60, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "free"'}],
+        },
+        "premium-user-tokens": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 120, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "premium"'}],
+        },
+    }
+
+
+def maas_ratelimitpolicy_spec() -> dict[str, Any]:
+    """
+    Deterministic RateLimitPolicy limits for MaaS tests.
+
+    This returns only the 'limits' mapping, suitable for assigning to
+    spec['limits'] on the existing RateLimitPolicy.
+    """
+    return {
+        "enterprise": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 50, "window": "2m"}],
+            "when": [{"predicate": 'auth.identity.tier == "enterprise"'}],
+        },
+        "free": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 5, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "free"'}],
+        },
+        "premium": {
+            "counters": [{"expression": "auth.identity.userid"}],
+            "rates": [{"limit": 8, "window": "1m"}],
+            "when": [{"predicate": 'auth.identity.tier == "premium"'}],
+        },
+    }
+
+
+@contextmanager
+def maas_gateway_rate_limits_patched(
+    *,
+    admin_client: DynamicClient,
+    namespace: str,
+    token_policy_name: str,
+    request_policy_name: str,
+) -> Generator[None]:
+    """
+    Temporarily patch ONLY `spec.limits` of the Kuadrant TokenRateLimitPolicy and
+    RateLimitPolicy for MaaS tests, and restore the original state afterwards.
+    """
+    token_policy = TokenRateLimitPolicy(
+        client=admin_client,
+        name=token_policy_name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+    request_policy = RateLimitPolicy(
+        client=admin_client,
+        name=request_policy_name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+
+    LOGGER.info(f"MaaS Kuadrant: using policies {namespace}/{token_policy_name} and {namespace}/{request_policy_name}")
+
+    LOGGER.info(f"Patching TokenRateLimitPolicy in namespace '{namespace}' via ResourceEditor")
+    with ResourceEditor(patches={token_policy: {"spec": {"limits": maas_token_ratelimitpolicy_spec()}}}):
+        LOGGER.info("Waiting for TokenRateLimitPolicy condition Enforced=True")
+        token_policy.wait_for_condition(condition="Enforced", status="True", timeout=60)
+
+        LOGGER.info(f"Patching RateLimitPolicy in namespace '{namespace}' via ResourceEditor")
+        with ResourceEditor(patches={request_policy: {"spec": {"limits": maas_ratelimitpolicy_spec()}}}):
+            LOGGER.info("Waiting for RateLimitPolicy condition Enforced=True")
+            request_policy.wait_for_condition(condition="Enforced", status="True", timeout=60)
+            yield
+
+    LOGGER.info("Restored original Kuadrant policies")
+
+
+def get_total_tokens(resp: Response, *, fail_if_missing: bool = False) -> int | None:
+    """Extract total token usage from a MaaS response.
+
+    The helper first checks for the `x-odhu-usage-total-tokens` response header.
+    If it is missing or not parseable as an integer, the JSON body is used.
+
+    Args:
+        resp: HTTP response returned by a MaaS inference endpoint.
+        fail_if_missing: If True, raise AssertionError when token usage cannot be extracted.
+
+    Returns:
+        Total token count if available, otherwise None.
+
+    Raises:
+        AssertionError: If fail_if_missing=True and token usage cannot be extracted.
+    """
+    header_val = resp.headers.get("x-odhu-usage-total-tokens")
+    if header_val is not None:
+        try:
+            return int(header_val)
+        except TypeError, ValueError:
+            if fail_if_missing:
+                raise AssertionError(
+                    f"Token usage header is not parseable as int; headers={dict(resp.headers)} body={resp.text[:500]}"
+                ) from None
+            return None
+
+    try:
+        body: Any = resp.json()
+    except ValueError:
+        if fail_if_missing:
+            raise AssertionError(
+                f"Token usage not found: response body is not JSON; headers={dict(resp.headers)} body={resp.text[:500]}"
+            ) from None
+        return None
+
+    if isinstance(body, dict):
+        usage = body.get("usage")
+        if isinstance(usage, dict):
+            total = usage.get("total_tokens")
+            if isinstance(total, int):
+                return total
+
+    if fail_if_missing:
+        raise AssertionError(
+            f"Token usage not found in header or JSON body; headers={dict(resp.headers)} body={resp.text[:500]}"
+        )
+    return None
+
+
+def maas_gateway_listeners(hostname: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "http",
+            "hostname": hostname,
+            "port": 80,
+            "protocol": "HTTP",
+            "allowedRoutes": {"namespaces": {"from": "All"}},
+        },
+        {
+            "name": "https",
+            "hostname": hostname,
+            "port": 443,
+            "protocol": "HTTPS",
+            "allowedRoutes": {"namespaces": {"from": "All"}},
+            "tls": {
+                "mode": "Terminate",
+                "certificateRefs": [{"group": "", "kind": "Secret", "name": "data-science-gateway-service-tls"}],
+            },
+        },
+    ]
+
+
+def endpoints_have_ready_addresses(
+    admin_client: DynamicClient,
+    namespace: str,
+    name: str,
+) -> bool:
+    endpoints = Endpoints(
+        client=admin_client,
+        name=name,
+        namespace=namespace,
+        ensure_exists=True,
+    )
+
+    subsets = endpoints.instance.subsets
+    if not subsets:
+        return False
+
+    return any(subset.addresses for subset in subsets)
+
+
+def gateway_probe_reaches_maas_api(
+    http_session: requests.Session,
+    probe_url: str,
+    request_timeout_seconds: int,
+) -> tuple[bool, int, str]:
+    response = http_session.get(probe_url, timeout=request_timeout_seconds)
+    status_code = response.status_code
+    response_text = response.text
+    LOGGER.info(f"Received {status_code} response from {probe_url}, {response_text}")
+    ok = status_code in (200, 401, 403)
+    return ok, status_code, response_text
+
+
+def revoke_token(
+    base_url: str,
+    oc_user_token: str,
+    http_session: requests.Session,
+) -> Response:
+    """
+    Revoke MaaS tokens for the user.
+    """
+    url = f"{base_url}/v1/tokens"
+    resp = http_session.delete(
+        url=url,
+        headers=maas_auth_headers(token=oc_user_token),
+        timeout=60,
+    )
+
+    assert resp.status_code in (200, 202, 204), f"revoke failed: {resp.status_code} {(resp.text or '')[:200]}"
+
+    return resp
+
+
+def _search_active_api_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    extra_headers: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Search all active API keys, paging until a short page is returned.
+
+    Raises:
+        RuntimeError: When a search page fails or the page cap is reached with
+            a full page, meaning the collected results may be incomplete.
+    """
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
+    items: list[dict[str, Any]] = []
+    limit = 50
+    for page_index in range(MAX_API_KEY_SEARCH_PAGES):
+        response = request_session_http.post(
+            url=f"{base_url}/v1/api-keys/search",
+            headers=request_headers,
+            json={
+                "filters": {"status": ["active"]},
+                "sort": {"by": "created_at", "order": "desc"},
+                "pagination": {"limit": limit, "offset": page_index * limit},
+            },
+            timeout=60,
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"active-key search failed with status={response.status_code}")
+        page_items = (response.json() or {}).get("items") or []
+        items.extend(page_items)
+        if len(page_items) < limit:
+            return items
+    raise RuntimeError(f"active-key search hit the {MAX_API_KEY_SEARCH_PAGES}-page cap; results may be incomplete")
+
+
+def _same_name_active_key_ids(
+    request_session_http: requests.Session,
+    base_url: str,
+    api_key_name: str,
+    ocp_user_token: str,
+    extra_headers: dict[str, str] | None = None,
+) -> set[str]:
+    """IDs of every active API key named ``api_key_name`` (empty on search failure)."""
+    items = _search_active_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        extra_headers=extra_headers,
+    )
+    return {str(item["id"]) for item in items if item.get("name") == api_key_name and item.get("id") is not None}
+
+
+def _revoke_orphaned_duplicate_keys(
+    request_session_http: requests.Session,
+    base_url: str,
+    api_key_name: str,
+    keep_key_id: str,
+    preexisting_key_ids: set[str],
+    ocp_user_token: str,
+    extra_headers: dict[str, str] | None = None,
+) -> None:
+    """Revoke duplicate keys a retried create may have orphaned (best-effort).
+
+    A plain proxy 5xx can hide a create that actually succeeded upstream, so
+    after a retried create every active key with the same name that this call
+    created (absent from ``preexisting_key_ids``, the same-name IDs snapshotted
+    before the first POST) and that is not the returned ``keep_key_id`` is
+    revoked. Inlined (not ``list_api_keys``) to avoid a circular import.
+    """
+    items = _search_active_api_keys(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        extra_headers=extra_headers,
+    )
+    duplicates = [
+        item
+        for item in items
+        if item.get("name") == api_key_name
+        and str(item.get("id")) not in preexisting_key_ids
+        and str(item.get("id")) != keep_key_id
+    ]
+    if not keep_key_id and len(duplicates) > 1:
+        # The create failed (no returned key ID to keep), and more than one
+        # new same-name key exists: another caller may have created one of
+        # them after this call's snapshot, so ownership cannot be established
+        # and nothing is revoked.
+        LOGGER.warning(
+            f"orphan-key dedupe: {len(duplicates)} new same-name keys exist but no key ID "
+            "was returned by this call; skipping cleanup to avoid revoking another caller's key"
+        )
+        return
+    for duplicate in duplicates:
+        LOGGER.warning(f"orphan-key dedupe: revoking duplicate key id={duplicate.get('id')} name={api_key_name}")
+        try:
+            revoke_response, _ = revoke_api_key(
+                request_session_http=request_session_http,
+                base_url=base_url,
+                key_id=str(duplicate["id"]),
+                ocp_user_token=ocp_user_token,
+                extra_headers=extra_headers,
+            )
+            if revoke_response.status_code not in (200, 202, 204):
+                LOGGER.warning(
+                    f"orphan-key dedupe: revoking key id={duplicate.get('id')} failed with "
+                    f"status={revoke_response.status_code}"
+                )
+        except Exception as error:  # noqa: BLE001 - one duplicate must not stop the rest
+            LOGGER.warning(
+                f"orphan-key dedupe: revoking key id={duplicate.get('id')} raised, "
+                f"continuing with remaining duplicates",
+                error_type=type(error).__name__,
+            )
+
+
+def create_api_key(
+    base_url: str,
+    ocp_user_token: str,
+    request_session_http: requests.Session,
+    api_key_name: str,
+    request_timeout_seconds: int = 60,
+    expires_in: str | None = None,
+    raise_on_error: bool = True,
+    subscription: str | None = None,
+    ephemeral: bool = False,
+    extra_headers: dict[str, str] | None = None,
+) -> tuple[Response, dict[str, Any]]:
+    """Create an API key via MaaS API and return (response, parsed_body).
+
+    Args:
+        base_url: MaaS API base URL.
+        ocp_user_token: OCP token for auth against maas-api.
+        request_session_http: HTTP session to use.
+        api_key_name: Name of the API key to create.
+        expires_in: Optional expiration duration string (e.g. "24h", "720h").
+            When None, no expiresIn field is sent and the key does not expire.
+        raise_on_error: When True (default), raises AssertionError for non-200/201
+            responses. Set to False when testing error cases (e.g. 400 rejection).
+        subscription: Optional MaaSSubscription name to bind at mint time.
+        ephemeral: When True, marks the key as short-lived/programmatic.
+        extra_headers: Optional additional HTTP headers (for example X-MaaS-Tenant).
+
+    Retries responses that were provably rejected before maas-api saw the
+    request (empty 403, AUTH_FAILURE 500), plus plain-text proxy 5xx (maas-api
+    errors are JSON). A plain-5xx retry may hide a create that succeeded
+    upstream, so afterwards any duplicate active key with the same name that
+    this call created is revoked (see ``_revoke_orphaned_duplicate_keys``).
+    """
+    api_keys_url = f"{base_url}/v1/api-keys"
+    payload: dict[str, Any] = {"name": api_key_name}
+    if expires_in is not None:
+        payload["expiresIn"] = expires_in
+    if subscription is not None:
+        payload["subscription"] = subscription
+    if ephemeral:
+        payload["ephemeral"] = True
+
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}", "Content-Type": "application/json"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
+
+    preexisting_key_ids: set[str] | None
+    try:
+        preexisting_key_ids = _same_name_active_key_ids(
+            request_session_http=request_session_http,
+            base_url=base_url,
+            api_key_name=api_key_name,
+            ocp_user_token=ocp_user_token,
+            extra_headers=extra_headers,
+        )
+    except Exception as error:  # noqa: BLE001 - snapshot availability is best effort
+        LOGGER.warning(f"orphan-key dedupe: same-name key snapshot unavailable, skipping cleanup: {error}")
+        preexisting_key_ids = None
+
+    def revoke_keys_created_by_this_call(keep_key_id: str) -> None:
+        if preexisting_key_ids is None:
+            # Without a complete snapshot, same-name keys cannot be told apart
+            # from pre-existing ones, so cleanup is skipped entirely.
+            return
+        try:
+            _revoke_orphaned_duplicate_keys(
+                request_session_http=request_session_http,
+                base_url=base_url,
+                api_key_name=api_key_name,
+                keep_key_id=keep_key_id,
+                preexisting_key_ids=preexisting_key_ids,
+                ocp_user_token=ocp_user_token,
+                extra_headers=extra_headers,
+            )
+        except Exception as error:  # noqa: BLE001 - dedupe is best effort
+            LOGGER.warning(f"orphan-key dedupe failed: {error}")
+
+    response: requests.Response | None = None
+    last_response: requests.Response | None = None
+    empty_403_retries = 0
+    auth_failure_retries = 0
+    proxy_error_retries = 0
+    try:
+        for response in TimeoutSampler(
+            wait_timeout=240,
+            sleep=5,
+            func=request_session_http.post,
+            url=api_keys_url,
+            headers=request_headers,
+            json=payload,
+            timeout=request_timeout_seconds,
+        ):
+            last_response = response
+            LOGGER.info(f"create_api_key: url={api_keys_url} status={response.status_code}")
+            if response.status_code in (200, 201):
+                break
+            if response.status_code == 403 and not (response.text or "").strip():
+                empty_403_retries += 1
+                LOGGER.info("create_api_key: empty 403 (Authorino propagation delay) — retrying")
+                continue
+            if response.status_code == 500 and "AUTH_FAILURE" in (response.text or ""):
+                auth_failure_retries += 1
+                LOGGER.info("create_api_key: 500 AUTH_FAILURE (Authorino identity not ready) — retrying")
+                continue
+            if response.status_code in (500, 502, 503, 504) and not (response.text or "").lstrip().startswith("{"):
+                proxy_error_retries += 1
+                LOGGER.info(
+                    f"create_api_key: {response.status_code} plain-text proxy/gateway error "
+                    "(maas-api errors are JSON, so this was rejected or reset in the middleware) — retrying"
+                )
+                continue
+            break
+    except TimeoutExpiredError:
+        LOGGER.info(
+            "create_api_key: timed out after 240s waiting for successful create "
+            "(retryable empty 403 / AUTH_FAILURE / plain proxy 5xx)"
+        )
+
+    response = last_response if last_response is not None else response
+    if response is None or response.status_code not in (200, 201):
+        status = response.status_code if response is not None else "no response"
+        retry_summary = (
+            f"empty_403_retries={empty_403_retries} auth_failure_retries={auth_failure_retries} "
+            f"proxy_error_retries={proxy_error_retries}"
+        )
+        if proxy_error_retries:
+            # A plain-5xx attempt can have created a key upstream that the
+            # caller never sees; revoke same-name keys this call created.
+            revoke_keys_created_by_this_call(keep_key_id="")
+        if raise_on_error:
+            # No response body in the message: it can carry credentials or
+            # customer data into test logs.
+            raise AssertionError(f"api-key create failed: status={status} {retry_summary}")
+        return response, {}  # type: ignore[return-value]
+
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        raise AssertionError("API key creation returned non-JSON response") from error
+
+    if proxy_error_retries:
+        revoke_keys_created_by_this_call(keep_key_id=str(parsed_body.get("id", "")))
+
+    api_key = parsed_body.get("key", "")
+    if not isinstance(api_key, str) or not api_key.startswith("sk-"):
+        raise AssertionError("No plaintext api key returned in MaaS API response")
+
+    return response, parsed_body
+
+
+def revoke_api_key(
+    request_session_http: requests.Session,
+    base_url: str,
+    key_id: str,
+    ocp_user_token: str,
+    request_timeout_seconds: int = 60,
+    extra_headers: dict[str, str] | None = None,
+) -> tuple[Response, dict[str, Any]]:
+    """Revoke an API key via MaaS API (DELETE /v1/api-keys/{id})."""
+    url = f"{base_url}/v1/api-keys/{quote(key_id, safe='')}"
+    request_headers = {"Authorization": f"Bearer {ocp_user_token}"}
+    if extra_headers is not None:
+        request_headers.update(extra_headers)
+    response = request_session_http.delete(
+        url=url,
+        headers=request_headers,
+        timeout=request_timeout_seconds,
+    )
+    LOGGER.info(f"revoke_api_key: url={url} key_id={key_id} status={response.status_code}")
+    try:
+        parsed_body: dict[str, Any] = json.loads(response.text)
+    except json.JSONDecodeError as error:
+        raise AssertionError(f"revoke_api_key returned non-JSON response: status={response.status_code}") from error
+    return response, parsed_body
+
+
+def create_and_yield_api_key_id(
+    request_session_http: requests.Session,
+    base_url: str,
+    ocp_user_token: str,
+    key_name_prefix: str,
+    expires_in: str | None = None,
+) -> Generator[str]:
+    """Create an API key, yield its ID, and revoke it on teardown."""
+    from utilities.general import generate_random_name
+
+    key_name = f"{key_name_prefix}-{generate_random_name()}"
+    _, body = create_api_key(
+        base_url=base_url,
+        ocp_user_token=ocp_user_token,
+        request_session_http=request_session_http,
+        api_key_name=key_name,
+        expires_in=expires_in,
+    )
+    LOGGER.info(f"create_and_yield_api_key_id: created key id={body['id']} name={key_name}")
+    yield body["id"]
+    LOGGER.info(f"create_and_yield_api_key_id: teardown revoking key id={body['id']}")
+    revoke_resp, _ = revoke_api_key(
+        request_session_http=request_session_http,
+        base_url=base_url,
+        key_id=body["id"],
+        ocp_user_token=ocp_user_token,
+    )
+    if revoke_resp.status_code not in (200, 404):
+        raise AssertionError(
+            f"Unexpected teardown status for key id={body['id']}: {revoke_resp.status_code} {revoke_resp.text[:200]}"
+        )
+
+
+def assert_api_key_created_ok(
+    resp: Response,
+    body: dict[str, Any],
+    required_fields: tuple[str, ...] = ("key",),
+) -> None:
+    """Assert an API key creation response has a success status and expected fields."""
+    assert resp.status_code in (200, 201), (
+        f"Expected 200/201 for API key creation, got {resp.status_code}: {resp.text[:200]}"
+    )
+    for field in required_fields:
+        assert field in body, f"Response must contain '{field}'"
+
+
+def verify_maas_gateway_programmed(gateway: Gateway, timeout: int = 300) -> None:
+    """Assert that the MaaS Gateway exists and has reached Programmed=True."""
+    assert gateway.exists, f"MaaS Gateway '{gateway.name}' not found in namespace '{gateway.namespace}'"
+    gateway.wait_for_condition(condition="Programmed", status="True", timeout=timeout)
+
+
+def verify_maas_tenant_ready(tenant_resource: NamespacedResource, timeout: int = 300) -> None:
+    """Assert that the MaaS tenant CR exists and has Ready=True."""
+    assert tenant_resource.exists, (
+        f"{tenant_resource.kind} '{tenant_resource.name}' not found in namespace '{tenant_resource.namespace}'"
+    )
+    tenant_resource.wait_for_condition(condition="Ready", status="True", timeout=timeout)
+
+
+def verify_maas_tenant_config_ready(maas_tenant_config: MaasTenantConfig, timeout: int = 300) -> None:
+    """Assert that the MaasTenantConfig CR exists and has Ready=True."""
+    verify_maas_tenant_ready(tenant_resource=maas_tenant_config, timeout=timeout)
+
+
+def get_httproute(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+) -> HTTPRoute | None:
+    """Look up an HTTPRoute by name/namespace. Returns the resource wrapper or None."""
+    try:
+        route = HTTPRoute(client=client, name=name, namespace=namespace)
+        if route.exists:
+            return route
+    except NotFoundError, ResourceNotFoundError:
+        LOGGER.debug(f"HTTPRoute {namespace}/{name} not found")
+    return None
+
+
+def wait_for_httproute(
+    client: DynamicClient,
+    name: str,
+    namespace: str,
+    timeout: int = 60,
+) -> HTTPRoute:
+    """Poll until the HTTPRoute exists, or raise on timeout."""
+    for route in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=3,
+        func=get_httproute,
+        client=client,
+        name=name,
+        namespace=namespace,
+    ):
+        if route is not None:
+            return route
+
+
+def _object_ref_name_and_namespace(ref: Any) -> tuple[str, str]:
+    """Return ``(name, namespace)`` from a Kubernetes object reference; namespace may be empty."""
+    name = ""
+    route_namespace = ""
+    if hasattr(ref, "name") and ref.name:
+        name = str(ref.name)
+    elif isinstance(ref, Mapping) and ref.get("name"):
+        name = str(ref["name"])
+    if hasattr(ref, "namespace") and ref.namespace:
+        route_namespace = str(ref.namespace)
+    elif isinstance(ref, Mapping) and ref.get("namespace"):
+        route_namespace = str(ref["namespace"])
+    return name, route_namespace
+
+
+def _gateway_attachment_http_route_ref(external_model_status: Any) -> tuple[str, str]:
+    """Read programmed HTTPRoute name/namespace from ExternalModel gateway attachments."""
+    if hasattr(external_model_status, "gateways"):
+        gateways = external_model_status.gateways or []
+    elif isinstance(external_model_status, Mapping) and "gateways" in external_model_status:
+        gateways = external_model_status["gateways"] or []
+    else:
+        return "", ""
+
+    for gateway in gateways:
+        route_ref = gateway.httpRouteRef if hasattr(gateway, "httpRouteRef") else None
+        if route_ref is None and isinstance(gateway, Mapping) and "httpRouteRef" in gateway:
+            route_ref = gateway["httpRouteRef"]
+        if route_ref is None:
+            continue
+        route_name, route_namespace = _object_ref_name_and_namespace(ref=route_ref)
+        if route_name:
+            return route_name, route_namespace
+    return "", ""
+
+
+def get_external_model_http_route_ref(external_model: ExternalModel) -> tuple[str, str]:
+    """Return the HTTPRoute name and namespace published on ExternalModel status, if programmed.
+
+    Namespace is empty when status only exposes ``httpRouteName`` (callers should use the
+    ExternalModel namespace for lookup).
+    """
+    external_model_status = external_model.instance.status
+    if external_model_status is None:
+        return "", ""
+    if hasattr(external_model_status, "httpRouteName") and external_model_status.httpRouteName:
+        return str(external_model_status.httpRouteName), ""
+    if isinstance(external_model_status, Mapping) and "httpRouteName" in external_model_status:
+        route_name = external_model_status["httpRouteName"]
+        if route_name:
+            return str(route_name), ""
+    return _gateway_attachment_http_route_ref(external_model_status=external_model_status)
+
+
+def get_external_model_http_route_name(external_model: ExternalModel) -> str:
+    """Return the HTTPRoute name published on ExternalModel status, if programmed."""
+    route_name, _route_namespace = get_external_model_http_route_ref(external_model=external_model)
+    return route_name
+
+
+def wait_for_external_model_http_route_name(
+    external_model: ExternalModel,
+    timeout: int = 300,
+) -> str:
+    """Poll until ExternalModel status reports an HTTPRoute name."""
+    for http_route_name in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=get_external_model_http_route_name,
+        external_model=external_model,
+    ):
+        if http_route_name:
+            return http_route_name
+
+
+def wait_for_external_model_httproute(
+    client: DynamicClient,
+    external_model: ExternalModel,
+    namespace: str,
+    timeout: int = 300,
+) -> str:
+    """Poll until ExternalModel is programmed and its HTTPRoute exists in the namespace."""
+
+    def external_model_httproute_ready() -> str:
+        http_route_name, http_route_namespace = get_external_model_http_route_ref(
+            external_model=external_model,
+        )
+        if not http_route_name:
+            return ""
+        lookup_namespace = http_route_namespace or namespace
+        if (
+            get_httproute(
+                client=client,
+                name=http_route_name,
+                namespace=lookup_namespace,
+            )
+            is None
+        ):
+            return ""
+        return http_route_name
+
+    for http_route_name in TimeoutSampler(
+        wait_timeout=timeout,
+        sleep=5,
+        func=external_model_httproute_ready,
+    ):
+        if http_route_name:
+            return http_route_name
+
+
+def fresh_aitenant(aitenant: AITenant) -> AITenant:
+    """Return a new handle to re-read the AITenant from the API."""
+    return AITenant(
+        client=aitenant.client,
+        name=aitenant.name,
+        namespace=aitenant.namespace,
+        wait_for_resource=False,
+    )
+
+
+def build_aitenant_spec(
+    aitenant_name: str,
+    gateway_name: str | None = None,
+    oidc: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build an AITenant spec with gateway and optional oidc fields."""
+    spec: dict[str, Any] = {}
+    resolved_gateway_name = gateway_name or aitenant_name
+    spec["gateway"] = {"name": resolved_gateway_name}
+    if oidc is not None:
+        spec["oidc"] = oidc
+    return spec
+
+
+def bootstrap_gateway_ref(
+    aitenant_name: str,
+    aitenant_spec: dict[str, Any],
+) -> tuple[str, str]:
+    """Resolve the bootstrap Gateway name and namespace for an AITenant spec."""
+    gateway_spec = aitenant_spec.get("gateway", {})
+    return (
+        gateway_spec.get("name", aitenant_name),
+        MAAS_GATEWAY_NAMESPACE,
+    )
+
+
+def bootstrap_gateway_ref_from_aitenant(aitenant: AITenant) -> tuple[str, str]:
+    """Resolve the bootstrap Gateway name and namespace from AITenant status or spec."""
+    if aitenant.exists:
+        refreshed_aitenant = fresh_aitenant(aitenant=aitenant)
+        status_gateway_ref = getattr(refreshed_aitenant.instance.status, "gatewayRef", None)
+        if status_gateway_ref is not None:
+            return status_gateway_ref.name, status_gateway_ref.namespace
+    aitenant_spec: dict[str, Any] = {}
+    if aitenant.gateway is not None:
+        aitenant_spec["gateway"] = aitenant.gateway
+    return bootstrap_gateway_ref(
+        aitenant_name=aitenant.name,
+        aitenant_spec=aitenant_spec,
+    )
+
+
+def aitenant_from_spec(
+    admin_client: DynamicClient,
+    aitenant_name: str,
+    cr_namespace: str,
+    aitenant_spec: dict[str, Any],
+    teardown: bool = False,
+    annotations: dict[str, str] | None = None,
+) -> AITenant:
+    """Return an AITenant configured from spec; use with ``with aitenant_from_spec(...) as aitenant:``."""
+    aitenant_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": aitenant_name,
+        "namespace": cr_namespace,
+        "teardown": teardown,
+        "wait_for_resource": True,
+    }
+    if annotations is not None:
+        aitenant_kwargs["annotations"] = annotations
+    if "gateway" in aitenant_spec:
+        aitenant_kwargs["gateway"] = aitenant_spec["gateway"]
+    if "oidc" in aitenant_spec:
+        aitenant_kwargs["oidc"] = aitenant_spec["oidc"]
+    return AITenant(**aitenant_kwargs)
+
+
+def bootstrap_gateway_infrastructure_configmap_data(gateway_name: str) -> dict[str, str]:
+    """Return Gateway infrastructure ConfigMap data (ClusterIP Service + serving cert)."""
+    return {
+        "service": (
+            "metadata:\n"
+            "  annotations:\n"
+            f'    service.beta.openshift.io/serving-cert-secret-name: "{gateway_name}-service-tls"\n'
+            "spec:\n"
+            "  type: ClusterIP\n"
+        ),
+    }
+
+
+def aitenant_bootstrap_gateway(
+    admin_client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str = MAAS_GATEWAY_NAMESPACE,
+    teardown: bool = True,
+    infrastructure: dict[str, Any] | None = None,
+) -> Gateway:
+    """Return a bootstrap Gateway that must exist before AITenant reconciliation."""
+    gateway_kwargs: dict[str, Any] = {
+        "client": admin_client,
+        "name": gateway_name,
+        "namespace": gateway_namespace,
+        "gateway_class_name": AIGATEWAY_GATEWAY_CLASS_NAME,
+        "listeners": AIGATEWAY_BOOTSTRAP_GATEWAY_LISTENERS,
+        "teardown": teardown,
+    }
+    if infrastructure is not None:
+        gateway_kwargs["infrastructure"] = infrastructure
+    return Gateway(**gateway_kwargs)
+
+
+@contextmanager
+def bootstrap_gateway_context(
+    admin_client: DynamicClient,
+    gateway_name: str,
+    gateway_namespace: str,
+    teardown: bool,
+) -> Generator[Gateway]:
+    """Yield a bootstrap Gateway with a ClusterIP infrastructure ConfigMap."""
+    with (
+        ConfigMap(
+            client=admin_client,
+            name=f"{gateway_name}-config",
+            namespace=gateway_namespace,
+            data=bootstrap_gateway_infrastructure_configmap_data(gateway_name=gateway_name),
+            teardown=teardown,
+        ) as infra_config_map,
+        aitenant_bootstrap_gateway(
+            admin_client=admin_client,
+            gateway_name=gateway_name,
+            gateway_namespace=gateway_namespace,
+            teardown=teardown,
+            infrastructure={
+                "parametersRef": {
+                    "group": "",
+                    "kind": "ConfigMap",
+                    "name": infra_config_map.name,
+                },
+            },
+        ) as gateway,
+    ):
+        yield gateway
+
+
+def verify_aitenant_ready(aitenant: AITenant) -> None:
+    """Assert the AITenant exists and reports Ready=True with phase Active."""
+    assert aitenant.exists, f"AITenant '{aitenant.name}' not found in namespace '{aitenant.namespace}'"
+    aitenant.wait_for_condition(condition="Ready", status="True", timeout=300)
+    phase = getattr(aitenant.instance.status, "phase", "") or ""
+    assert phase == "Active", f"Expected AITenant phase Active, got '{phase}'"
+
+
+def deploy_and_verify_aitenant_ready(aitenant: AITenant) -> None:
+    """Create the AITenant CR if missing and wait until it reports Ready with phase Active."""
+    if not aitenant.exists:
+        aitenant.deploy()
+    verify_aitenant_ready(aitenant=aitenant)

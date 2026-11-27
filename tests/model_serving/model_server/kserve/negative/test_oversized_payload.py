@@ -29,7 +29,7 @@ from tests.model_serving.model_server.kserve.negative.utils import (
     assert_pods_healthy,
 )
 
-pytestmark = pytest.mark.usefixtures("valid_aws_config")
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")
 
 OVERSIZED_PAYLOAD_EXPECTED_CODES: set[int] = {
     HTTPStatus.REQUEST_ENTITY_TOO_LARGE,

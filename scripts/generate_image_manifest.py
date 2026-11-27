@@ -20,12 +20,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 IMAGE_CLASS_MAP: dict[str, str] = {
+    "ai_gateway": "tests.ai_gateway.image_constants.AiGatewayImages",
     "ai_hub": "tests.ai_hub.image_constants.AiHubImages",
     "ai_safety": "tests.ai_safety.image_constants.AiSafetyImages",
     "fixtures": "tests.fixtures.image_constants.FixturesImages",
+    "ogx": "tests.ogx.image_constants.OgxImages",
+    "rhoai_mcp": "tests.rhoai_mcp.image_constants.RhoaiMcpImages",
     "shared": "utilities.image_constants.SharedImages",
     "workbenches": "tests.workbenches.image_constants.WorkbenchesImages",
     "spark": "tests.spark.image_constants.SparkImages",
+    "model_serving": "tests.model_serving.image_constants.ModelServingImages",
+    "pipelines_components": "tests.pipelines_components.image_constants.PipelinesComponentsImages",
 }
 
 KNOWN_REGISTRIES: tuple[str, ...] = (
@@ -34,6 +39,7 @@ KNOWN_REGISTRIES: tuple[str, ...] = (
     "docker.io",
     "registry.redhat.io",
     "public.ecr.aws",
+    "icr.io",
     "nvcr.io",
 )
 

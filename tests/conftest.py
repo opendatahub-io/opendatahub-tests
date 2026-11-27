@@ -55,11 +55,15 @@ from utilities.constants import (
     OCIRegistry,
     Protocols,
     RuntimeTemplates,
+    SeaweedFs,
 )
 from utilities.data_science_cluster_utils import update_components_in_dsc
 from utilities.exceptions import ClusterLoginError
+from utilities.general import get_s3_secret_dict
+from utilities.image_constants import SharedImages
 from utilities.infra import (
     create_ns,
+    download_helm_console_cli,
     download_oc_console_cli,
     get_cluster_authentication,
     get_openshift_token,
@@ -69,7 +73,7 @@ from utilities.infra import (
 )
 from utilities.logger import RedactedString
 from utilities.mariadb_utils import wait_for_mariadb_operator_deployments
-from utilities.minio import create_minio_data_connection_secret
+from utilities.openshell_utils import get_cluster_apps_domain, wait_for_openshell_gateway_pod
 from utilities.operator_utils import get_cluster_service_version, get_csv_related_images
 from utilities.serving_runtime import get_runtime_image_from_template
 from utilities.user_utils import get_byoidc_issuer_url, get_oidc_tokens
@@ -78,7 +82,6 @@ LOGGER = structlog.get_logger(name=__name__)
 
 pytest_plugins = [
     "tests.fixtures.inference",
-    "tests.fixtures.guardrails",
     "tests.fixtures.trustyai",
     "tests.fixtures.vector_io",
     "tests.fixtures.files",
@@ -652,11 +655,31 @@ def minio_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, An
 
 
 @pytest.fixture(scope="class")
+def minio_credentials_secret(
+    admin_client: DynamicClient,
+    minio_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """MinIO server credentials in the MinIO namespace."""
+    with Secret(
+        client=admin_client,
+        name="minio-credentials",
+        namespace=minio_namespace.name,
+        string_data={
+            MinIo.Credentials.ACCESS_KEY_NAME: MinIo.Credentials.ACCESS_KEY_VALUE,
+            MinIo.Credentials.SECRET_KEY_NAME: MinIo.Credentials.SECRET_KEY_VALUE,
+        },
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
 def minio_pod(
     request: FixtureRequest,
     admin_client: DynamicClient,
     minio_namespace: Namespace,
+    minio_credentials_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
+    """MinIO Pod with credentials supplied by a Secret."""
     pod_labels = {Labels.Openshift.APP: MinIo.Metadata.NAME}
 
     if labels := request.param.get("labels"):
@@ -672,11 +695,21 @@ def minio_pod(
                 "env": [
                     {
                         "name": MinIo.Credentials.ACCESS_KEY_NAME,
-                        "value": MinIo.Credentials.ACCESS_KEY_VALUE,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": minio_credentials_secret.name,
+                                "key": MinIo.Credentials.ACCESS_KEY_NAME,
+                            },
+                        },
                     },
                     {
                         "name": MinIo.Credentials.SECRET_KEY_NAME,
-                        "value": MinIo.Credentials.SECRET_KEY_VALUE,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": minio_credentials_secret.name,
+                                "key": MinIo.Credentials.SECRET_KEY_NAME,
+                            },
+                        },
                     },
                 ],
                 "image": request.param.get("image"),
@@ -718,20 +751,145 @@ def minio_service(admin_client: DynamicClient, minio_namespace: Namespace) -> Ge
         yield minio_service
 
 
+# SeaweedFS
 @pytest.fixture(scope="class")
-def minio_data_connection(
-    request: FixtureRequest,
-    admin_client: DynamicClient,
-    model_namespace: Namespace,
-    minio_service: Service,
-) -> Generator[Secret, Any, Any]:
-    with create_minio_data_connection_secret(
-        minio_service=minio_service,
-        model_namespace=model_namespace.name,
-        aws_s3_bucket=request.param["bucket"],
+def seaweedfs_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]:
+    """Create an isolated namespace for SeaweedFS S3 storage."""
+    with create_ns(
+        name=f"{SeaweedFs.Metadata.NAME}-{shortuuid.uuid().lower()}", admin_client=admin_client
+    ) as namespace:
+        yield namespace
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_filer_config(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace
+) -> Generator[ConfigMap, Any, Any]:
+    """Configure SeaweedFS filer metadata storage on the writable temporary filesystem."""
+    with ConfigMap(
         client=admin_client,
+        name="seaweedfs-filer-config",
+        namespace=seaweedfs_namespace.name,
+        data={"filer.toml": '[leveldb2]\nenabled = true\ndir = "/tmp/filerldb2"\n'},
+    ) as config_map:
+        yield config_map
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_credentials_secret(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+) -> Generator[Secret, Any, Any]:
+    """SeaweedFS server credentials in the SeaweedFS namespace."""
+    with Secret(
+        client=admin_client,
+        name="seaweedfs-credentials",
+        namespace=seaweedfs_namespace.name,
+        string_data={
+            "accesskey": SeaweedFs.Credentials.ACCESS_KEY_VALUE,
+            "secretkey": SeaweedFs.Credentials.SECRET_KEY_VALUE,
+        },
     ) as secret:
         yield secret
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_pod(
+    admin_client: DynamicClient,
+    seaweedfs_namespace: Namespace,
+    seaweedfs_filer_config: ConfigMap,
+    seaweedfs_credentials_secret: Secret,
+) -> Generator[Pod, Any, Any]:
+    """Run an authenticated SeaweedFS instance exposing its S3 API, with credentials supplied by a Secret."""
+    initialization_command = (
+        "for attempt in $(seq 1 60); do "
+        "wget -q --spider http://127.0.0.1:8333/status && break; "
+        '[ "$attempt" -eq 60 ] && exit 1; sleep 2; '
+        "done; "
+        'echo "s3.configure -user admin -access_key $accesskey -secret_key $secretkey -actions Admin -apply" '
+        "| /usr/bin/weed shell && "
+        f"echo 's3.bucket.create -name {SeaweedFs.Buckets.MODELMESH_EXAMPLE_MODELS}' | /usr/bin/weed shell"
+    )
+    with Pod(
+        client=admin_client,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
+        containers=[
+            {
+                "name": SeaweedFs.Metadata.NAME,
+                "image": SharedImages.SEAWEEDFS,
+                "args": list(SeaweedFs.PodConfig.ARGS),
+                "env": [
+                    {
+                        "name": "accesskey",
+                        "valueFrom": {"secretKeyRef": {"name": seaweedfs_credentials_secret.name, "key": "accesskey"}},
+                    },
+                    {
+                        "name": "secretkey",
+                        "valueFrom": {"secretKeyRef": {"name": seaweedfs_credentials_secret.name, "key": "secretkey"}},
+                    },
+                ],
+                "ports": [
+                    {"containerPort": SeaweedFs.Metadata.DEFAULT_PORT, "name": "s3"},
+                    {"containerPort": SeaweedFs.Metadata.FILER_PORT, "name": "filer"},
+                    {"containerPort": SeaweedFs.Metadata.FILER_GRPC_PORT, "name": "filer-grpc"},
+                ],
+                "volumeMounts": [
+                    {
+                        "name": "filer-config",
+                        "mountPath": "/etc/seaweedfs/filer.toml",
+                        "subPath": "filer.toml",
+                        "readOnly": True,
+                    }
+                ],
+                "lifecycle": {"postStart": {"exec": {"command": ["/bin/sh", "-c", initialization_command]}}},
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"]},
+                    "runAsNonRoot": True,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+            }
+        ],
+        volumes=[{"name": "filer-config", "configMap": {"name": seaweedfs_filer_config.name}}],
+        label={"app": SeaweedFs.Metadata.NAME},
+    ) as pod:
+        pod.wait_for_condition(condition="Ready", status="True", timeout=180)
+        yield pod
+
+
+@pytest.fixture(scope="class")
+def seaweedfs_service(
+    admin_client: DynamicClient, seaweedfs_namespace: Namespace, seaweedfs_pod: Pod
+) -> Generator[Service, Any, Any]:
+    """Expose SeaweedFS S3 and filer APIs inside the cluster."""
+    with Service(
+        client=admin_client,
+        name=SeaweedFs.Metadata.NAME,
+        namespace=seaweedfs_namespace.name,
+        ports=[
+            {
+                "name": "s3",
+                "port": SeaweedFs.Metadata.DEFAULT_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.DEFAULT_PORT,
+            },
+            {
+                "name": "filer",
+                "port": SeaweedFs.Metadata.FILER_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.FILER_PORT,
+            },
+            {
+                "name": "filer-grpc",
+                "port": SeaweedFs.Metadata.FILER_GRPC_PORT,
+                "protocol": Protocols.TCP,
+                "targetPort": SeaweedFs.Metadata.FILER_GRPC_PORT,
+            },
+        ],
+        selector={"app": SeaweedFs.Metadata.NAME},
+    ) as service:
+        yield service
 
 
 @pytest.fixture(scope="session")
@@ -750,8 +908,6 @@ def junitxml_plugin(
 def cluster_sanity_scope_session(
     request: FixtureRequest,
     nodes: list[Node],
-    dsci_resource: DSCInitialization,
-    dsc_resource: DataScienceCluster,
     junitxml_plugin: Callable[[str, object], None],
 ) -> None:
     # Skip cluster sanity check when running tests that have cluster_health or operator_health markers
@@ -760,6 +916,8 @@ def cluster_sanity_scope_session(
         LOGGER.info("Skipping cluster sanity check because selected tests include cluster/operator/component health")
         return
 
+    dsci_resource: DSCInitialization = request.getfixturevalue(argname="dsci_resource")
+    dsc_resource: DataScienceCluster = request.getfixturevalue(argname="dsc_resource")
     verify_cluster_sanity(
         request=request,
         nodes=nodes,
@@ -826,16 +984,34 @@ def oc_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> str
     return download_oc_console_cli(admin_client=admin_client, tmpdir=bin_directory)
 
 
+@pytest.fixture(scope="session")
+def helm_binary_path(admin_client: DynamicClient, bin_directory: LocalPath) -> str:
+    """Not part of `autouse_fixtures`; only downloaded lazily by tests that actually need helm."""
+    installed_helm_binary_path = os.getenv("HELM_BINARY_PATH")
+    if installed_helm_binary_path:
+        LOGGER.warning(f"Using previously installed: {installed_helm_binary_path}")
+        return installed_helm_binary_path
+
+    return download_helm_console_cli(admin_client=admin_client, tmpdir=bin_directory)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def autouse_fixtures(
+    request: FixtureRequest,
     admin_client: DynamicClient,
-    dsc_resource: DataScienceCluster,
     tests_tmp_dir: None,
     bin_directory_to_os_path: None,
     cluster_sanity_scope_session: None,
 ) -> None:
     """Fixture to control the order of execution of some of the fixtures"""
-    return
+    if request.session.items:
+        for item in request.session.items:
+            item_markers = {mark.name for mark in item.iter_markers()}
+            if "cluster_health" not in item_markers or item_markers & {"operator_health", "component_health"}:
+                break
+        else:
+            return
+    request.getfixturevalue(argname="dsc_resource")
 
 
 @pytest.fixture(scope="session")
@@ -907,6 +1083,152 @@ def mariadb_operator_cr(
 
 
 @pytest.fixture(scope="session")
+def installed_agent_sandbox_operator(admin_client: DynamicClient) -> Generator[None, Any, Any]:
+    operator_name = "agent-sandbox-operator"
+    agent_sandbox_subscription = Subscription(client=admin_client, namespace=OPENSHIFT_OPERATORS, name=operator_name)
+
+    installed_by_fixture = not agent_sandbox_subscription.exists
+    if installed_by_fixture:
+        install_operator(
+            admin_client=admin_client,
+            target_namespaces=[OPENSHIFT_OPERATORS],
+            name=operator_name,
+            channel="preview-0.9",
+            source="redhat-operators",
+            operator_namespace=OPENSHIFT_OPERATORS,
+            timeout=900,
+            install_plan_approval="Manual",
+        )
+
+    yield
+
+    if installed_by_fixture:
+        uninstall_operator(
+            admin_client=admin_client,
+            name=operator_name,
+            operator_namespace=OPENSHIFT_OPERATORS,
+            clean_up_namespace=False,
+        )
+
+
+OPENSHELL_GATEWAY_IMAGE_REPOSITORY_ENV_VAR = "OPENSHELL_GATEWAY_IMAGE_REPOSITORY"
+OPENSHELL_GATEWAY_IMAGE_DIGEST_ENV_VAR = "OPENSHELL_GATEWAY_IMAGE_DIGEST"
+OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY_ENV_VAR = "OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY"
+OPENSHELL_SUPERVISOR_IMAGE_DIGEST_ENV_VAR = "OPENSHELL_SUPERVISOR_IMAGE_DIGEST"
+
+
+@pytest.fixture(scope="session")
+def installed_openshell_release(
+    admin_client: DynamicClient,
+    helm_binary_path: str,
+    oc_binary_path: str,
+    installed_agent_sandbox_operator: None,
+) -> Generator[str, Any, Any]:
+    namespace = "openshell"
+    release_name = "openshell"
+
+    with Namespace(client=admin_client, name=namespace) as openshell_namespace:
+        run_command(
+            command=[
+                oc_binary_path,
+                "adm",
+                "policy",
+                "add-scc-to-user",
+                "privileged",
+                "-z",
+                "openshell-sandbox",
+                "-n",
+                openshell_namespace.name,
+            ]
+        )
+
+        try:
+            route_host = f"{release_name}-{namespace}.{get_cluster_apps_domain(admin_client=admin_client)}"
+
+            helm_set_args = [
+                "--set",
+                "podSecurityContext.fsGroup=null",
+                "--set",
+                "securityContext.runAsUser=null",
+                "--set",
+                "server.auth.allowUnauthenticatedUsers=true",
+                "--set",
+                f"pkiInitJob.serverDnsNames[0]={route_host}",
+            ]
+
+            if gateway_image_repository := os.getenv(OPENSHELL_GATEWAY_IMAGE_REPOSITORY_ENV_VAR):
+                helm_set_args += ["--set", f"image.repository={gateway_image_repository}"]
+            if gateway_image_digest := os.getenv(OPENSHELL_GATEWAY_IMAGE_DIGEST_ENV_VAR):
+                helm_set_args += ["--set", f"image.digest={gateway_image_digest}"]
+            if supervisor_image_repository := os.getenv(OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY_ENV_VAR):
+                helm_set_args += ["--set", f"supervisor.image.repository={supervisor_image_repository}"]
+            if supervisor_image_digest := os.getenv(OPENSHELL_SUPERVISOR_IMAGE_DIGEST_ENV_VAR):
+                helm_set_args += ["--set", f"supervisor.image.digest={supervisor_image_digest}"]
+
+            run_command(
+                command=[
+                    helm_binary_path,
+                    "upgrade",
+                    "--install",
+                    release_name,
+                    SharedImages.OPENSHELL_HELM_CHART,
+                    "--version",
+                    "0.0.85",
+                    "--namespace",
+                    openshell_namespace.name,
+                    *helm_set_args,
+                ],
+                verify_stderr=False,
+            )
+
+            wait_for_openshell_gateway_pod(client=admin_client, namespace=openshell_namespace.name)
+
+            yield route_host
+        finally:
+            try:
+                run_command(
+                    command=[helm_binary_path, "uninstall", release_name, "--namespace", openshell_namespace.name],
+                    verify_stderr=False,
+                )
+            finally:
+                run_command(
+                    command=[
+                        oc_binary_path,
+                        "adm",
+                        "policy",
+                        "remove-scc-from-user",
+                        "privileged",
+                        "-z",
+                        "openshell-sandbox",
+                        "-n",
+                        openshell_namespace.name,
+                    ]
+                )
+
+
+@pytest.fixture(scope="class")
+def openshell_gateway_route(
+    admin_client: DynamicClient, installed_openshell_release: str
+) -> Generator[Route, Any, Any]:
+    route_host = installed_openshell_release
+    with Route(
+        client=admin_client,
+        kind_dict={
+            "apiVersion": "route.openshift.io/v1",
+            "kind": "Route",
+            "metadata": {"name": "openshell", "namespace": "openshell"},
+            "spec": {
+                "host": route_host,
+                "to": {"kind": "Service", "name": "openshell"},
+                "port": {"targetPort": 8080},
+                "tls": {"termination": "passthrough"},
+            },
+        },
+    ) as route:
+        yield route
+
+
+@pytest.fixture(scope="session")
 def gpu_count_on_cluster(nodes: list[Any]) -> int:
     """Return total GPU count across all nodes in the cluster.
 
@@ -925,7 +1247,7 @@ def gpu_count_on_cluster(nodes: list[Any]) -> int:
             if key in allowed_exact or any(key.startswith(p) for p in allowed_prefixes):
                 try:
                     total_gpus += int(val)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):  # fmt: skip
                     LOGGER.debug(f"Skipping non-integer allocatable for {key} on {node.name}: {val!r}")
                     continue
     return total_gpus
@@ -949,19 +1271,50 @@ def oci_namespace(admin_client: DynamicClient) -> Generator[Namespace, Any, Any]
 
 
 @pytest.fixture(scope="class")
-def oci_registry_pod_with_minio(
+def oci_registry_s3_secret(
     request: FixtureRequest,
     admin_client: DynamicClient,
     oci_namespace: Namespace,
-    minio_service: Service,
+) -> Generator[Secret, Any, Any]:
+    """S3 storage credentials in the OCI registry namespace."""
+    s3_config = request.getfixturevalue(argname="s3_config")
+    s3_service = s3_config["service"]
+    s3_fqdn = f"{s3_service.name}.{s3_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"http://{s3_fqdn}:{s3_config['port']}"
+
+    with Secret(
+        client=admin_client,
+        name="oci-registry-s3-credentials",
+        namespace=oci_namespace.name,
+        data_dict=get_s3_secret_dict(
+            aws_access_key=s3_config["access_key"],
+            aws_secret_access_key=s3_config["secret_key"],
+            aws_s3_bucket=s3_config["bucket"],
+            aws_s3_endpoint=s3_endpoint,
+            aws_default_region=OCIRegistry.Storage.STORAGE_DRIVER_REGION,
+        ),
+    ) as secret:
+        yield secret
+
+
+@pytest.fixture(scope="class")
+def oci_registry_pod_with_s3(
+    request: FixtureRequest,
+    admin_client: DynamicClient,
+    oci_namespace: Namespace,
+    oci_registry_s3_secret: Secret,
 ) -> Generator[Pod, Any, Any]:
+    """OCI registry Pod with S3 storage credentials supplied by a Secret."""
+    fixture_config = getattr(request, "param", {})
+    s3_config = request.getfixturevalue(argname="s3_config")
+    s3_service = s3_config["service"]
     pod_labels = {Labels.Openshift.APP: OCIRegistry.Metadata.NAME}
 
-    if labels := request.param.get("labels"):
+    if labels := fixture_config.get("labels"):
         pod_labels.update(labels)
 
-    minio_fqdn = f"{minio_service.name}.{minio_service.namespace}.svc.cluster.local"
-    minio_endpoint = f"{minio_fqdn}:{MinIo.Metadata.DEFAULT_PORT}"
+    s3_fqdn = f"{s3_service.name}.{s3_service.namespace}.svc.cluster.local"
+    s3_endpoint = f"{s3_fqdn}:{s3_config['port']}"
 
     with Pod(
         client=admin_client,
@@ -969,18 +1322,28 @@ def oci_registry_pod_with_minio(
         namespace=oci_namespace.name,
         containers=[
             {
-                "args": request.param.get("args"),
+                "args": fixture_config.get("args"),
                 "env": [
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_NAME", "value": OCIRegistry.Storage.STORAGE_DRIVER},
                     {
                         "name": "ZOT_STORAGE_STORAGEDRIVER_ROOTDIRECTORY",
                         "value": OCIRegistry.Storage.STORAGE_DRIVER_ROOT_DIRECTORY,
                     },
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": MinIo.Buckets.MODELMESH_EXAMPLE_MODELS},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_BUCKET", "value": s3_config["bucket"]},
                     {"name": "ZOT_STORAGE_STORAGEDRIVER_REGION", "value": OCIRegistry.Storage.STORAGE_DRIVER_REGION},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{minio_endpoint}"},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY", "value": MinIo.Credentials.ACCESS_KEY_VALUE},
-                    {"name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY", "value": MinIo.Credentials.SECRET_KEY_VALUE},
+                    {"name": "ZOT_STORAGE_STORAGEDRIVER_REGIONENDPOINT", "value": f"http://{s3_endpoint}"},
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_ACCESSKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": oci_registry_s3_secret.name, "key": "AWS_ACCESS_KEY_ID"},
+                        },
+                    },
+                    {
+                        "name": "ZOT_STORAGE_STORAGEDRIVER_SECRETKEY",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": oci_registry_s3_secret.name, "key": "AWS_SECRET_ACCESS_KEY"},
+                        },
+                    },
                     {
                         "name": "ZOT_STORAGE_STORAGEDRIVER_SECURE",
                         "value": OCIRegistry.Storage.STORAGE_STORAGEDRIVER_SECURE,
@@ -993,7 +1356,7 @@ def oci_registry_pod_with_minio(
                     {"name": "ZOT_HTTP_PORT", "value": str(OCIRegistry.Metadata.DEFAULT_PORT)},
                     {"name": "ZOT_LOG_LEVEL", "value": "info"},
                 ],
-                "image": request.param.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
+                "image": fixture_config.get("image", OCIRegistry.PodConfig.REGISTRY_IMAGE),
                 "name": OCIRegistry.Metadata.NAME,
                 "securityContext": {
                     "allowPrivilegeEscalation": False,
@@ -1016,7 +1379,7 @@ def oci_registry_pod_with_minio(
             }
         ],
         label=pod_labels,
-        annotations=request.param.get("annotations"),
+        annotations=fixture_config.get("annotations"),
     ) as oci_pod:
         oci_pod.wait_for_condition(condition="Ready", status="True")
         yield oci_pod
@@ -1072,8 +1435,11 @@ def skip_if_no_supported_accelerator_type(supported_accelerator_type: str | None
     # GPU accelerators supported for vLLM GPU-specific testing
     supported_gpu_accelerators = {
         AcceleratorType.NVIDIA,
+        AcceleratorType.NVIDIA_ARM,
         AcceleratorType.AMD,
         AcceleratorType.GAUDI,
+        AcceleratorType.SPYRE,
+        AcceleratorType.SPYRE_PPC64LE,
     }
 
     if not supported_accelerator_type or supported_accelerator_type.lower() not in supported_gpu_accelerators:

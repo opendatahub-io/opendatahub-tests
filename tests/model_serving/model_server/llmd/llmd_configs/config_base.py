@@ -11,7 +11,15 @@ from tests.model_serving.model_server.llmd.utils import (
     log_accelerator_selection,
     log_base_refs_selection,
 )
-from utilities.constants import ContainerImages, Labels
+from tests.model_serving.model_server.utils import (
+    CONNECTION_PATH_ANNOTATION,
+    CONNECTIONS_ANNOTATION,
+    is_arm64_cluster,
+    skip_test,
+)
+from utilities.constants import Labels
+from utilities.infra import is_disconnected_cluster
+from utilities.resources.llm_inference_service import LLMInferenceService
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -29,12 +37,26 @@ class LLMISvcConfig:
     replicas = 1
     container_image = None
     enable_auth = False
-    wait_timeout = 300
+    wait_timeout = 420
     base_refs = None
+    # Whether to wait for Ready (and workload pods) after creation. Smoke/injection-only
+    # variants set this to False since they never schedule a pod.
+    wait = True
 
     # default values for expectation pods count
     expected_vllm_pod_count = 1
     expected_inference_pool_pod_count = 1
+
+    # ── ConnectionsAPI storage-strategy axis ──────────────────────────────
+    # When True, storage is driven by a ConnectionsAPI connection Secret (resolved by the
+    # `connection_secret_fixture` fixture) instead of a static `storage_uri`. `connection_secret_name`
+    # and `connection_bucket` are bound at fixture-time via `with_overrides` — never set directly on
+    # a class body.
+    use_connection: bool = False
+    connection_secret_fixture: str | None = None
+    connection_path: str | None = None
+    connection_secret_name: str | None = None
+    connection_bucket: str | None = None
 
     @classmethod
     def container_resources(cls):
@@ -54,20 +76,6 @@ class LLMISvcConfig:
         ]
 
     @classmethod
-    def liveness_probe(cls):
-        return {
-            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
-            "initialDelaySeconds": 240,
-            "periodSeconds": 60,
-            "timeoutSeconds": 60,
-            "failureThreshold": 10,
-        }
-
-    @classmethod
-    def readiness_probe(cls):
-        return None
-
-    @classmethod
     def router_config(cls):
         return {
             "scheduler": {"configRef": "kserve-config-llm-scheduler"},
@@ -77,14 +85,41 @@ class LLMISvcConfig:
 
     @classmethod
     def annotations(cls):
-        return {
+        result = {
             "prometheus.io/port": "8000",
             "prometheus.io/path": "/metrics",
             "security.opendatahub.io/enable-auth": str(cls.enable_auth).lower(),
         }
 
+        # ConnectionsAPI annotations. Not set unless `use_connection` is set.
+        if not cls.use_connection:
+            return result
+        assert cls.connection_secret_name is not None, "connection_secret_name must be bound via with_overrides"
+        result[CONNECTIONS_ANNOTATION] = cls.connection_secret_name
+        if cls.connection_path:
+            result[CONNECTION_PATH_ANNOTATION] = cls.connection_path
+
+        return result
+
+    @classmethod
+    def verify_injection(cls, llmisvc: LLMInferenceService) -> None:
+        """Assert the ConnectionsAPI webhook injected the expected fields. No-op for static configs.
+
+        `use_connection` subclasses must override this — the base implementation only guards
+        against a connection config that forgets to, rather than asserting anything itself.
+        """
+        assert not cls.use_connection, f"{cls.__name__} sets use_connection=True but never overrides verify_injection"
+
     @classmethod
     def prefill_config(cls):
+        return None
+
+    @classmethod
+    def kv_cache_offloading(cls):
+        return None
+
+    @classmethod
+    def template_volumes(cls):
         return None
 
     @classmethod
@@ -127,23 +162,90 @@ class LLMISvcConfig:
         return "\n".join(lines)
 
     @classmethod
-    def build(cls, client: DynamicClient) -> type:
-        """No-op for non-GPU configs. GpuConfig overrides with actual detection."""
-        LOGGER.info(f"No accelerator needed for {cls.__name__}")
-        return cls
-
-    @classmethod
     def with_overrides(cls, **overrides):
         """Create a derived config class with overridden attributes."""
         return type(f"{cls.__name__}_custom", (cls,), overrides)
 
+    # ── Probes ─────────────────────────────────────────────────────────
+    # Probes are set permissively so they never interfere with tests.
+    # The test's wait_timeout is the only gate for pass/fail.
+    # Override in a subclass only if a test explicitly validates probe behavior.
+
+    @classmethod
+    def startup_probe(cls) -> dict:
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 0,
+            "periodSeconds": 10,
+            "timeoutSeconds": 5,
+            "failureThreshold": 360,
+        }
+
+    @classmethod
+    def liveness_probe(cls) -> dict:
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 3600,
+            "periodSeconds": 60,
+            "timeoutSeconds": 60,
+            "failureThreshold": 10,
+        }
+
+    @classmethod
+    def readiness_probe(cls) -> dict:
+        return {
+            "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTPS"},
+            "initialDelaySeconds": 0,
+            "periodSeconds": 10,
+            "timeoutSeconds": 5,
+            "failureThreshold": 360,
+        }
+
 
 class CpuConfig(LLMISvcConfig):
-    """CPU inference base. Sets vLLM CPU image, CPU env vars, and CPU resource limits."""
+    """CPU inference configuration using a versioned CPU LLMInferenceServiceConfig."""
 
-    enable_auth = False
-    wait_timeout = 420
-    container_image = ContainerImages.VLLM.CPU
+    accelerator_config_name_regex = r"^(?!.*fast-)"
+
+    @classmethod
+    def build(cls, client: DynamicClient) -> type:
+        """Resolve all cluster-dependent CPU configuration.
+
+        1. Skip on ARM64 clusters, where llm-d CPU inference is unsupported.
+        2. Skip on disconnected clusters when the model storage is HuggingFace.
+        3. Resolve the matching CPU ``LLMInferenceServiceConfig`` CR (base_refs).
+        4. Return a derived config class with ``base_refs`` bound.
+        """
+        supported_topology = "workload-single-node"
+
+        if is_arm64_cluster(client=client):
+            skip_test(reason="llm-d CPU inference is not supported on arm64 clusters")
+
+        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
+            skip_test(reason="HuggingFace storage not available on disconnected clusters")
+
+        # The LLMInferenceServiceConfig for CPU inference is found by
+        # accelerators=[] and topologies=['workload-single-node']
+        result = find_matching_llminferenceserviceconfig(
+            client=client,
+            accelerator=None,
+            topology=supported_topology,
+            name_regex=cls.accelerator_config_name_regex,
+        )
+        log_base_refs_selection(
+            accelerator=None,
+            topology=supported_topology,
+            name_regex=cls.accelerator_config_name_regex,
+            result=result,
+        )
+
+        if not result.matched:
+            pytest.fail(
+                "No LLMInferenceServiceConfig matched the CPU base-ref selection. See logs above for details.",
+                pytrace=False,
+            )
+
+        return cls.with_overrides(base_refs=[{"name": result.matched}])
 
     @classmethod
     def container_env(cls):
@@ -156,7 +258,6 @@ class CpuConfig(LLMISvcConfig):
                 "name": "VLLM_ADDITIONAL_ARGS",
                 "value": "--max-num-seqs 20 --max-model-len 128 --enforce-eager --ssl-ciphers ECDHE+AESGCM:DHE+AESGCM",
             },
-            {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "4"},
         ]
 
     @classmethod
@@ -176,6 +277,7 @@ class GpuConfig(LLMISvcConfig):
     # default GPU requirements
     min_gpus_per_node = 1
     min_nodes = 1
+    min_total_gpus = 1
     supported_accelerators = LLMD_TESTS_SUPPORTED_ACCELERATORS
 
     # supported-topologies values must be consistent with the samples
@@ -203,10 +305,13 @@ class GpuConfig(LLMISvcConfig):
     def build(cls, client: DynamicClient) -> type:
         """Resolve all cluster-dependent config.
 
-        1. Detect which GPU accelerator to use.
-        2. Resolve which LLMInferenceServiceConfig CR (base_refs) to use.
-        3. Return a derived config class with both bound.
+        1. Skip on disconnected clusters when the model storage is HuggingFace.
+        2. Detect which GPU accelerator to use.
+        3. Resolve which LLMInferenceServiceConfig CR (base_refs) to use.
+        4. Return a derived config class with both bound.
         """
+        if cls.storage_uri.startswith("hf://") and is_disconnected_cluster(client=client):
+            skip_test(reason="HuggingFace storage not available on disconnected clusters")
         accelerator = cls._select_accelerator(client=client)
         base_refs = (
             cls.base_refs
@@ -221,10 +326,11 @@ class GpuConfig(LLMISvcConfig):
 
         Scans worker nodes, filters to ``cls.supported_accelerators``, and
         picks the type with the most total GPUs (node count as tiebreaker).
-        Skips the test if no accelerator meets ``min_gpus_per_node`` / ``min_nodes``.
+        Skips the test if no accelerator meets ``min_gpus_per_node``, ``min_nodes``,
+        and ``min_total_gpus``.
 
         Uses ``cls.supported_accelerators``, ``cls.min_gpus_per_node``,
-        and ``cls.min_nodes`` to filter and qualify.
+        ``cls.min_nodes``, and ``cls.min_total_gpus`` to filter and qualify.
 
         Args:
             client: Kubernetes dynamic client.
@@ -246,40 +352,61 @@ class GpuConfig(LLMISvcConfig):
             if supported:
                 supported_nodes.append(supported)
 
-        # For each accelerator type, count nodes that meet min_gpus_per_node and sum their GPUs.
-        # Nodes with fewer GPUs than required are skipped — they can't run the workload.
+        # For each accelerator type, count total nodes/GPUs and qualifying nodes/GPUs.
         candidates: dict[str, dict[str, int]] = {}
         for node in supported_nodes:
             for resource_name, resource_count in node.items():
                 if resource_name not in candidates:
-                    candidates[resource_name] = {"total_gpus": 0, "qualifying_nodes": 0}
+                    candidates[resource_name] = {
+                        "total_gpus": 0,
+                        "total_nodes": 0,
+                        "qualifying_gpus": 0,
+                        "qualifying_nodes": 0,
+                    }
+                candidates[resource_name]["total_gpus"] += resource_count
+                candidates[resource_name]["total_nodes"] += 1
                 if resource_count >= cls.min_gpus_per_node:
-                    candidates[resource_name]["total_gpus"] += resource_count
+                    candidates[resource_name]["qualifying_gpus"] += resource_count
                     candidates[resource_name]["qualifying_nodes"] += 1
 
         # Keep only accelerator types with enough qualifying nodes for the current test
         qualified = {
             resource_name: node_stats
             for resource_name, node_stats in candidates.items()
-            if node_stats["qualifying_nodes"] >= cls.min_nodes
+            if node_stats["qualifying_nodes"] >= cls.min_nodes and node_stats["qualifying_gpus"] >= cls.min_total_gpus
         }
 
         # Skip the test if no accelerator type meets the requirements
         if not qualified:
-            msg = (
-                f"Skipping test: no supported accelerator found for {cls.__name__}."
-                f" Required: {cls.min_nodes} node(s) with at least {cls.min_gpus_per_node} GPU(s) each,"
-                f" supported types: {cls.supported_accelerators}."
-                f" Found: {candidates or 'no GPU nodes'}"
+            supported = ", ".join(cls.supported_accelerators)
+            if not detected_nodes:
+                cluster_state = "No GPU nodes detected in the cluster."
+            else:
+                if candidates:
+                    gpu_summary = {r: (s["total_gpus"], s["total_nodes"]) for r, s in candidates.items()}
+                else:
+                    gpu_summary: dict[str, tuple[int, int]] = {}
+                    for node in detected_nodes:
+                        for r, count in node["resources"].items():
+                            gpus, nodes = gpu_summary.get(r, (0, 0))
+                            gpu_summary[r] = (gpus + count, nodes + 1)
+                parts = [f"{r}: {gpus} GPU(s) across {nodes} node(s)" for r, (gpus, nodes) in gpu_summary.items()]
+                cluster_state = "Detected " + ", ".join(parts) + "."
+            reason = (
+                f"No supported accelerator found for {cls.__name__}.\n"
+                f"  This test can run on [{supported}] and requires:\n"
+                f"  - at least {cls.min_gpus_per_node} GPU(s) per node\n"
+                f"  - at least {cls.min_nodes} node(s) with GPU\n"
+                f"  - at least {cls.min_total_gpus} GPU(s) in total\n"
+                f"  {cluster_state}"
             )
-            LOGGER.warning(msg)
-            pytest.skip(msg)
+            skip_test(reason=reason)
 
-        # Pick the accelerator type with the most GPUs, then most nodes as tiebreaker
+        # Pick the accelerator type with the most qualifying GPUs, then most nodes as tiebreaker
         selected_resource = max(
             qualified,
             key=lambda resource_name: (
-                qualified[resource_name]["total_gpus"],
+                qualified[resource_name]["qualifying_gpus"],
                 qualified[resource_name]["qualifying_nodes"],
             ),
         )
@@ -288,7 +415,7 @@ class GpuConfig(LLMISvcConfig):
             config_name=cls.__name__,
             detected_nodes=detected_nodes,
             selected=selected_resource,
-            total_gpus=selected_stats["total_gpus"],
+            qualifying_gpus=selected_stats["qualifying_gpus"],
             qualifying_nodes=selected_stats["qualifying_nodes"],
         )
         return selected_resource
@@ -341,13 +468,12 @@ class GpuConfig(LLMISvcConfig):
             return [{"name": result.matched}]
 
         if cls.optional_base_refs:
-            msg = (
-                f"No LLMInferenceServiceConfig CR matching '{cls.accelerator_config_name_regex}'"
-                f" for accelerator='{accelerator}' topology='{cls.supported_topology}'."
-                f" optional_base_refs=True — skipping. See logs above for details."
+            reason = (
+                f"No LLMInferenceServiceConfig CR matching '{cls.accelerator_config_name_regex}'\n"
+                f"  accelerator='{accelerator}' topology='{cls.supported_topology}'\n"
+                f"  optional_base_refs=True — skipping. See logs above for details."
             )
-            LOGGER.warning(msg)
-            pytest.skip(msg)
+            skip_test(reason=reason)
 
         pytest.fail(
             f"No LLMInferenceServiceConfig CR matched accelerator='{accelerator}'"

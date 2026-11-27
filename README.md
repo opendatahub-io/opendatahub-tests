@@ -15,8 +15,13 @@ Please follow the [Upgrade Guide](docs/UPGRADE.md) on how to run the upgrade tes
 
 ## Contribute to opendatahub-tests
 
-Please follow the [Contributing Guide](docs/CONTRIBUTING.md) and the [Developer guide](docs/DEVELOPER_GUIDE.md)
+Please follow the [Contributing Guide](docs/CONTRIBUTING.md) and the [Developer guide](docs/DEVELOPER_GUIDE.md).
+Every commit must include a `Signed-off-by` trailer (`git commit -s`) and follow Conventional Commits; see [Commit messages](docs/DEVELOPER_GUIDE.md#commit-messages).
 
 ## GitHub workflows
 
 Please follow the [GitHub workflows Guide](docs/GITHUB_WORKFLOWS.md) for more information.
+
+## Cutting a release branch
+
+Please follow the [Release Process Guide](docs/RELEASE_PROCESS.md) for what to do on code freeze day.

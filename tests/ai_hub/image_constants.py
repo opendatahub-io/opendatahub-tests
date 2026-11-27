@@ -5,7 +5,7 @@ class AiHubImages:
         "public.ecr.aws/docker/library/mysql"
         "@sha256:28540698ce89bd72f985044de942d65bd99c6fadb2db105327db57f3f70564f0"  # pragma: allowlist secret
     )
-    MYSQL_S390X: str = (
+    MYSQL_S390X_PPC: str = (
         "registry.redhat.io/rhel9/mysql-84"
         "@sha256:c16d572a6ff2ba6029a261ea4ba6342a14743f1e2615b23a32964a201bda9566"  # pragma: allowlist secret
     )
@@ -16,4 +16,8 @@ class AiHubImages:
     POSTGRES: str = (
         "public.ecr.aws/docker/library/postgres"
         "@sha256:6e9bbed548cc1ca776dd4685cfea9efe60d58df91186ec6bad7328fd03b388a5"  # pragma: allowlist secret
+    )
+    KUBERNETES_MCP_SERVER_V0_0_65: str = (
+        "quay.io/containers/kubernetes_mcp_server"
+        "@sha256:5df586e2c7ced2a3125f6e78923388d80b69de0a2ad1470325b05318f12725bd"
     )

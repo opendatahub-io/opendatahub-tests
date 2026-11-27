@@ -1,26 +1,15 @@
 # Model Serving Tests
 
-This directory contains the most comprehensive test suite in the repository, covering all aspects of model serving functionality in OpenDataHub/RHOAI. It validates model runtimes, model server configurations, storage backends, deployment modes, and MaaS (Model as a Service) billing.
+This directory contains the most comprehensive test suite in the repository, covering all aspects of model serving functionality in OpenDataHub/RHOAI. It validates model runtimes, model server configurations, storage backends, and deployment modes.
+
+> **Note:** MaaS (Model as a Service) billing tests moved to
+> [`tests/ai_gateway/models_as_a_service/`](../ai_gateway/models_as_a_service/README.md).
 
 ## Directory Structure
 
 ```text
 model_serving/
 ├── conftest.py                        # Module-level fixtures (S3 secrets, protocols)
-│
-├── maas_billing/                      # MaaS billing and subscription tests
-│   ├── conftest.py
-│   ├── utils.py
-│   ├── test_maas_endpoints.py         # /v1/models, /v1/chat/completions
-│   ├── test_maas_token_*.py           # Token minting and revocation
-│   ├── test_maas_*_rate_limits.py     # Request and token-based rate limiting
-│   ├── test_maas_rbac_e2e.py          # Multi-tier user access control
-│   └── maas_subscription/             # Subscription and API key management
-│       ├── conftest.py
-│       ├── test_api_key_*.py          # API key CRUD and authorization
-│       ├── test_*_subscriptions_*.py  # Multi-subscription enforcement
-│       ├── test_cascade_deletion.py   # Cascade deletion
-│       └── component_health/          # MaaS controller and API health
 │
 ├── model_runtime/                     # Runtime validation tests
 │   ├── conftest.py
@@ -55,9 +44,10 @@ model_serving/
     │   ├── observability/             # Metrics and monitoring
     │   ├── platform/                  # DSC deployment modes
     │   ├── private_endpoint/          # Private endpoint access
-    │   └── storage/                   # S3, PVC, OCI, MinIO backends
-    ├── llmd/                          # LLM Deployment (LLMD) tests
-    │   ├── llmd_configs/              # LLMD configuration files
+    │   ├── storage/                   # S3, PVC, OCI, MinIO backends
+    │   └── transformer/               # Transformer with auth and TLS injection
+    ├── llmd/                          # LLM Deployment (llm-d) tests
+    │   ├── llmd_configs/              # llm-d configuration files
     │   └── test_llmd_*.py             # Smoke, auth, CPU/GPU, scheduler
     └── upgrade/                       # Upgrade tests
         └── test_upgrade*.py           # Metrics, auth, private endpoint, llmd
@@ -65,29 +55,37 @@ model_serving/
 
 ### Current Test Suites
 
-- **`maas_billing/`** - MaaS billing tests including token management, rate limiting, RBAC, subscription lifecycle, API key CRUD/authorization, and cascade deletion
 - **`model_runtime/`** - Runtime validation for vLLM (S3 and OCI modelcar), OpenVINO (CPU-optimized inference), Triton (multi-framework), and MLServer (lightweight serving)
-- **`model_server/`** - Server platform tests for KServe deployment modes (raw, serverless), storage backends (S3, PVC, OCI, MinIO), authentication, autoscaling (KEDA, Kueue), inference graphs, lifecycle management, observability, negative testing, LLMD, and upgrade scenarios
+- **`model_server/`** - Server platform tests for KServe deployment modes (raw, serverless), storage backends (S3, PVC, OCI, MinIO), authentication, autoscaling (KEDA, Kueue), inference graphs, lifecycle management, observability, negative testing, transformer auth/TLS injection, llm-d, and upgrade scenarios
 
 ## Test Markers
 
+<!-- Quality gate mapping defined in: https://gitlab.cee.redhat.com/ods/jenkins/-/blob/master/resources/configs/components-testing/components/model-server/main.yaml -->
+
 ```python
-@pytest.mark.smoke                 # Critical smoke tests
-@pytest.mark.tier1                 # Tier 1 tests
-@pytest.mark.tier2                 # Tier 2 tests
+# Quality gates (mapped to Jenkins pipelines)
+@pytest.mark.smoke                 # Critical smoke tests (CPU only)
+@pytest.mark.tier1                 # Tier 1 tests (CPU only)
+@pytest.mark.tier2                 # Tier 2 tests (CPU only)
+@pytest.mark.llmd_gpu              # llm-d GPU tests (Quality Gates: vllm-nvidia-1gpu, vllm-nvidia-multigpus, vllm-amd-gpu)
+@pytest.mark.gpu                   # KServe/Triton GPU tests
+@pytest.mark.multinode             # Multi-node GPU deployment (Quality Gates: nvidia-multinode-gpu)
 @pytest.mark.rawdeployment         # KServe raw deployment mode
-@pytest.mark.gpu                   # Requires GPU
-@pytest.mark.multinode             # Multi-node deployment
+@pytest.mark.pre_upgrade           # Pre-upgrade tests
+@pytest.mark.post_upgrade          # Post-upgrade tests
+
+# Feature markers
 @pytest.mark.minio                 # MinIO storage tests
 @pytest.mark.tls                   # TLS/SSL tests
 @pytest.mark.metrics               # Metrics tests
 @pytest.mark.kueue                 # Kueue integration
-@pytest.mark.pre_upgrade           # Pre-upgrade tests
-@pytest.mark.post_upgrade          # Post-upgrade tests
-@pytest.mark.skip_on_disconnected  # Requires internet connectivity
+@pytest.mark.skip_on_disconnected  # Requires internet (skipped on disconnected clusters)
 ```
 
 ## Model Runtimes
+
+<!-- model-runtime quality gate mapping: https://gitlab.cee.redhat.com/ods/jenkins/-/blob/master/resources/configs/components-testing/components/model-runtime/main.yaml -->
+
 
 | Runtime         | Framework       | Use Case                                                |
 | --------------- | --------------- | ------------------------------------------------------- |
@@ -126,10 +124,7 @@ uv run pytest tests/model_serving/model_runtime/openvino/
 # Run KServe platform tests
 uv run pytest tests/model_serving/model_server/kserve/
 
-# Run MaaS billing tests
-uv run pytest tests/model_serving/maas_billing/
-
-# Run LLMD tests
+# Run llm-d tests
 uv run pytest tests/model_serving/model_server/llmd/
 ```
 

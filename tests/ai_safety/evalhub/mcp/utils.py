@@ -11,8 +11,10 @@ from timeout_sampler import TimeoutSampler
 
 from tests.ai_safety.evalhub.constants import EVALHUB_VLLM_EMULATOR_PORT
 from tests.ai_safety.evalhub.mcp.constants import (
+    EVALHUB_MCP_APP_LABEL,
     EVALHUB_MCP_CLIENT_NAME,
     EVALHUB_MCP_CLIENT_VERSION,
+    EVALHUB_MCP_COMPONENT_LABEL,
     EVALHUB_MCP_DEFAULT_BENCHMARK_ID,
     EVALHUB_MCP_DEFAULT_PROVIDER_ID,
     EVALHUB_MCP_PROTOCOL_VERSION,
@@ -402,3 +404,8 @@ def build_mcp_proxy_role_rules(evalhub_instance_name: str) -> list[dict[str, lis
             "verbs": ["get", "create"],
         }
     ]
+
+
+def evalhub_mcp_pod_label_selector(instance_name: str) -> str:
+    """Label selector matching the MCP pods the operator creates for an EvalHub instance."""
+    return f"app={EVALHUB_MCP_APP_LABEL},instance={instance_name},component={EVALHUB_MCP_COMPONENT_LABEL}"

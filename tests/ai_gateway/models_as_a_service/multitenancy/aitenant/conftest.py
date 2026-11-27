@@ -1,0 +1,497 @@
+from collections.abc import Callable, Generator
+from contextlib import ExitStack, contextmanager
+from typing import Any, TypedDict
+
+import pytest
+from kubernetes.dynamic import DynamicClient
+from ocp_resources.gateway_gateway_networking_k8s_io import Gateway
+from ocp_resources.maas_model_ref import MaaSModelRef
+from ocp_resources.namespace import Namespace
+from pytest_testconfig import config as py_config
+
+from tests.ai_gateway.models_as_a_service.maas_subscription.utils import MAAS_SUBSCRIPTION_NAMESPACE
+from tests.ai_gateway.models_as_a_service.multitenancy.aitenant.utils import (
+    AIGATEWAY_NAME_ANNOTATION,
+    AIGATEWAY_NAMESPACE_ANNOTATION,
+    AITENANT_NS_CLASH_E2E_NAME_PREFIX,
+    AITENANT_TEST_OIDC_SPEC,
+    AITENANT_TEST_RBAC_ADMINS,
+    LEGACY_MIGRATION_API_KEY_OWNER_GROUP,
+    AITenantPreexistingNamespaceContext,
+    AITenantTestContext,
+    LegacyTenantMigrationTestContext,
+    aitenant_admin_role_bindings,
+    build_aitenant_test_context,
+    delete_aitenant_clearing_finalizers,
+    expected_tenant_namespace_name,
+    maas_controller_tenant_namespace_discovery_enabled,
+    require_aitenant_crd_for_discovery,
+    require_legacy_tenant_migration_prerequisites,
+    require_tenant_namespace_discovery_enabled,
+)
+from tests.ai_gateway.models_as_a_service.multitenancy.utils import (
+    gateway_ref_from_aitenant,
+    make_tenant_model_accessible,
+    provision_tenant_model,
+    tenant_isolation_auth_policy_name,
+    tenant_isolation_subscription_name,
+)
+from tests.ai_gateway.models_as_a_service.utils import (
+    aitenant_from_spec,
+    bootstrap_gateway_context,
+    bootstrap_gateway_ref,
+    build_aitenant_spec,
+    deploy_and_verify_aitenant_ready,
+)
+from utilities.general import generate_random_name
+from utilities.resources.aitenant import AITenant
+
+
+class AITenantTestParams(TypedDict):
+    aitenant_name: str
+    aitenant_spec: dict[str, Any]
+
+
+@pytest.fixture
+def aitenant_oidc_test_params() -> AITenantTestParams:
+    """Return an AITenant name and spec with oidc configured."""
+    aitenant_name = f"e2e-aigw-oidc-{generate_random_name()}"
+    return AITenantTestParams(
+        aitenant_name=aitenant_name,
+        aitenant_spec=build_aitenant_spec(aitenant_name=aitenant_name, oidc=AITENANT_TEST_OIDC_SPEC),
+    )
+
+
+@pytest.fixture
+def aitenant_oidc_bootstrap_gateway(
+    admin_client: DynamicClient,
+    aitenant_oidc_test_params: AITenantTestParams,
+    teardown_resources: bool,
+) -> Generator[Gateway, Any, Any]:
+    """Pre-provision the bootstrap Gateway for an oidc AITenant."""
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aitenant_name=aitenant_oidc_test_params["aitenant_name"],
+        aitenant_spec=aitenant_oidc_test_params["aitenant_spec"],
+    )
+    with bootstrap_gateway_context(
+        admin_client=admin_client,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        teardown=teardown_resources,
+    ) as gateway:
+        yield gateway
+
+
+@pytest.fixture
+def aitenant_oidc(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    aitenant_oidc_test_params: AITenantTestParams,
+    aitenant_oidc_bootstrap_gateway: Gateway,
+    teardown_resources: bool,
+) -> Generator[AITenant, Any, Any]:
+    """Deploy an oidc AITenant CR after its bootstrap Gateway exists."""
+    with aitenant_from_spec(
+        admin_client=admin_client,
+        aitenant_name=aitenant_oidc_test_params["aitenant_name"],
+        cr_namespace=aitenant_infra_namespace,
+        aitenant_spec=aitenant_oidc_test_params["aitenant_spec"],
+        teardown=teardown_resources,
+    ) as aitenant:
+        yield aitenant
+
+
+@pytest.fixture
+def ready_aitenant_oidc(aitenant_oidc: AITenant) -> Generator[AITenant, Any, Any]:
+    """Wait until the oidc AITenant reports Ready with phase Active."""
+    deploy_and_verify_aitenant_ready(aitenant=aitenant_oidc)
+    yield aitenant_oidc
+
+
+@pytest.fixture
+def aitenant_with_oidc(ready_aitenant_oidc: AITenant) -> AITenantTestContext:
+    """Return bootstrap test context for a Ready oidc AITenant."""
+    return build_aitenant_test_context(aitenant=ready_aitenant_oidc)
+
+
+@pytest.fixture
+def aitenant_with_manual_admin_role_bindings(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    aitenant_for_test: AITenantTestContext,
+    teardown_resources: bool,
+) -> Generator[AITenantTestContext, Any, Any]:
+    """Return a Ready AITenant context with manually created admin RoleBindings."""
+    test_context = aitenant_for_test
+    with aitenant_admin_role_bindings(
+        admin_client=admin_client,
+        aitenant_name=test_context["aitenant_name"],
+        tenant_namespace_name=test_context["tenant_namespace_name"],
+        infra_namespace=aitenant_infra_namespace,
+        subjects=AITENANT_TEST_RBAC_ADMINS,
+        teardown=teardown_resources,
+    ):
+        yield test_context
+
+
+@pytest.fixture
+def ready_aitenant_for_deletion(ready_aitenant: AITenant) -> AITenantTestContext:
+    """Return bootstrap test context for deletion tests; test owns AITenant deletion."""
+    return build_aitenant_test_context(aitenant=ready_aitenant)
+
+
+@pytest.fixture
+def aitenant_preexist_test_params() -> AITenantTestParams:
+    """Return an AITenant name and spec for pre-existing tenant namespace adoption."""
+    aitenant_name = f"e2e-aigw-preexist-{generate_random_name()}"
+    return AITenantTestParams(
+        aitenant_name=aitenant_name,
+        aitenant_spec=build_aitenant_spec(aitenant_name=aitenant_name),
+    )
+
+
+@pytest.fixture
+def aitenant_preexist_bootstrap_gateway(
+    admin_client: DynamicClient,
+    aitenant_preexist_test_params: AITenantTestParams,
+    teardown_resources: bool,
+) -> Generator[Gateway, Any, Any]:
+    """Pre-provision the bootstrap Gateway for pre-existing namespace adoption."""
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aitenant_name=aitenant_preexist_test_params["aitenant_name"],
+        aitenant_spec=aitenant_preexist_test_params["aitenant_spec"],
+    )
+    with bootstrap_gateway_context(
+        admin_client=admin_client,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        teardown=teardown_resources,
+    ) as gateway:
+        yield gateway
+
+
+@pytest.fixture
+def aitenant_preexist_tenant_namespace(
+    admin_client: DynamicClient,
+    aitenant_preexist_test_params: AITenantTestParams,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Create the derived tenant namespace before AITenant reconciliation."""
+    tenant_namespace_name = expected_tenant_namespace_name(
+        aitenant_name=aitenant_preexist_test_params["aitenant_name"],
+    )
+    with Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        teardown=teardown_resources,
+    ) as tenant_namespace:
+        yield tenant_namespace
+
+
+@pytest.fixture
+def aitenant_preexist(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    aitenant_preexist_test_params: AITenantTestParams,
+    aitenant_preexist_bootstrap_gateway: Gateway,
+    aitenant_preexist_tenant_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[AITenant, Any, Any]:
+    """Deploy an AITenant CR that adopts a pre-existing derived tenant namespace."""
+    with aitenant_from_spec(
+        admin_client=admin_client,
+        aitenant_name=aitenant_preexist_test_params["aitenant_name"],
+        cr_namespace=aitenant_infra_namespace,
+        aitenant_spec=aitenant_preexist_test_params["aitenant_spec"],
+        teardown=teardown_resources,
+    ) as aitenant:
+        yield aitenant
+
+
+@pytest.fixture
+def ready_aitenant_preexist(aitenant_preexist: AITenant) -> Generator[AITenant, Any, Any]:
+    """Wait until the pre-existing-namespace AITenant reports Ready."""
+    deploy_and_verify_aitenant_ready(aitenant=aitenant_preexist)
+    yield aitenant_preexist
+
+
+@pytest.fixture
+def aitenant_on_preexisting_derived_tenant_namespace(
+    ready_aitenant_preexist: AITenant,
+    aitenant_preexist_tenant_namespace: Namespace,
+    aitenant_preexist_test_params: AITenantTestParams,
+) -> AITenantPreexistingNamespaceContext:
+    """Return context for a Ready AITenant that adopted a pre-existing tenant namespace."""
+    tenant_namespace_name = expected_tenant_namespace_name(
+        aitenant_name=aitenant_preexist_test_params["aitenant_name"],
+    )
+    return AITenantPreexistingNamespaceContext(
+        aitenant=ready_aitenant_preexist,
+        tenant_namespace=aitenant_preexist_tenant_namespace,
+        tenant_namespace_name=tenant_namespace_name,
+    )
+
+
+@pytest.fixture
+def aitenant_ns_clash_test_params() -> AITenantTestParams:
+    """Return an AITenant name and spec for derived tenant namespace clash tests."""
+    aitenant_name = f"{AITENANT_NS_CLASH_E2E_NAME_PREFIX}{generate_random_name()}"
+    return AITenantTestParams(
+        aitenant_name=aitenant_name,
+        aitenant_spec=build_aitenant_spec(aitenant_name=aitenant_name),
+    )
+
+
+@pytest.fixture
+def aitenant_ns_clash_bootstrap_gateway(
+    admin_client: DynamicClient,
+    aitenant_ns_clash_test_params: AITenantTestParams,
+    teardown_resources: bool,
+) -> Generator[Gateway, Any, Any]:
+    """Pre-provision the bootstrap Gateway for namespace clash tests."""
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aitenant_name=aitenant_ns_clash_test_params["aitenant_name"],
+        aitenant_spec=aitenant_ns_clash_test_params["aitenant_spec"],
+    )
+    with bootstrap_gateway_context(
+        admin_client=admin_client,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        teardown=teardown_resources,
+    ) as gateway:
+        yield gateway
+
+
+@pytest.fixture
+def aitenant_ns_clash_tenant_namespace(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    aitenant_ns_clash_test_params: AITenantTestParams,
+    teardown_resources: bool,
+) -> Generator[Namespace, Any, Any]:
+    """Create a derived tenant namespace already claimed by another AITenant."""
+    tenant_namespace_name = expected_tenant_namespace_name(
+        aitenant_name=aitenant_ns_clash_test_params["aitenant_name"],
+    )
+    with Namespace(
+        client=admin_client,
+        name=tenant_namespace_name,
+        annotations={
+            AIGATEWAY_NAME_ANNOTATION: "other-aitenant",
+            AIGATEWAY_NAMESPACE_ANNOTATION: aitenant_infra_namespace,
+        },
+        teardown=teardown_resources,
+    ) as tenant_namespace:
+        yield tenant_namespace
+
+
+@pytest.fixture
+def aitenant_on_namespace_owned_by_other(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    aitenant_ns_clash_test_params: AITenantTestParams,
+    aitenant_ns_clash_bootstrap_gateway: Gateway,
+    aitenant_ns_clash_tenant_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[AITenant, Any, Any]:
+    """Deploy an AITenant against a derived tenant namespace owned by another AITenant."""
+    with aitenant_from_spec(
+        admin_client=admin_client,
+        aitenant_name=aitenant_ns_clash_test_params["aitenant_name"],
+        cr_namespace=aitenant_infra_namespace,
+        aitenant_spec=aitenant_ns_clash_test_params["aitenant_spec"],
+        teardown=False,
+    ) as aitenant:
+        try:
+            yield aitenant
+        finally:
+            if teardown_resources:
+                delete_aitenant_clearing_finalizers(aitenant=aitenant)
+
+
+@pytest.fixture
+def aitenant_outside_infra_namespace(
+    request: pytest.FixtureRequest,
+) -> tuple[str, str]:
+    """Return AITenant name and invalid CR namespace for admission webhook rejection tests."""
+    cr_namespace_key: str = request.param
+    applications_namespace = py_config["applications_namespace"]
+    namespace_map = {
+        "applications_namespace": applications_namespace,
+        "legacy_tenant_namespace": MAAS_SUBSCRIPTION_NAMESPACE,
+    }
+    aitenant_name = f"e2e-aigw-plc-{generate_random_name()}"
+    return aitenant_name, namespace_map[cr_namespace_key]
+
+
+@pytest.fixture
+def aitenant_derived_test_params() -> AITenantTestParams:
+    """Return an AITenant name and spec for derived tenant namespace verification."""
+    aitenant_name = f"e2e-aigw-derive-{generate_random_name()}"
+    return AITenantTestParams(
+        aitenant_name=aitenant_name,
+        aitenant_spec=build_aitenant_spec(aitenant_name=aitenant_name),
+    )
+
+
+@pytest.fixture
+def aitenant_derived_bootstrap_gateway(
+    admin_client: DynamicClient,
+    aitenant_derived_test_params: AITenantTestParams,
+    teardown_resources: bool,
+) -> Generator[Gateway, Any, Any]:
+    """Pre-provision the bootstrap Gateway for derived tenant namespace verification."""
+    gateway_name, gateway_namespace = bootstrap_gateway_ref(
+        aitenant_name=aitenant_derived_test_params["aitenant_name"],
+        aitenant_spec=aitenant_derived_test_params["aitenant_spec"],
+    )
+    with bootstrap_gateway_context(
+        admin_client=admin_client,
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        teardown=teardown_resources,
+    ) as gateway:
+        yield gateway
+
+
+@pytest.fixture
+def aitenant_derived(
+    admin_client: DynamicClient,
+    aitenant_infra_namespace: str,
+    aitenant_derived_test_params: AITenantTestParams,
+    aitenant_derived_bootstrap_gateway: Gateway,
+    teardown_resources: bool,
+) -> Generator[AITenant, Any, Any]:
+    """Deploy an AITenant CR for derived tenant namespace verification."""
+    with aitenant_from_spec(
+        admin_client=admin_client,
+        aitenant_name=aitenant_derived_test_params["aitenant_name"],
+        cr_namespace=aitenant_infra_namespace,
+        aitenant_spec=aitenant_derived_test_params["aitenant_spec"],
+        teardown=teardown_resources,
+    ) as aitenant:
+        yield aitenant
+
+
+@pytest.fixture
+def ready_aitenant_derived(aitenant_derived: AITenant) -> Generator[AITenant, Any, Any]:
+    """Wait until the derived-namespace AITenant reports Ready."""
+    deploy_and_verify_aitenant_ready(aitenant=aitenant_derived)
+    yield aitenant_derived
+
+
+@pytest.fixture
+def aitenant_derived_namespace_case(
+    ready_aitenant_derived: AITenant,
+    aitenant_derived_test_params: AITenantTestParams,
+) -> tuple[AITenantTestContext, str]:
+    """Return Ready AITenant context and the expected derived tenant namespace name."""
+    expected_tenant_namespace = expected_tenant_namespace_name(
+        aitenant_name=aitenant_derived_test_params["aitenant_name"],
+    )
+    return build_aitenant_test_context(aitenant=ready_aitenant_derived), expected_tenant_namespace
+
+
+@pytest.fixture
+def legacy_tenant_migration_prerequisites(admin_client: DynamicClient) -> None:
+    """Require legacy Tenant, MaasTenantConfig, and AITenant CRDs for migration cleanup E2E."""
+    require_legacy_tenant_migration_prerequisites(admin_client=admin_client)
+
+
+@pytest.fixture
+def legacy_tenant_migration_api_key_governance(
+    request: pytest.FixtureRequest,
+    admin_client: DynamicClient,
+    maas_free_group: str,
+    teardown_resources: bool,
+) -> Callable[..., Generator[str, Any, Any]]:
+    """Provision tenant-local model + MaaSAuthPolicy + MaaSSubscription on the tenant Gateway.
+
+    Per-tenant subscriptions require the model HTTPRoute to attach to the tenant Gateway (not shared
+    ``llm/llm-s3-tinyllama-free`` on the default gateway). Same approach as ``isolation_tenant_governance``.
+    S3 credentials are resolved via session fixtures through ``request.getfixturevalue``.
+    """
+
+    @contextmanager
+    def govern(
+        test_context: LegacyTenantMigrationTestContext,
+        gateway_name: str,
+        gateway_namespace: str,
+    ) -> Generator[str, Any, Any]:
+        aitenant_name = test_context["aitenant_name"]
+        tenant_namespace_name = test_context["tenant_namespace_name"]
+        model_name = f"e2e-legacy-migrate-{generate_random_name()[:12]}"
+        auth_policy_name = tenant_isolation_auth_policy_name(aitenant_name=aitenant_name)
+        subscription_name = tenant_isolation_subscription_name(aitenant_name=aitenant_name)
+        with ExitStack() as stack:
+            stack.enter_context(
+                cm=provision_tenant_model(
+                    admin_client=admin_client,
+                    model_name=model_name,
+                    tenant_namespace_name=tenant_namespace_name,
+                    gateway_name=gateway_name,
+                    gateway_namespace=gateway_namespace,
+                    aws_access_key=request.getfixturevalue("aws_access_key_id"),
+                    aws_secret_access_key=request.getfixturevalue("aws_secret_access_key"),
+                    aws_s3_region=request.getfixturevalue("models_s3_bucket_region"),
+                    aws_s3_bucket=request.getfixturevalue("models_s3_bucket_name"),
+                    aws_s3_endpoint=request.getfixturevalue("models_s3_bucket_endpoint"),
+                    teardown=teardown_resources,
+                )
+            )
+            stack.enter_context(
+                cm=make_tenant_model_accessible(
+                    admin_client=admin_client,
+                    model_name=model_name,
+                    model_namespace=tenant_namespace_name,
+                    tenant_namespace_name=tenant_namespace_name,
+                    auth_policy_name=auth_policy_name,
+                    subscription_name=subscription_name,
+                    owner_group_name=LEGACY_MIGRATION_API_KEY_OWNER_GROUP,
+                    free_group_name=maas_free_group,
+                    teardown=teardown_resources,
+                )
+            )
+            yield subscription_name
+
+    return govern
+
+
+@pytest.fixture
+def tenant_namespace_discovery_prerequisites(admin_client: DynamicClient) -> None:
+    """Require AITenant CRD and maas-controller tenant namespace discovery enabled."""
+    require_aitenant_crd_for_discovery(admin_client=admin_client)
+    require_tenant_namespace_discovery_enabled(admin_client=admin_client)
+    assert maas_controller_tenant_namespace_discovery_enabled(admin_client=admin_client), (
+        "maas-controller must run with --enable-tenant-namespace-discovery=true for these tests"
+    )
+
+
+@pytest.fixture
+def aitenant_tenant_local_maas_model_ref(
+    admin_client: DynamicClient,
+    aitenant_for_test: AITenantTestContext,
+    teardown_resources: bool,
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    models_s3_bucket_name: str,
+    models_s3_bucket_region: str,
+    models_s3_bucket_endpoint: str,
+) -> Generator[tuple[AITenantTestContext, MaaSModelRef], Any, Any]:
+    """Ready AITenant with a tenant-local MaaSModelRef on the tenant Gateway (no spec.tenantRef)."""
+    model_name = f"e2e-auto-tenant-ref-{generate_random_name()[:8]}"
+    gateway_name, gateway_namespace = gateway_ref_from_aitenant(aitenant=aitenant_for_test["aitenant"])
+    with provision_tenant_model(
+        admin_client=admin_client,
+        model_name=model_name,
+        tenant_namespace_name=aitenant_for_test["tenant_namespace_name"],
+        gateway_name=gateway_name,
+        gateway_namespace=gateway_namespace,
+        aws_access_key=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_s3_region=models_s3_bucket_region,
+        aws_s3_bucket=models_s3_bucket_name,
+        aws_s3_endpoint=models_s3_bucket_endpoint,
+        teardown=teardown_resources,
+    ) as tenant_model_ref:
+        yield aitenant_for_test, tenant_model_ref

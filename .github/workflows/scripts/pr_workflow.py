@@ -115,6 +115,17 @@ class PrLabeler(PrBaseClass):
             LOGGER.error(f"User {self.user_login} is not allowed for this action. Exiting.")
             return False
 
+    def verify_allowed_user_build_push(self) -> bool:
+        org: Organization = self.gh_client.get_organization("opendatahub-io")
+        team: Team = org.get_team_by_slug("opendatahub-tests-users")
+        try:
+            membership = team.get_team_membership(member=self.user_login)
+            LOGGER.info(f"User {self.user_login} is a member of the test users team. {membership}")
+            return True
+        except UnknownObjectException:
+            LOGGER.error(f"User {self.user_login} is not allowed to trigger build/push. Exiting.")
+            return False
+
     def verify_labeler_config(self) -> None:
         if self.action == self.SupportedActions.add_remove_labels_action_name and self.event_name in (
             "issue_comment",
@@ -131,7 +142,10 @@ class PrLabeler(PrBaseClass):
         if self.action == self.SupportedActions.pr_size_action_name:
             self.set_pr_size()
 
-        if self.action == self.SupportedActions.build_push_pr_image_action_name and not self.verify_allowed_user():
+        if (
+            self.action == self.SupportedActions.build_push_pr_image_action_name
+            and not self.verify_allowed_user_build_push()
+        ):
             sys.exit(1)
 
         if self.action == self.SupportedActions.add_remove_labels_action_name and self.verify_allowed_user():

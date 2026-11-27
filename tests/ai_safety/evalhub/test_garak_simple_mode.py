@@ -43,14 +43,12 @@ class TestGarakSimpleMode:
         tenant_user_token: str,
         evalhub_ca_bundle_file: str,
         garak_evalhub_route: Route,
-        tenant_namespace,
     ) -> None:
         """Verify the EvalHub service is healthy before running garak benchmark."""
         validate_evalhub_health(
             host=garak_evalhub_route.host,
             token=tenant_user_token,
             ca_bundle_file=evalhub_ca_bundle_file,
-            tenant_namespace=tenant_namespace.name,
         )
 
     @pytest.mark.dependency(name="garak_simple_providers", depends=["garak_simple_health"])
@@ -131,7 +129,7 @@ class TestGarakSimpleMode:
                 job_id=intents_garak_job_id,
                 timeout=900,
             )
-        except AssertionError, TimeoutExpiredError:
+        except (AssertionError, TimeoutExpiredError):  # fmt: skip
             for pod in Pod.get(client=admin_client, namespace=tenant_namespace.name):
                 if intents_garak_job_id[:8] in pod.name:
                     collect_pod_information(pod=pod)

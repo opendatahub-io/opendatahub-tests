@@ -13,7 +13,8 @@ LOGGER = structlog.get_logger(name=__name__)
 INACCESSIBLE_MODELS: list[str] = [
     "jonburdo/private-test-model-1",
 ]
-ACCESSIBLE_MODELS: list[str] = ["jonburdo/public-test-model-1", "jonburdo/test2", "jonburdo/gated-test-model-1"]
+GATED_MODELS_WITHOUT_ACCESS: list[str] = ["jonburdo/gated-test-model-1"]
+ACCESSIBLE_MODELS: list[str] = ["jonburdo/public-test-model-1", "jonburdo/test2"]
 SOURCE_ID: str = "mixed_models_catalog"
 
 pytestmark = [pytest.mark.skip_on_disconnected]
@@ -89,10 +90,8 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        Check that accessible models are visible through catalog API using source label.
-
-        This test verifies that accessible models are still returned by the catalog API
-        even when the source is in error state.
+        Given a partially available source with an unpermitted gated model,
+        when filtering the catalog API by source, then its public models are returned.
         """
         assert_accessible_models_via_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
@@ -108,10 +107,8 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        Check that accessible models are visible through catalog API.
-
-        This test verifies that accessible models are still returned by the catalog API
-        even when the source is in error state.
+        Given a partially available source with an unpermitted gated model,
+        when listing all catalog models, then its public models are returned.
         """
         assert_accessible_models_via_catalog_api(
             model_catalog_rest_url=model_catalog_rest_url,
@@ -127,15 +124,15 @@ class TestHuggingFaceSourceErrorValidation:
         model_registry_rest_headers: dict[str, str],
     ):
         """
-        Ensure inaccessible models are not found via API calls.
-
-        This test verifies that inaccessible models (private/gated) correctly return
-        "Not Found" errors when accessed via individual model API endpoints.
+        Given private and unpermitted gated models in a source,
+        when fetching them by name, then the catalog API returns "Not Found".
         """
         error_pattern = r"No model found '([^']+)' in source '([^']+)'"
-        LOGGER.info(f"Testing that inaccessible models return 'Not Found': {INACCESSIBLE_MODELS}")
+        LOGGER.info(
+            f"Testing that inaccessible models return 'Not Found': {INACCESSIBLE_MODELS + GATED_MODELS_WITHOUT_ACCESS}"
+        )
 
-        for model_name in INACCESSIBLE_MODELS:
+        for model_name in INACCESSIBLE_MODELS + GATED_MODELS_WITHOUT_ACCESS:
             with pytest.raises(ResourceNotFoundError) as exc_info:
                 execute_get_command(
                     url=f"{model_catalog_rest_url[0]}sources/{SOURCE_ID}/models/{model_name}",

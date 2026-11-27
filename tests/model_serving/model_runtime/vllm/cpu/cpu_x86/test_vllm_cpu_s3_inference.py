@@ -17,7 +17,11 @@ from utilities.constants import KServeDeploymentType
 
 LOGGER = structlog.get_logger(name=__name__)
 
-pytestmark = pytest.mark.usefixtures("skip_if_no_supported_cpu_x86_accelerator_type", "valid_aws_config")
+pytestmark = pytest.mark.usefixtures(
+    "skip_if_arm64_cluster_detected",
+    "skip_if_no_supported_cpu_x86_accelerator_type",
+    "valid_aws_config",
+)
 
 
 @pytest.mark.smoke

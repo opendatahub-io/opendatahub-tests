@@ -1,0 +1,91 @@
+"""MCP capability discovery tests for rhoai-mcp.
+
+Verifies that the MCP server correctly advertises its tools, resources,
+and prompts through the standard MCP protocol using a FastMCP client
+over Streamable HTTP transport.
+"""
+
+import pytest
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+from tests.rhoai_mcp.constants import (
+    RHOAI_MCP_EXPECTED_CATALOG_TOOLS,
+    RHOAI_MCP_EXPECTED_PLANNER_TOOLS,
+    RHOAI_MCP_EXPECTED_SERVING_TOOLS,
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.tier1  # Analogous to tests/ai_safety/evalhub/mcp/ which validates MCP capabilities.
+class TestRhoaiMcpCapabilities:
+    """Verify rhoai-mcp advertises expected MCP tools, resources, and prompts."""
+
+    async def test_server_advertises_capabilities(
+        self,
+        rhoai_mcp_transport: StreamableHttpTransport,
+    ) -> None:
+        """Given rhoai-mcp is deployed and healthy
+        When an authenticated MCP client initializes a session
+        Then the server advertises tools, resources, and prompts capabilities
+        """
+        async with Client(rhoai_mcp_transport) as client:
+            caps = client.initialize_result.capabilities
+            assert caps.tools is not None, "Server did not advertise tools capability"
+            assert caps.resources is not None, "Server did not advertise resources capability"
+            assert caps.prompts is not None, "Server did not advertise prompts capability"
+
+    async def test_list_tools_includes_serving_and_catalog_tools(
+        self,
+        rhoai_mcp_transport: StreamableHttpTransport,
+    ) -> None:
+        """Given rhoai-mcp is deployed and healthy
+        When tools/list is called via the FastMCP client
+        Then the response includes Model Serving and Model Catalog tools
+        """
+        async with Client(rhoai_mcp_transport) as client:
+            tools = await client.list_tools()
+            tool_names = {tool.name for tool in tools}
+            expected = (
+                set(RHOAI_MCP_EXPECTED_SERVING_TOOLS)
+                | set(RHOAI_MCP_EXPECTED_CATALOG_TOOLS)
+                | set(RHOAI_MCP_EXPECTED_PLANNER_TOOLS)
+            )
+            missing = expected - tool_names
+            assert not missing, f"Expected tools not found: {missing}. Got: {sorted(tool_names)}"
+
+    async def test_all_tools_have_descriptions(
+        self,
+        rhoai_mcp_transport: StreamableHttpTransport,
+    ) -> None:
+        """Given rhoai-mcp tools are listed
+        When each tool's metadata is inspected
+        Then every tool has a non-empty description
+        """
+        async with Client(rhoai_mcp_transport) as client:
+            tools = await client.list_tools()
+            assert tools, "Expected at least one tool"
+            for tool in tools:
+                assert tool.description and tool.description.strip(), f"Tool '{tool.name}' is missing a description"
+
+    async def test_all_tools_have_input_schemas(
+        self,
+        rhoai_mcp_transport: StreamableHttpTransport,
+    ) -> None:
+        """Given rhoai-mcp tools are listed
+        When each tool's input schema is inspected
+        Then every tool has a valid JSON Schema with a type field
+        """
+        async with Client(rhoai_mcp_transport) as client:
+            tools = await client.list_tools()
+            assert tools, "Expected at least one tool"
+            for tool in tools:
+                # MCP SDK v2 renamed inputSchema to input_schema. The declared
+                # fastmcp floor (3.4.0) is built on SDK v1 and exposes only the
+                # camelCase name, so prefer the v2 attribute and fall back to
+                # v1 — works on both client stacks.
+                schema = getattr(tool, "input_schema", None)
+                if schema is None:
+                    schema = tool.inputSchema
+                assert isinstance(schema, dict), f"Tool '{tool.name}' has no input schema"
+                assert "type" in schema, f"Tool '{tool.name}' input schema missing 'type': {schema}"

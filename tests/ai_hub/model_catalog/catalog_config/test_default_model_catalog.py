@@ -13,23 +13,31 @@ from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 from ocp_resources.service import Service
+from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutSampler
 
-from tests.ai_hub.constants import CATALOG_CONTAINER, DEFAULT_CUSTOM_MODEL_CATALOG, DEFAULT_MODEL_CATALOG_CM
+from tests.ai_hub.constants import (
+    CATALOG_CONTAINER,
+    CATALOG_CONTROLLER_MANAGER_NAME,
+    DEFAULT_CUSTOM_MODEL_CATALOG,
+    DEFAULT_MODEL_CATALOG_CM,
+)
 from tests.ai_hub.model_catalog.catalog_config.utils import (
     extract_schema_fields,
     get_validate_default_model_catalog_source,
     validate_default_catalog,
-    validate_model_catalog_enabled,
     validate_model_catalog_resource,
 )
-from tests.ai_hub.model_catalog.constants import DEFAULT_CATALOGS, REDHAT_AI_CATALOG_ID
+from tests.ai_hub.model_catalog.constants import DEFAULT_CATALOGS, RETIRED_CATALOG_ID
+from tests.ai_hub.model_catalog.utils import get_all_catalog_items
 from tests.ai_hub.utils import (
     execute_get_command,
     execute_get_command_with_retry,
     get_model_catalog_pod,
     get_rest_headers,
 )
+from utilities.constants import Annotations
+from utilities.general import wait_for_pods_by_labels
 from utilities.user_utils import UserTestSession
 
 LOGGER = structlog.get_logger(name=__name__)
@@ -39,7 +47,6 @@ pytestmark = [
         "updated_dsc_component_state_scope_session",
         "model_registry_namespace",
         "original_user",
-        "test_idp_user",
     )
 ]
 
@@ -65,7 +72,7 @@ class TestModelCatalogGeneral:
             ),
             pytest.param(
                 {"configmap_name": DEFAULT_MODEL_CATALOG_CM},
-                3,
+                len(DEFAULT_CATALOGS),
                 True,
                 id="test_model_catalog_default_sources_configmap",
             ),
@@ -75,6 +82,7 @@ class TestModelCatalogGeneral:
     def test_config_map_exists(
         self: Self, model_catalog_config_map: ConfigMap, expected_catalogs: int, validate_catalog: bool
     ) -> None:
+        """Given catalog configuration, when reading its sources, then the expected sources exist."""
         assert model_catalog_config_map.exists, f"{model_catalog_config_map.name} does not exist"
         catalogs = yaml.safe_load(model_catalog_config_map.instance.data["sources.yaml"])["catalogs"]
         assert len(catalogs) == expected_catalogs, (
@@ -128,8 +136,20 @@ class TestModelCatalogGeneral:
     @pytest.mark.post_upgrade
     @pytest.mark.pre_upgrade
     @pytest.mark.install
-    def test_operator_pod_enabled_model_catalog(self: Self, model_registry_operator_pod: Pod):
-        assert validate_model_catalog_enabled(pod=model_registry_operator_pod)
+    def test_catalog_controller_manager_pod_running(self: Self, admin_client: DynamicClient) -> None:
+        """Given model catalog is enabled
+        When fetching the catalog-controller-manager pod from the applications namespace
+        Then the pod should be in Running phase
+        """
+        pod = wait_for_pods_by_labels(
+            admin_client=admin_client,
+            namespace=py_config["applications_namespace"],
+            label_selector=f"{Annotations.KubernetesIo.NAME}={CATALOG_CONTROLLER_MANAGER_NAME}",
+            expected_num_pods=1,
+        )[0]
+        assert pod.status == Pod.Status.RUNNING, (
+            f"catalog-controller-manager pod {pod.name} is in phase '{pod.status}', expected 'Running'"
+        )
 
     @pytest.mark.post_upgrade
     @pytest.mark.pre_upgrade
@@ -168,6 +188,7 @@ class TestModelCatalogGeneral:
     ],
     indirect=["user_token_for_api_calls"],
 )
+@pytest.mark.tier1
 class TestModelCatalogDefault:
     def test_model_catalog_default_catalog_sources(
         self,
@@ -175,6 +196,7 @@ class TestModelCatalogDefault:
         test_idp_user: UserTestSession,
         model_catalog_rest_url: list[str],
         user_token_for_api_calls: str,
+        model_catalog_config_map: ConfigMap,
     ):
         """
         Validate specific user can access default model catalog source
@@ -197,13 +219,26 @@ class TestModelCatalogDefault:
             break
         assert result
         items_to_validate = []
-        if pytestconfig.option.pre_upgrade or pytestconfig.option.post_upgrade:
+        if pytestconfig.option.pre_upgrade:
+            configured = yaml.safe_load(model_catalog_config_map.instance.data["sources.yaml"])["catalogs"]
+            expected_ids = {source["id"] for source in configured}
+            actual_ids = {source["id"] for source in result}
+            assert expected_ids.issubset(actual_ids), f"Missing pre-upgrade sources: {expected_ids - actual_ids}"
+            assert len(result) == len(expected_ids) + 1, "Expected one custom source before upgrade"
+            return
+        assert RETIRED_CATALOG_ID not in {source["id"] for source in result}
+        if pytestconfig.option.post_upgrade:
             items_to_validate.extend([catalog for catalog in result if catalog["id"] in DEFAULT_CATALOGS])
             assert len(items_to_validate) + 1 == len(result)
         else:
             items_to_validate = result
         get_validate_default_model_catalog_source(catalogs=items_to_validate)
 
+    @pytest.mark.parametrize(
+        "randomly_picked_model_from_catalog_api_by_source",
+        [pytest.param({"catalog_id": source_id}, id=f"test_{source_id}") for source_id in DEFAULT_CATALOGS],
+        indirect=True,
+    )
     def test_model_default_catalog_get_models_by_source(
         self: Self,
         model_catalog_rest_url: list[str],
@@ -216,6 +251,11 @@ class TestModelCatalogDefault:
         LOGGER.info(f"picked model: {model_name} from catalog: {catalog_id}")
         assert random_model
 
+    @pytest.mark.parametrize(
+        "randomly_picked_model_from_catalog_api_by_source",
+        [pytest.param({"catalog_id": source_id}, id=f"test_{source_id}") for source_id in DEFAULT_CATALOGS],
+        indirect=True,
+    )
     def test_model_default_catalog_get_model_by_name(
         self: Self,
         model_catalog_rest_url: list[str],
@@ -225,9 +265,9 @@ class TestModelCatalogDefault:
         """
         Validate a specific user can access get Model by name associated with a default source
         """
-        random_model, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+        random_model, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
         result = execute_get_command_with_retry(
-            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}",
+            url=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )
         # artifactCounts is only present on the detail endpoint, not the list endpoint
@@ -239,6 +279,11 @@ class TestModelCatalogDefault:
         ]
         assert not differences, f"Expected no differences in model information for {model_name}: {differences}"
 
+    @pytest.mark.parametrize(
+        "randomly_picked_model_from_catalog_api_by_source",
+        [pytest.param({"catalog_id": source_id}, id=f"test_{source_id}") for source_id in DEFAULT_CATALOGS],
+        indirect=True,
+    )
     def test_model_default_catalog_get_model_artifact(
         self: Self,
         model_catalog_rest_url: list[str],
@@ -248,9 +293,9 @@ class TestModelCatalogDefault:
         """
         Validate a specific user can access get Model artifacts for model associated with default source
         """
-        _, model_name, _ = randomly_picked_model_from_catalog_api_by_source
+        _, model_name, catalog_id = randomly_picked_model_from_catalog_api_by_source
         result = execute_get_command_with_retry(
-            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
+            url=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts",
             headers=get_rest_headers(token=user_token_for_api_calls),
         )["items"]
         assert result, f"No artifacts found for {model_name}"
@@ -261,6 +306,12 @@ class TestModelCatalogDefault:
 @pytest.mark.pre_upgrade
 @pytest.mark.install
 @pytest.mark.skip_must_gather
+@pytest.mark.tier1
+@pytest.mark.parametrize(
+    "default_catalog_source",
+    [pytest.param({"catalog_id": source_id}, id=f"test_{source_id}") for source_id in DEFAULT_CATALOGS],
+    indirect=True,
+)
 class TestModelCatalogDefaultData:
     """Test class for validating default catalog data (not user-specific)"""
 
@@ -270,7 +321,9 @@ class TestModelCatalogDefaultData:
         default_model_catalog_yaml_content: dict[Any, Any],
     ):
         """
-        Validate number of models in default catalog
+        Given a shipped default catalog,
+        When reading all API pages,
+        Then its model count matches the shipped data.
         """
 
         count = len(default_model_catalog_yaml_content.get("models", []))
@@ -287,7 +340,9 @@ class TestModelCatalogDefaultData:
         catalog_openapi_schema: dict[Any, Any],
     ):
         """
-        Validate the correspondence of model parameters in default catalog yaml and model catalog api
+        Given a shipped default catalog,
+        When comparing every listed model with its YAML entry,
+        Then membership and schema-defined metadata match.
         """
 
         all_model_fields, required_model_fields = extract_schema_fields(
@@ -298,6 +353,9 @@ class TestModelCatalogDefaultData:
 
         api_models = {model["name"]: model for model in default_catalog_api_response.get("items", [])}
         assert api_models
+        yaml_names = {model["name"] for model in default_model_catalog_yaml_content["models"]}
+        assert set(api_models) == yaml_names, f"Model membership differs: {set(api_models) ^ yaml_names}"
+        assert len(api_models) == len(default_catalog_api_response["items"]), "Duplicate API models"
 
         models_with_differences = {}
 
@@ -330,12 +388,20 @@ class TestModelCatalogDefaultData:
             # Exclude 'license' field from value comparison
             comparable_fields = all_model_fields - {"license"}
             # Filter to only schema-defined fields for value comparison
-            model_filtered = {key: value for key, value in model.items() if key in comparable_fields}
-            # Only compare API fields that exist in the YAML — the API may add default values
-            # (e.g., validatedTasks: []) for fields not present in the YAML
+            model_filtered = {
+                key: value for key, value in model.items() if key in comparable_fields and value is not None
+            }
+            # Benchmark enrichment adds properties; compare only values supplied by this catalog.
             api_model_filtered = {
                 key: value for key, value in api_model.items() if key in comparable_fields and key in model_filtered
             }
+
+            if "customProperties" in model_filtered and "customProperties" in api_model_filtered:
+                api_model_filtered["customProperties"] = {
+                    key: value
+                    for key, value in api_model_filtered["customProperties"].items()
+                    if key in model_filtered["customProperties"]
+                }
 
             differences = list(diff(model_filtered, api_model_filtered))
             if differences:
@@ -350,12 +416,15 @@ class TestModelCatalogDefaultData:
     def test_model_default_catalog_random_artifact(
         self: Self,
         default_model_catalog_yaml_content: dict[Any, Any],
+        default_catalog_source: str,
         model_catalog_rest_url: list[str],
         model_registry_rest_headers: dict[str, str],
         catalog_openapi_schema: dict[Any, Any],
     ):
         """
-        Validate the random artifact in default catalog yaml matches API response
+        Given a model from the shipped default catalog,
+        When reading all of its model artifacts,
+        Then they match the shipped artifact metadata.
         """
 
         all_artifact_fields, required_artifact_fields = extract_schema_fields(
@@ -364,14 +433,16 @@ class TestModelCatalogDefaultData:
         LOGGER.info(f"All artifact fields from OpenAPI schema: {all_artifact_fields}")
         LOGGER.info(f"Required artifact fields from OpenAPI schema: {required_artifact_fields}")
 
+        catalog_id = default_catalog_source
         random_model = random.choice(seq=default_model_catalog_yaml_content.get("models", []))
         model_name = random_model["name"]
         LOGGER.info(f"Random model: {model_name}")
 
-        api_model_artifacts = execute_get_command_with_retry(
-            url=f"{model_catalog_rest_url[0]}sources/{REDHAT_AI_CATALOG_ID}/models/{model_name}/artifacts",
+        api_model_artifacts = get_all_catalog_items(
+            url=f"{model_catalog_rest_url[0]}sources/{catalog_id}/models/{model_name}/artifacts",
             headers=model_registry_rest_headers,
-        )["items"]
+            params={"artifactType": "model-artifact"},
+        )
 
         yaml_artifacts = random_model.get("artifacts", [])
         assert api_model_artifacts, f"No artifacts found in API for {model_name}"

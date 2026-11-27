@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import pathlib
+import re
 import shutil
 import traceback
 from typing import Any
@@ -14,6 +15,7 @@ from _pytest.runner import CallInfo
 from _pytest.terminal import TerminalReporter
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.cluster_service_version import ClusterServiceVersion
+from ocp_resources.node import Node as OcpNode
 from ocp_resources.resource import get_client
 from pytest import (
     Collector,
@@ -27,8 +29,9 @@ from pytest import (
 )
 from pytest_testconfig import config as py_config
 
-from utilities.constants import KServeDeploymentType
+from utilities.constants import KServeDeploymentType, OCIRegistry
 from utilities.database import Database
+from utilities.image_constants import SharedImages
 from utilities.infra import get_dsci_applications_namespace, get_operator_distribution
 from utilities.logger import separator, setup_logging
 from utilities.must_gather_collector import (
@@ -38,6 +41,7 @@ from utilities.must_gather_collector import (
     set_must_gather_collector_directory,
     set_must_gather_collector_values,
 )
+from utilities.resources.cluster_policy_kyverno_io import ClusterPolicy as KyvernoClusterPolicy
 
 LOGGER = logging.getLogger(name=__name__)
 BASIC_LOGGER = logging.getLogger(name="basic")
@@ -48,7 +52,7 @@ EXCLUDE_MARKERS_FROM_DEFAULT_TIER2: set[str] = {"smoke", "tier1", "tier2", "tier
 DEFAULT_TIER2_MARKER_TEST_PATHS: tuple[str, ...] = (
     "tests/ai_hub",
     "tests/ai_safety",
-    "tests/model_serving/maas_billing",
+    "tests/ai_gateway/models_as_a_service",
 )
 
 
@@ -134,6 +138,11 @@ def pytest_addoption(parser: Parser) -> None:
         "--ovms-runtime-image",
         default=os.environ.get("OVMS_RUNTIME_IMAGE"),
         help="Specify the OVMS runtime image to use for the tests",
+    )
+    runtime_group.addoption(
+        "--vllm-omni-runtime-image",
+        default=os.environ.get("VLLM_OMNI_RUNTIME_IMAGE"),
+        help="Specify the vLLM-Omni runtime image to use for tests (overrides template default)",
     )
 
     # OCI Registry options (vLLM modelcar)
@@ -224,8 +233,33 @@ def pytest_addoption(parser: Parser) -> None:
     )
 
 
+def _oci_image_volumes_supported() -> bool:
+    """Return True if CRI-O >= 1.33 is present on the cluster (OCP 4.20+).
+
+    OCI image volume subPath support (required by KServe modelcar) was added in CRI-O 1.33
+    via https://github.com/cri-o/cri-o/pull/9050. On CRI-O 1.32 (OCP 4.19) image volumes
+    are accepted by the API server but silently not mounted.
+    """
+    node = next(OcpNode.get(client=get_client()), None)
+    if not node:
+        return False
+    runtime: str = node.instance.status.nodeInfo.containerRuntimeVersion  # e.g. "cri-o://1.32.13-..."
+    match = re.search(r"cri-o://(\d+)\.(\d+)", runtime)
+    if match:
+        return (int(match.group(1)), int(match.group(2))) >= (1, 33)
+    return False
+
+
 def pytest_cmdline_main(config: Any) -> None:
     config.option.basetemp = py_config["tmp_base_dir"] = f"{config.option.basetemp}-{shortuuid.uuid()}"
+
+
+def _kyverno_replace_image_registry_policy_exists() -> bool:
+    """Return True if the Kyverno replace-image-registry ClusterPolicy is active on the cluster."""
+    try:
+        return KyvernoClusterPolicy(client=get_client(), name="replace-image-registry").exists
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def pytest_collection_modifyitems(session: Session, config: Config, items: list[Item]) -> None:
@@ -301,6 +335,18 @@ def pytest_collection_modifyitems(session: Session, config: Config, items: list[
     if deselected:
         config.hook.pytest_deselected(items=deselected)
 
+    if not config.getoption("--collect-only") and not config.getoption("--setup-plan"):
+        if not _oci_image_volumes_supported():
+            oci_deselected = [item for item in items if "requires_oci_image_volumes" in item.keywords]
+            if oci_deselected:
+                items[:] = [item for item in items if "requires_oci_image_volumes" not in item.keywords]
+                config.hook.pytest_deselected(items=oci_deselected)
+        if _kyverno_replace_image_registry_policy_exists():
+            mirroring_deselected = [item for item in items if "no_image_registry_mirroring" in item.keywords]
+            if mirroring_deselected:
+                items[:] = [item for item in items if "no_image_registry_mirroring" not in item.keywords]
+                config.hook.pytest_deselected(items=mirroring_deselected)
+
     _add_default_tier2_marker(items=items)
 
 
@@ -366,10 +412,35 @@ def pytest_sessionstart(session: Session) -> None:
         path=must_gather_dict["must_gather_base_directory"],
         ignore_errors=True,
     )
+
+    # Swap the SeaweedFS and OCI registry images to their ppc64le-capable variants on Power clusters.
+    if session.config.getoption("--collect-only") or session.config.getoption("--setup-plan"):
+        return
+
+    # Since clusters are not heterogeneous, all nodes share the same architecture
+    nodes = list(OcpNode.get(client=get_client()))
+    if nodes:
+        cluster_architecture = nodes[0].instance.status.nodeInfo.architecture
+        py_config["cluster_architecture"] = cluster_architecture
+        if cluster_architecture == "ppc64le":
+            LOGGER.info(f"{cluster_architecture} cluster detected, using ppc64le SeaweedFS and OCI registry images")
+            SharedImages.SEAWEEDFS = SharedImages.SEAWEEDFS_PPC64LE
+            OCIRegistry.PodConfig.REGISTRY_IMAGE = SharedImages.DISTRIBUTION_REGISTRY_PPC64LE
+
+
+def pytest_collection_finish(session: Session) -> None:
     config = session.config
     if config.getoption("--collect-only") or config.getoption("--setup-plan"):
         LOGGER.info("Skipping global config update for collect-only or setup-plan")
         return
+    if session.items:
+        for item in session.items:
+            item_markers = {mark.name for mark in item.iter_markers()}
+            if "cluster_health" not in item_markers or item_markers & {"operator_health", "component_health"}:
+                break
+        else:
+            LOGGER.info("Skipping global config update for cluster_health-only run (DSC not required)")
+            return
     updated_global_config(admin_client=get_client(), config=config)
 
 
@@ -419,7 +490,7 @@ def pytest_runtest_setup(item: Item) -> None:
             db = item.config.option.must_gather_db
             db.insert_test_start_time(
                 test_name=f"{item.fspath}::{item.name}",
-                start_time=int(datetime.datetime.now().timestamp()),  # noqa: DTZ005
+                start_time=int(datetime.datetime.now().timestamp()),
             )
         except Exception as db_exception:  # noqa: BLE001
             LOGGER.error(f"Database error: {db_exception}. Must-gather collection may not be accurate")
@@ -490,7 +561,7 @@ def pytest_sessionfinish(session: Session, exitstatus: int) -> None:
 def calculate_must_gather_timer(test_start_time: int) -> int:
     default_duration = 300
     if test_start_time > 0:
-        duration = int(datetime.datetime.now().timestamp()) - test_start_time  # noqa: DTZ005
+        duration = int(datetime.datetime.now().timestamp()) - test_start_time
         return duration if duration > 60 else default_duration
     else:
         LOGGER.warning(f"Could not get start time of test. Collecting must-gather for last {default_duration}s")

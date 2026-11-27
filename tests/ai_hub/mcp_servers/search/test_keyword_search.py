@@ -16,12 +16,12 @@ class TestMCPServerKeywordSearch:
         [
             pytest.param(
                 {"q": "OpenShift", "filterQuery": "license='Apache 2.0'"},
-                "openshift-mcp-server",
+                "com.redhat/openshift-mcp-server",
                 id="with_filter_query",
             ),
             pytest.param(
                 {"q": "Ansible", "filterQuery": "provider='Red Hat'"},
-                "aap-mcp-server",
+                "com.redhat/aap-mcp-server",
                 id="with_filter_and_provider",
             ),
         ],

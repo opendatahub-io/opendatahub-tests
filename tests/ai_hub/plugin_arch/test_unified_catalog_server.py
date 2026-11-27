@@ -59,6 +59,7 @@ class TestCatalogPluginArchitecture:
             pytest.param("model", id="test_readyz_model_plugin"),
             pytest.param("mcp", id="test_readyz_mcp_plugin"),
             pytest.param("agent", id="test_readyz_agent_plugin"),
+            pytest.param("serving_runtime", id="test_readyz_serving_runtime_plugin"),
         ],
     )
     def test_readyz_plugin_registered(
@@ -74,7 +75,7 @@ class TestCatalogPluginArchitecture:
         response = requests.get(
             f"{catalog_base_url}/readyz", headers=model_registry_rest_headers, verify=False, timeout=30
         )
-        assert response.ok, f"/readyz returned {response.status_code}"
+        assert response.status_code == 200, f"/readyz returned {response.status_code}"
 
         body = response.json()
         assert body["status"] == "ready", f"/readyz check failed: {body}"

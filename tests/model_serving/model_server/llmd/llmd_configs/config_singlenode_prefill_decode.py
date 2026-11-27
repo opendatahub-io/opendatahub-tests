@@ -39,18 +39,50 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
     expected_vllm_pod_count = 2
     expected_inference_pool_pod_count = 2
 
+    # Decode vLLM listens on 8001; port 8000 is the routing sidecar.
     @classmethod
-    def container_env(cls):
-        return super().container_env() + [
+    def startup_probe(cls) -> dict:
+        probe = super().startup_probe()
+        probe["httpGet"]["port"] = 8001
+        return probe
+
+    @classmethod
+    def liveness_probe(cls) -> dict:
+        probe = super().liveness_probe()
+        probe["httpGet"]["port"] = 8001
+        return probe
+
+    @classmethod
+    def readiness_probe(cls) -> dict:
+        probe = super().readiness_probe()
+        probe["httpGet"]["port"] = 8001
+        return probe
+
+    @classmethod
+    def _nixl_env(cls, kv_role: str) -> list[dict]:
+        return [
             {
                 "name": "VLLM_ADDITIONAL_ARGS",
-                "value": '--kv_transfer_config \'{"kv_connector":"NixlConnector","kv_role":"kv_both"}\'',
+                "value": (
+                    f'--kv_transfer_config \'{{"kv_connector":"NixlConnector","kv_role":"{kv_role}"}}\''
+                    " --enable-auto-tool-choice --tool-call-parser hermes"
+                ),
             },
             {
                 "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
                 "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
             },
         ]
+
+    @classmethod
+    def container_env(cls) -> list[dict]:
+        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
+        return base + cls._nixl_env(kv_role="kv_consumer")
+
+    @classmethod
+    def prefill_env(cls) -> list[dict]:
+        base = [e for e in super().container_env() if e["name"] != "VLLM_ADDITIONAL_ARGS"]
+        return base + cls._nixl_env(kv_role="kv_producer")
 
     @classmethod
     def router_config(cls):
@@ -83,9 +115,12 @@ class SingleNodePrefillDecodeConfig(TinyLlamaOciGpuConfig):
                 "containers": [
                     {
                         "name": "main",
-                        "env": cls.container_env(),
+                        "env": cls.prefill_env(),
                         "resources": cls.container_resources(),
-                        "livenessProbe": cls.liveness_probe(),
+                        # Prefill vLLM listens directly on port 8000.
+                        "startupProbe": super().startup_probe(),
+                        "livenessProbe": super().liveness_probe(),
+                        "readinessProbe": super().readiness_probe(),
                     }
                 ],
             },

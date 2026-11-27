@@ -24,6 +24,7 @@ from tests.ai_safety.evalhub.mcp.utils import (
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
+@pytest.mark.usefixtures("tenant_a_evaluation_job_cleanup")
 class TestEvalHubMcpE2E:
     """End-to-end MCP workflow: discover providers, submit job, poll status."""
 

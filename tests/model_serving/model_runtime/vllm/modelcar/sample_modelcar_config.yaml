@@ -12,6 +12,26 @@ model-car:
   - name: whisper-large-v3
     image: oci://registry.redhat.io/rhelai1/modelcar-whisper-large-v2-w4a16-g128:1.5
     model_output_type: audio
+    # Encoder-decoder (speech) architecture is unsupported by the vllm_gaudi plugin:
+    # get_kv_cache_spec() raises NotImplementedError on HPU (engine core dies at init).
+    # On AMD/ROCm (verified on MI300X/gfx942, RHAIIS vLLM 0.31.0): the encoder-decoder
+    # path selects ROCM_AITER_UNIFIED_ATTN -> aiter flash_attn_varlen, and aiter's JIT
+    # build of the mha_varlen_fwd_bf16 kernel yields no importable module (hipcc rejects
+    # -amdgpu-coerce-illegal-types=1), so engine core init fails with
+    # "ModuleNotFoundError: aiter.jit.mha_varlen_fwd_bf16_..." (kserve-container exit 1).
+    # Product bug in the RHAIIS ROCm image; re-enable on AMD once it ships a fixed aiter.
+    unsupported_accelerators:
+      - gaudi
+      - spyre
+      - amd
+    # Default 16Gi limit OOM-kills the vLLM engine while loading the whisper weights.
+    resources:
+      requests:
+        cpu: "4"
+        memory: "48Gi"
+      limits:
+        cpu: "8"
+        memory: "64Gi"
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"
@@ -23,6 +43,21 @@ model-car:
   - name: embedding-gemma
     image: oci://registry.redhat.io/rhelai1/modelcar-embeddinggemma-300m:1.5
     model_output_type: embedding
+    # Gemma3 pooling path is unsupported by the vllm_gaudi plugin:
+    # Gemma3Model.forward() signature mismatch on HPU (missing intermediate_tensors) -> engine dead.
+    unsupported_accelerators:
+      - gaudi
+      - spyre
+    serving_arguments:
+      args:
+        - "--uvicorn-log-level=info"
+        - "--trust-remote-code"
+
+  - name: nomic-embed-text-v1-5
+    image: oci://registry.redhat.io/rhelai1/modelcar-nomic-embed-text-v1-5:1.5
+    model_output_type: embedding
+    unsupported_accelerators:
+      - spyre
     serving_arguments:
       args:
         - "--uvicorn-log-level=info"

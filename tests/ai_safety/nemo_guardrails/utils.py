@@ -7,10 +7,14 @@ from typing import Any
 import requests
 import structlog
 import yaml
+from kubernetes.dynamic import DynamicClient
+from kubernetes.dynamic.exceptions import NotFoundError
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.deployment import Deployment
 from ocp_resources.pod import Pod
+from ocp_resources.route import Route
 from requests import Response
-from timeout_sampler import retry
+from timeout_sampler import TimeoutExpiredError, TimeoutSampler, retry
 
 from tests.ai_safety.nemo_guardrails.constants import (
     INPUT_PROMPT_TEMPLATE,
@@ -18,6 +22,7 @@ from tests.ai_safety.nemo_guardrails.constants import (
 )
 from utilities.general import SHA256_DIGEST_PATTERN
 from utilities.guardrails import get_auth_headers
+from utilities.resources.nemo_guardrails import NemoGuardrails
 
 LOGGER = structlog.get_logger(name=__name__)
 
@@ -259,19 +264,11 @@ def verify_health_response(response: Response) -> None:
     Raises:
         AssertionError: If health check fails
     """
-    # Accept any response that indicates the service is running
-    # 200 OK = healthy, 404 Not Found = service running but endpoint doesn't exist (still healthy)
-    # 401/403 = service running but needs auth (still healthy)
-    acceptable_statuses = {
-        http.HTTPStatus.OK,
-        http.HTTPStatus.NOT_FOUND,
-        http.HTTPStatus.UNAUTHORIZED,
-        http.HTTPStatus.FORBIDDEN,
-        http.HTTPStatus.METHOD_NOT_ALLOWED,
-    }
-    assert response.status_code in acceptable_statuses, (
+    # Accept any response that matches the default k8s health check
+    assert 200 <= response.status_code < 400, (
         f"Expected service to be responsive, got {response.status_code}: {response.text[:200]}"
     )
+
     LOGGER.info(f"Health check passed: {response.status_code} (service is responding)")
 
 
@@ -280,7 +277,7 @@ def wait_for_nemo_guardrails_health(
     host: str,
     token: str | None,
     ca_bundle_file: str,
-    health_endpoint: str = "/",
+    health_endpoint: str = "/v1/health",
 ) -> bool:
     """
     Wait for NeMo Guardrails to become healthy.
@@ -304,3 +301,222 @@ def wait_for_nemo_guardrails_health(
     verify_health_response(response=response)
     LOGGER.info(f"NeMo Guardrails is healthy at {host}")
     return True
+
+
+def build_api_key_env(secret_name: str) -> list[dict]:
+    """
+    Build a container env entry that sources the OpenAI API key from a Secret.
+
+    Args:
+        secret_name: Name of the Secret containing the "token" key
+
+    Returns:
+        List with a single env var dict referencing the Secret
+    """
+    return [
+        {
+            "name": "OPENAI_API_KEY",
+            "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "token"}},
+        }
+    ]
+
+
+def route_exists(client: DynamicClient, name: str, namespace: str) -> bool:
+    """
+    Check whether a Route exists.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: Route name
+        namespace: Namespace to look in
+
+    Returns:
+        True if the Route exists, False otherwise
+    """
+    return bool(Route(client=client, name=name, namespace=namespace).exists)
+
+
+def wait_for_route(client: DynamicClient, name: str, namespace: str, *, present: bool) -> None:
+    """
+    Wait until a Route's existence matches the expected state.
+
+    Args:
+        client: DynamicClient to query the cluster
+        name: Route name
+        namespace: Namespace to look in
+        present: True to wait for the Route to exist, False to wait for it to be gone
+    """
+    for sample in TimeoutSampler(
+        wait_timeout=120,
+        sleep=5,
+        func=lambda: route_exists(client, name, namespace),
+    ):
+        if sample == present:
+            break
+
+
+def get_nemo_guardrails_pod(
+    client: DynamicClient,
+    label_selector: str,
+    namespace: str,
+) -> Pod:
+    """
+    Get the first NeMo Guardrails pod matching a label selector.
+
+    Args:
+        client: DynamicClient to query the cluster
+        label_selector: Kubernetes label selector (e.g. "app=<name>")
+        namespace: Namespace to look in
+
+    Returns:
+        The first matching Pod
+
+    Raises:
+        AssertionError: If no pod matches the label selector
+    """
+    pods = list(Pod.get(client=client, namespace=namespace, label_selector=label_selector))
+    assert pods, f"No pods found with label selector '{label_selector}'"
+    return pods[0]
+
+
+def condition_reason(nemo_cr: NemoGuardrails, condition_type: str) -> str | None:
+    """
+    Get the reason of a specific status condition on a NemoGuardrails CR.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+        condition_type: Condition "type" to look up (e.g. "RouteReady")
+
+    Returns:
+        The condition's "reason" value, or None if the condition is not present
+    """
+    conditions = (nemo_cr.instance.status or {}).get("conditions", [])
+    for cond in conditions:
+        if cond.get("type") == condition_type:
+            return cond.get("reason")
+    return None
+
+
+def condition_status(nemo_cr: NemoGuardrails, condition_type: str) -> str | None:
+    """
+    Read the status value of a named condition on a NemoGuardrails server.
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+        condition_type: Name of the condition to look up (e.g. "AllowedConsumersReady")
+
+    Returns:
+        "True", "False", or "Unknown" if the condition exists. None if it has not been set yet
+    """
+    conditions = (nemo_cr.instance.status or {}).get("conditions", [])
+    for cond in conditions:
+        if cond.get("type") == condition_type:
+            return cond.get("status")
+    return None
+
+
+def nemo_cr_phase(nemo_cr: NemoGuardrails) -> str | None:
+    """
+    Read the current phase of a NemoGuardrails server (e.g. "Ready", "Error", "Progressing").
+
+    Args:
+        nemo_cr: NemoGuardrails resource to inspect
+
+    Returns:
+        The phase string, or None if the operator has not written it yet
+    """
+    return (nemo_cr.instance.status or {}).get("phase")
+
+
+def wait_for_deployment_rollout(
+    deployment: Deployment,
+    timeout: int = 300,
+) -> None:
+    """
+    Wait until the deployment rollout completes.
+
+    Waits for:
+    - Kubernetes to notice the latest change (observedGeneration >= generation)
+    - All new pods to be ready (updatedReplicas >= desired)
+    - No pods to be unavailable
+    - Old pods to be removed (total <= updated)
+
+    Args:
+        deployment: Deployment to wait for
+        timeout: Maximum wait time in seconds
+
+    Raises:
+        RuntimeError: If rollout does not finish within timeout
+    """
+    last_status: Any = None
+    try:
+        for instance in TimeoutSampler(
+            wait_timeout=timeout,
+            sleep=5,
+            func=lambda: deployment.instance,
+            exceptions_dict={NotFoundError: []},
+        ):
+            status = instance.status
+            last_status = status
+            if status is None:
+                continue
+            desired = instance.spec.replicas if instance.spec.replicas is not None else 1
+            generation = instance.metadata.generation or 0
+            observed = getattr(status, "observedGeneration", None) or 0
+            updated = getattr(status, "updatedReplicas", None) or 0
+            total = getattr(status, "replicas", None) or 0
+            unavailable = getattr(status, "unavailableReplicas", None) or 0
+            if observed >= generation and updated >= desired and total <= updated and unavailable == 0:
+                return
+    except TimeoutExpiredError as err:
+        raise RuntimeError(
+            f"Deployment {deployment.name} rollout did not finish within {timeout}s. Last status: {last_status}"
+        ) from err
+
+
+def get_ready_nemo_guardrails_pod(client: DynamicClient, namespace: str, label_selector: str) -> Pod | None:
+    """
+    Return a running, ready NeMo Guardrails pod with instance data loaded.
+
+    After a rollout, old pods can still be listed while they terminate, so this function
+    filters for pods that are:
+    - Running
+    - Not shutting down (no deletionTimestamp)
+    - All containers ready
+
+    The pod instance data is loaded and rechecked before returning to ensure readiness
+    and image validation use the same observation.
+
+    Args:
+        client: DynamicClient to query the cluster
+        namespace: Namespace to look in
+        label_selector: Kubernetes label selector
+
+    Returns:
+        A ready Pod with instance data loaded, or None if no pod is ready yet
+    """
+    # raw=True reads pod data from a single list call, so a pod deleted mid-check
+    # can't raise NotFoundError on a per-pod fetch.
+    for pod in Pod.get(client=client, namespace=namespace, label_selector=label_selector, raw=True):
+        if pod.metadata.deletionTimestamp or not pod.status or pod.status.phase != Pod.Status.RUNNING:
+            continue
+        container_statuses = pod.status.containerStatuses or []
+        if container_statuses and all(status.ready for status in container_statuses):
+            pod_wrapper = Pod(client=client, namespace=namespace, name=pod.metadata.name)
+            # Load instance data and recheck readiness on the GET result
+            try:
+                instance = pod_wrapper.instance
+            except NotFoundError:
+                # Pod was deleted between list and GET; continue to next candidate
+                continue
+            # Recheck readiness and deletionTimestamp on GET result to ensure validation
+            # uses the same observation
+            if instance.metadata.deletionTimestamp:
+                continue
+            if not instance.status or instance.status.phase != Pod.Status.RUNNING:
+                continue
+            get_container_statuses = instance.status.containerStatuses or []
+            if not (get_container_statuses and all(status.ready for status in get_container_statuses)):
+                continue
+            return pod_wrapper
+    return None

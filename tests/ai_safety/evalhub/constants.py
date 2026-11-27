@@ -1,3 +1,6 @@
+import re
+from typing import Any
+
 from tests.ai_safety.image_constants import AiSafetyImages
 
 MINIO_MC_IMAGE: str = AiSafetyImages.MINIO_MC
@@ -6,7 +9,6 @@ EVALHUB_SERVICE_NAME: str = "evalhub"
 EVALHUB_SERVICE_PORT: int = 8443
 EVALHUB_CONTAINER_PORT: int = 8080
 EVALHUB_HEALTH_PATH: str = "/api/v1/health"
-EVALHUB_HEALTHZ_PATH: str = "/healthz"
 EVALHUB_METRICS_PATH: str = "/metrics"
 EVALHUB_PROVIDERS_PATH: str = "/api/v1/evaluations/providers"
 EVALHUB_JOBS_PATH: str = "/api/v1/evaluations/jobs"
@@ -24,6 +26,8 @@ EVALHUB_LOG_MAX_TAIL_LINES: int = 10000
 
 EVALHUB_APP_LABEL: str = "eval-hub"
 EVALHUB_CONTAINER_NAME: str = "evalhub"
+# Pod volume through which the operator mounts the generated EvalHub config.yaml
+EVALHUB_CONFIG_VOLUME_NAME: str = "evalhub-config"
 EVALHUB_KUBE_RBAC_PROXY_CONTAINER: str = "kube-rbac-proxy"
 EVALHUB_COMPONENT_LABEL: str = "api"
 
@@ -35,6 +39,7 @@ EVALHUB_FULL_API_VERSION_V1: str = f"{EVALHUB_API_GROUP}/v1"
 EVALHUB_FULL_API_VERSION_V1ALPHA1: str = f"{EVALHUB_API_GROUP}/v1alpha1"
 EVALHUB_KIND: str = "EvalHub"
 EVALHUB_PLURAL: str = "evalhubs"
+EVALHUB_CRD_NAME: str = f"{EVALHUB_PLURAL}.{EVALHUB_API_GROUP}"
 
 # Multi-tenancy
 EVALHUB_TENANT_LABEL_KEY: str = "evalhub.trustyai.opendatahub.io/tenant"
@@ -47,6 +52,7 @@ EVALHUB_VLLM_EMULATOR_PORT: int = 8000
 # ClusterRole names (kustomize namePrefix applied by operator install)
 EVALHUB_JOBS_WRITER_CLUSTERROLE: str = "trustyai-service-operator-evalhub-jobs-writer"
 EVALHUB_JOB_CONFIG_CLUSTERROLE: str = "trustyai-service-operator-evalhub-job-config"
+EVALHUB_EVENTS_CLUSTERROLE: str = "trustyai-service-operator-evalhub-events"
 
 # EvalHub Kubernetes runtime (batch Job / ConfigMap) — mirrors eval-hub job_builders.go
 EVALHUB_K8S_LABEL_APP: str = "app"
@@ -71,6 +77,9 @@ EVALHUB_USER_ROLE_RULES: list[dict[str, list[str]]] = [
         "verbs": ["create", "get"],
     },
 ]
+
+# Provider IDs for system providers
+LM_EVALUATION_HARNESS_PROVIDER_ID: str = "lm_evaluation_harness"
 
 # Garak provider
 GARAK_SIMPLE_PROVIDER_ID: str = "garak"
@@ -98,11 +107,85 @@ SIMPLE_MINIO_ACCESS_KEY: str = "minioadmin"
 SIMPLE_MINIO_SECRET_KEY: str = "minioadmin"
 SIMPLE_MINIO_BUCKET: str = "evalhub-data"
 
+# PVC storage test data
+PVC_TEST_DATA_NAME: str = "evalhub-test-data"
+PVC_TEST_DATA_SIZE: str = "2Gi"
+PVC_TOKENIZER_PATH: str = "/test_data/tokenizer"
+
+# Git storage source test data (RHAISTRAT-2058)
+# Field names below (test_data_ref.git.*, resolved_sha) follow the test plan's documented
+# example payloads; the strategy marks the exact API schema as TBD pending implementation docs.
+# Defaults point at eval-hub's own vendored offline lm-eval cache (tests/git-testdata), which
+# exists specifically so FVT can exercise git clone/checkout without live Hugging Face downloads;
+# see https://github.com/eval-hub/eval-hub/tree/main/tests/git-testdata. Env vars still override.
+GIT_PUBLIC_REPO_URL_ENV: str = "GIT_TEST_PUBLIC_REPO_URL"
+GIT_PUBLIC_REPO_REF_ENV: str = "GIT_TEST_PUBLIC_REPO_REF"
+GIT_PUBLIC_REPO_SUB_PATH_ENV: str = "GIT_TEST_PUBLIC_REPO_SUB_PATH"
+GIT_PUBLIC_REPO_URL: str = "https://github.com/eval-hub/eval-hub"
+GIT_DEFAULT_REF: str = "main"
+GIT_PUBLIC_REPO_SUB_PATH: str = "tests/git-testdata"
+# Tokenizer mount path once sub_path narrows the clone to tests/git-testdata (arc_easy cache).
+GIT_TOKENIZER_PATH: str = "/test_data/tokenizer"
+# Tokenizer path when the full repository is cloned without sub_path narrowing.
+GIT_FULL_REPO_TOKENIZER_PATH: str = "/test_data/tests/git-testdata/tokenizer"
+# Guaranteed-nonexistent per RFC 2606; used for negative tests that must not resolve.
+GIT_NONEXISTENT_REPO_URL: str = "https://git.example.com/does-not-exist/repo.git"
+GIT_COMMIT_SHA_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-f]{7,40}$")
+
+# Git storage source (RHAISTRAT-2058)
+GIT_CLONE_INIT_CONTAINER_NAME: str = "init"
+GIT_TEST_DATA_MOUNT_PATH: str = "/test_data"
+GIT_CREDS_SECRET_NAME: str = "git-test-creds"
+GIT_BAD_CREDS_SECRET_NAME: str = "git-bad-creds"
+
+# HuggingFace storage source test data (RHAISTRAT-2059)
+# Defaults mirror eval-hub FVT: eval-hub-test/evalhub-offline-testdata @ main.
+# See https://huggingface.co/datasets/eval-hub-test/evalhub-offline-testdata
+HF_PUBLIC_REPO_ID_ENV: str = "TEST_DATA_HF_REPO_ID"
+HF_PUBLIC_REVISION_ENV: str = "TEST_DATA_HF_REVISION"
+HF_SHA_REVISION_ENV: str = "TEST_DATA_HF_SHA_REVISION"
+HF_NESTED_SUB_PATH_ENV: str = "TEST_DATA_HF_NESTED_SUB_PATH"
+HF_BAD_REPO_ID_ENV: str = "TEST_DATA_HF_BAD_REPO_ID"
+HF_BAD_REVISION_ENV: str = "TEST_DATA_HF_BAD_REVISION"
+HF_BAD_SUB_PATH_ENV: str = "TEST_DATA_HF_BAD_SUB_PATH"
+HF_PUBLIC_REPO_ID: str = "eval-hub-test/evalhub-offline-testdata"
+HF_DEFAULT_REVISION: str = "main"
+HF_NESTED_SUB_PATH: str = "staging_sub_path"
+HF_TOKENIZER_PATH: str = "/test_data/tokenizer"
+HF_BAD_REPO_ID: str = "eval-hub-test/invalid-db"
+HF_BAD_REVISION: str = "this-revision-does-not-exist-evalhub-fvt"
+HF_BAD_SUB_PATH: str = "this-path-does-not-exist-evalhub-fvt"
+# Init container env vars set by the EvalHub operator for HF downloads (eval-hub PR #996).
+ENV_HF_REPO_ID: str = "TEST_DATA_HF_REPO_ID"
+ENV_HF_REVISION: str = "TEST_DATA_HF_REVISION"
+ENV_HF_SUBPATH: str = "TEST_DATA_HF_SUBPATH"
+HF_MUTUAL_EXCLUSION_MESSAGE: str = "exactly one of s3, pvc, git, or hf must be set"
+HF_RESOLVED_SHA_READONLY_CODE: str = "resolved_sha_read_only"
+HF_RESOLVED_SHA_READONLY_MESSAGE: str = "The field 'resolved_sha' is read-only and must not be set on create."
+
+# Hardware profile
+EVALHUB_DEFAULT_HARDWARE_PROFILE: str = "default-profile"
+
 # ServiceMonitor and metrics Service
 EVALHUB_METRICS_SERVICE_SUFFIX: str = "-metrics"
 EVALHUB_METRICS_PORT: int = 8081
 EVALHUB_METRICS_COMPONENT_LABEL: str = "metrics"
 EVALHUB_SCRAPE_INTERVAL: str = "30s"
+
+# EvalHub emits HTTP request metrics on /metrics only when OTEL metrics are enabled.
+# The stdout exporter enables them without needing an OTEL collector.
+EVALHUB_OTEL_METRICS_STDOUT_CONFIG: dict[str, Any] = {
+    "enabled": True,
+    "enableMetrics": True,
+    "enableTracing": False,
+    "enableLogs": False,
+    "exporterType": "stdout",
+}
+EVALHUB_HTTP_METRICS: tuple[str, ...] = (
+    "http_server_request_duration",
+    "http_server_request_count",
+    "http_server_active_requests",
+)
 
 # OTEL Collector constants
 OTEL_COLLECTOR_NAMESPACE: str = "otel-collector"
@@ -125,3 +208,108 @@ OTLP_INDICATORS: tuple[str, ...] = (
     "http.server.request",
     "github.com/eval-hub",
 )
+
+# Operator Reconciliation Observability (RHAISTRAT-1606 / RHAI-241)
+
+# Prometheus metric names exposed on operator :8080
+RECONCILE_DURATION_METRIC: str = "evalhub_controller_reconcile_duration_seconds"
+RECONCILE_TOTAL_METRIC: str = "evalhub_controller_reconcile_total"
+RECONCILE_ERRORS_METRIC: str = "evalhub_controller_reconcile_errors_total"
+MANAGED_INSTANCES_METRIC: str = "evalhub_controller_managed_instances"
+JOB_FAILURE_EVENTS_METRIC: str = "evalhub_job_failure_events_total"
+
+EVALHUB_RECONCILE_METRICS: tuple[str, ...] = (
+    RECONCILE_DURATION_METRIC,
+    RECONCILE_TOTAL_METRIC,
+    RECONCILE_ERRORS_METRIC,
+    MANAGED_INSTANCES_METRIC,
+)
+
+# Metric label keys
+METRIC_LABEL_CONTROLLER: str = "controller"
+METRIC_LABEL_RESULT: str = "result"
+METRIC_LABEL_ERROR_TYPE: str = "error_type"
+METRIC_LABEL_FAILURE_REASON: str = "failure_reason"
+
+# Metric label values — reconciliation results
+RESULT_SUCCESS: str = "success"
+RESULT_REQUEUE: str = "requeue"
+RESULT_ERROR: str = "error"
+
+# Metric label values — bounded error_type enumeration
+# Must match the operator's fixed enum in controllers/evalhub/OTEL_METRICS.md
+ERROR_TYPE_GET: str = "get"
+ERROR_TYPE_VALIDATION: str = "validation"
+ERROR_TYPE_PLACEMENT: str = "placement"
+ERROR_TYPE_RBAC: str = "rbac"
+ERROR_TYPE_CONFIGMAP: str = "configmap"
+ERROR_TYPE_DEPLOYMENT: str = "deployment"
+ERROR_TYPE_SERVICE: str = "service"
+ERROR_TYPE_ROUTE: str = "route"
+ERROR_TYPE_STATUS: str = "status"
+ERROR_TYPE_JOB_FAILURE: str = "job_failure"
+ERROR_TYPE_NOT_FOUND: str = "not_found"
+ERROR_TYPE_CONFLICT: str = "conflict"
+ERROR_TYPE_TIMEOUT: str = "timeout"
+ERROR_TYPE_OTHER: str = "other"
+
+EVALHUB_ERROR_TYPES: tuple[str, ...] = (
+    ERROR_TYPE_GET,
+    ERROR_TYPE_VALIDATION,
+    ERROR_TYPE_PLACEMENT,
+    ERROR_TYPE_RBAC,
+    ERROR_TYPE_CONFIGMAP,
+    ERROR_TYPE_DEPLOYMENT,
+    ERROR_TYPE_SERVICE,
+    ERROR_TYPE_ROUTE,
+    ERROR_TYPE_STATUS,
+    ERROR_TYPE_JOB_FAILURE,
+    ERROR_TYPE_NOT_FOUND,
+    ERROR_TYPE_CONFLICT,
+    ERROR_TYPE_TIMEOUT,
+    ERROR_TYPE_OTHER,
+)
+
+# Controller label value used in all metrics
+EVALHUB_CONTROLLER_LABEL_VALUE: str = "evalhub"
+
+# Operator metrics port (kube-rbac-proxy)
+OPERATOR_METRICS_PORT: int = 8443
+
+# OTEL trace span names emitted by the EvalHub controller
+SPAN_RECONCILE: str = "evalhub.reconcile"
+SPAN_RECONCILE_CONFIGMAP: str = "evalhub.reconcile.configmap"
+SPAN_RECONCILE_DEPLOYMENT: str = "evalhub.reconcile.deployment"
+SPAN_RECONCILE_SERVICE: str = "evalhub.reconcile.service"
+SPAN_RECONCILE_ROUTE: str = "evalhub.reconcile.route"
+SPAN_RECONCILE_RBAC: str = "evalhub.reconcile.rbac"
+SPAN_JOB_FAILURE_RECONCILE: str = "evalhub.job_failure_reconcile"
+
+EVALHUB_RECONCILE_CHILD_SPANS: tuple[str, ...] = (
+    SPAN_RECONCILE_CONFIGMAP,
+    SPAN_RECONCILE_DEPLOYMENT,
+    SPAN_RECONCILE_SERVICE,
+    SPAN_RECONCILE_ROUTE,
+    SPAN_RECONCILE_RBAC,
+)
+
+# Span attribute keys
+SPAN_ATTR_K8S_NAMESPACE: str = "k8s.namespace"
+SPAN_ATTR_EVALHUB_NAME: str = "evalhub.name"
+SPAN_ATTR_RECONCILE_GENERATION: str = "reconcile.generation"
+SPAN_ATTR_JOB_NAME: str = "job_name"
+SPAN_ATTR_FAILURE_REASON: str = "failure_reason"
+SPAN_ATTR_EXIT_CODE: str = "exit_code"
+
+# OTEL trace collector for operator reconcile spans
+OTEL_TRACE_COLLECTOR_NAMESPACE: str = "otel-trace-collector"
+OTEL_TRACE_COLLECTOR_NAME: str = "otel-trace-collector"
+OTEL_TRACE_COLLECTOR_LABELS: dict[str, str] = {"app": "otel-trace-collector"}
+
+# Operator pod label selector
+OPERATOR_POD_LABEL_SELECTOR: str = "control-plane=trustyai-service-operator"
+
+# Operator service name in OTEL traces
+OPERATOR_OTEL_SERVICE_NAME: str = "trustyai-service-operator"
+
+OPERATOR_METRICS_SERVICE_NAME: str = "trustyai-service-operator-metrics-service"

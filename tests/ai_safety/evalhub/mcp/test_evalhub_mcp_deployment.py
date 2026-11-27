@@ -13,6 +13,7 @@ from tests.ai_safety.evalhub.mcp.constants import (
     EVALHUB_MCP_CR_NAME,
     EVALHUB_MCP_KUBE_RBAC_PROXY_CONTAINER,
 )
+from tests.ai_safety.evalhub.mcp.utils import evalhub_mcp_pod_label_selector
 
 
 @pytest.mark.parametrize(
@@ -44,14 +45,11 @@ class TestEvalHubMcpDeployment:
             Pod.get(
                 client=admin_client,
                 namespace=model_namespace.name,
-                label_selector=(
-                    f"app={EVALHUB_MCP_APP_LABEL},"
-                    f"instance={EVALHUB_MCP_CR_NAME},"
-                    f"component={EVALHUB_MCP_COMPONENT_LABEL}"
-                ),
+                label_selector=evalhub_mcp_pod_label_selector(instance_name=EVALHUB_MCP_CR_NAME),
             )
         )
-        assert len(pods) == 1, f"Expected 1 MCP pod, found {len(pods)}"
+        expected_replicas = evalhub_mcp_mt_deployment.instance.spec.replicas
+        assert len(pods) == expected_replicas, f"Expected {expected_replicas} MCP pod(s), found {len(pods)}"
 
         container_names = [container.name for container in pods[0].instance.spec.containers]
         assert EVALHUB_MCP_CONTAINER_NAME in container_names, (
@@ -109,7 +107,7 @@ class TestEvalHubMcpDeployment:
             Pod.get(
                 client=admin_client,
                 namespace=model_namespace.name,
-                label_selector=f"component={EVALHUB_MCP_COMPONENT_LABEL},instance={EVALHUB_MCP_CR_NAME}",
+                label_selector=evalhub_mcp_pod_label_selector(instance_name=EVALHUB_MCP_CR_NAME),
             )
         )
         assert pods, "No MCP pods found"

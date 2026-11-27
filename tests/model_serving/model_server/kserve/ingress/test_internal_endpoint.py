@@ -14,7 +14,8 @@ OVMS_REST_PORT = 8888
 OVMS_HEALTH_ENDPOINT = "v2/health/ready"
 HTTP_OK = "200"
 
-pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("valid_aws_config")]
+# The test deploys an OVMS runtime, whose image is not built for arm64
+pytestmark = [pytest.mark.tier1, pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config")]
 
 
 @pytest.mark.parametrize(

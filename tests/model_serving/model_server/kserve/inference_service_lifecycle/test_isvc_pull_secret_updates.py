@@ -7,6 +7,9 @@ from tests.model_serving.model_server.kserve.inference_service_lifecycle.constan
 from tests.model_serving.model_server.kserve.inference_service_lifecycle.utils import verify_pull_secret
 from utilities.constants import ModelName, ModelStorage, RuntimeTemplates
 
+# The test deploys an OVMS runtime, whose image is not built for arm64
+pytestmark = pytest.mark.usefixtures("skip_if_arm64_cluster_detected")
+
 
 @pytest.mark.parametrize(
     "unprivileged_model_namespace, serving_runtime_from_template, model_car_raw_inference_service_with_pull_secret",

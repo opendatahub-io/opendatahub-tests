@@ -19,7 +19,6 @@ from tests.model_serving.model_runtime.mlserver.utils import (
     validate_inference_request,
 )
 from utilities.constants import ModelFormat, Protocols
-from utilities.infra import get_pods_by_isvc_label
 
 
 @pytest.mark.parametrize(
@@ -121,17 +120,7 @@ class TestMLServerModelCar:
 
         model_format_config = MODEL_CONFIGS[model_format]
 
-        # Get pod directly from inference service (following kserve model_car pattern)
-        pods = get_pods_by_isvc_label(
-            client=mlserver_model_car_inference_service.client,
-            isvc=mlserver_model_car_inference_service,
-        )
-        if not pods:
-            raise RuntimeError(f"No pods found for InferenceService {mlserver_model_car_inference_service.name}")
-        pod = pods[0]
-
         validate_inference_request(
-            pod_name=pod.name,
             isvc=mlserver_model_car_inference_service,
             response_snapshot=mlserver_response_snapshot,
             input_query=model_format_config["rest_query"],

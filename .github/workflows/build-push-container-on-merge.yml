@@ -26,7 +26,7 @@ jobs:
               echo "TAG=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_ENV"
           fi
       - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.4.0
 
       - name: Generate image manifest
         id: manifest
@@ -62,7 +62,7 @@ jobs:
 
       - name: Build Image
         id: build-image
-        uses: redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@v3
         with:
           image: opendatahub-tests
           tags: ${{ env.TAG }}
@@ -73,7 +73,7 @@ jobs:
 
       - name: Push To Image Registry
         id: push-to-registry
-        uses: redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@v3
         with:
           image: ${{ steps.build-image.outputs.image }}
           tags: ${{ steps.build-image.outputs.tags }}

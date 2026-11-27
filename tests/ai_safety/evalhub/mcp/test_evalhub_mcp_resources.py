@@ -120,6 +120,7 @@ class TestEvalHubMcpResources:
 )
 @pytest.mark.tier2
 @pytest.mark.ai_safety
+@pytest.mark.usefixtures("tenant_a_evaluation_job_cleanup")
 class TestEvalHubMcpJobResources:
     """MCP job resource reads after submitting an evaluation via tools."""
 

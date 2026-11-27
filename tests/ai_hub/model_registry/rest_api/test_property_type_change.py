@@ -1,3 +1,4 @@
+import math
 from typing import Any, Self
 
 import pytest
@@ -101,7 +102,7 @@ class TestPropertyTypeChange:
                 "customProperties": {
                     PROPERTY_NAME: {
                         "metadataType": "MetadataDoubleValue",
-                        "double_value": 3.14,
+                        "double_value": math.pi,
                     }
                 }
             },
@@ -114,7 +115,7 @@ class TestPropertyTypeChange:
         assert prop["metadataType"] == "MetadataDoubleValue", (
             f"Expected MetadataDoubleValue, got {prop['metadataType']}"
         )
-        assert prop["double_value"] == 3.14
+        assert prop["double_value"] == math.pi
         assert "int_value" not in prop, f"Stale int_value found in API response: {prop}"
 
     @pytest.mark.dependency(name="double_to_string", depends=["int_to_double"])

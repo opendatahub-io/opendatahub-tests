@@ -9,6 +9,9 @@ from ocp_resources.image_stream import ImageStream
 from packaging.version import InvalidVersion, Version
 from pytest_testconfig import config as py_config
 
+from tests.workbenches.utils import SKIP_EXPECTED_CONNECTED_ONLY, expected_skip
+from utilities.infra import is_disconnected_cluster
+
 pytestmark = [pytest.mark.smoke]
 LOGGER = structlog.get_logger(name=__name__)
 IMPORT_SUCCESS_CONDITION_TYPE = "ImportSuccess"
@@ -236,14 +239,14 @@ def _validate_imagestreams_with_label(
     "label_selector, expected_imagestream_count, latest_tags_only",
     [
         pytest.param(
-            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
-            11,
+            "opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=workbenches",
+            13,
             True,
             id="test_notebook_imagestreams",
         ),
         pytest.param(
-            "opendatahub.io/runtime-image=true,platform.opendatahub.io/part-of=workbenches",
-            7,
+            "opendatahub.io/runtime-image=true,app.kubernetes.io/part-of=workbenches",
+            15,
             False,
             id="test_runtime_imagestreams",
         ),
@@ -293,13 +296,12 @@ def test_workbench_imagestreams_health(
     )
 
 
-@pytest.mark.skip_on_disconnected
 @pytest.mark.parametrize(
     "label_selector, expected_imagestream_count",
     [
         pytest.param(
-            "opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
-            11,
+            "opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=workbenches",
+            13,
             id="test_notebook_imagestreams",
         ),
     ],
@@ -317,6 +319,14 @@ def test_workbench_imagestreams_older_tags_health(
     This test is skipped on disconnected clusters where only the latest 2 tags
     are expected to be mirrored.
     """
+    if is_disconnected_cluster(client=admin_client):
+        pytest.skip(
+            expected_skip(
+                prefix=SKIP_EXPECTED_CONNECTED_ONLY,
+                detail="Older ImageStream tags are not mirrored on disconnected clusters",
+            )
+        )
+
     imagestreams = list(
         ImageStream.get(
             client=admin_client,

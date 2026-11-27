@@ -18,7 +18,8 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 from utilities.monitoring import get_metrics_value, validate_metrics_field
 
 pytestmark = [
-    pytest.mark.usefixtures("user_workload_monitoring_config_map"),
+    # The test deploys an OVMS runtime, whose image is not built for arm64
+    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "user_workload_monitoring_config_map"),
     pytest.mark.metrics,
 ]
 

@@ -14,6 +14,7 @@ import structlog
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
 from ocp_resources.config_map import ConfigMap
+from ocp_resources.image_image_openshift_io import Image
 from ocp_resources.image_stream import ImageStream
 from ocp_resources.notebook import Notebook
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
@@ -25,6 +26,11 @@ from semver import Version
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.workbenches.notebooks_server.controller.utils import StatefulSet
+from tests.workbenches.utils import (
+    SKIP_EXPECTED_DOWNSTREAM_ONLY,
+    SKIP_EXPECTED_EUS_ONLY,
+    expected_skip,
+)
 from utilities.constants import INTERNAL_IMAGE_REGISTRY_PATH, Labels
 from utilities.general import collect_pod_information
 from utilities.infra import check_internal_image_registry_available, get_product_version
@@ -81,6 +87,10 @@ ALLOWED_LOG_MESSAGES = (
     "WARNING: The Jupyter server is listening on all IP addresses and not using authentication.",
     # RHOAIENG-22226: uuid.getnode() fails in containers with no persistent MAC address
     "Unable to retrieve mac address (unexpected format)",
+    # RHOAIENG-68292: JupyterLab may log this warning during startup if it finds an expired cookie
+    "Clearing invalid/expired login cookie",
+    # Elyra tests do not currently require pipeline configuration - test will be adjusted in future
+    "ElyraApp] No components could be found in any catalog for platform type",
 )
 
 _SENSITIVE_LOG_VALUE_RE = re.compile(
@@ -134,6 +144,20 @@ class ResolvedWorkbenchImage:
     image_selection: str
     image_digest: str
     build_commit: str | None = None
+    imagestream_image_digest: str | None = None
+    manifest_digests: tuple[str, ...] = ()
+
+    def expected_pod_digests(self) -> set[str]:
+        """Return digests a running pod may report for this ImageStream tag.
+
+        Workbench tags are often a multi-arch manifest list. The ImageStream
+        ``dockerImageReference`` / ``items[].image`` digest is the list; kubelet
+        reports the platform-specific child from ``dockerImageManifests``.
+        """
+        digests = {self.image_digest, *self.manifest_digests}
+        if self.imagestream_image_digest:
+            digests.add(self.imagestream_image_digest)
+        return digests
 
 
 @dataclass(frozen=True)
@@ -291,11 +315,17 @@ def should_skip_workbench_spec(
 ) -> str | None:
     """Return a skip reason when the IDE cannot be tested on the current cluster."""
     if spec.skip_on_upstream and py_config.get("distribution") == "upstream":
-        return f"{spec.ide} ImageStream tests are downstream-only"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_DOWNSTREAM_ONLY,
+            detail=f"{spec.ide} ImageStream tests are downstream-only",
+        )
 
     track = workbench_upgrade_track or resolve_workbench_upgrade_track(admin_client=admin_client)
     if spec.require_eus_track and track != "eus":
-        return f"{spec.ide} workbench survival coverage is only supported on the EUS upgrade track"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_EUS_ONLY,
+            detail=f"{spec.ide} workbench survival coverage is only supported on the EUS upgrade track",
+        )
 
     try:
         imagestream_name = effective_imagestream_name(admin_client=admin_client, spec=spec)
@@ -321,7 +351,10 @@ def should_skip_workbench_spec(
         return str(error)
 
     if spec.require_eus_track and not is_legacy_track_tag(tag_name=resolved_image.tag_name):
-        return f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag"
+        return expected_skip(
+            prefix=SKIP_EXPECTED_EUS_ONLY,
+            detail=f"{spec.ide} workbench survival tests require a legacy EUS workbench image tag",
+        )
 
     return None
 
@@ -363,30 +396,154 @@ def _get_imagestream_spec_tag_data(imagestream_data: dict[str, Any]) -> dict[str
     }
 
 
-def _resolve_tag_digest(status_tag_data: dict[str, Any], imagestream_name: str, tag_name: str) -> str:
-    """Extract a digest reference from ImageStream status data."""
+def _digest_from_imagestream_image_id(image_id: str) -> str | None:
+    """Normalize an ImageStream ``items[].image`` value to a ``sha256:`` digest."""
+    image_id = image_id.strip()
+    if not image_id:
+        return None
+    if image_id.startswith("sha256:"):
+        return image_id
+    if "@sha256:" in image_id:
+        return image_id.split("@", maxsplit=1)[1]
+    return None
+
+
+def _manifest_digests_for_image(admin_client: DynamicClient, image_name: str) -> tuple[str, ...]:
+    """Return list, platform-manifest, and config digests for an OpenShift Image.
+
+    Multi-arch workbench tags import as a manifest list. The pod ``imageID`` is
+    typically the architecture-specific child digest, not the list digest.
+    """
+    cluster_image = Image(client=admin_client, name=image_name)
+    if not cluster_image.exists:
+        LOGGER.warning(f"OpenShift Image '{image_name}' not found; skipping platform digest expansion")
+        return ()
+
+    image_data = cluster_image.instance.to_dict()
+    digests: list[str] = []
+
+    def _add(raw: str) -> None:
+        if (digest := _digest_from_imagestream_image_id(image_id=raw)) and digest not in digests:
+            digests.append(digest)
+
+    metadata = image_data.get("dockerImageMetadata") or {}
+    _add(raw=str(metadata.get("Id") or metadata.get("id") or ""))
+    for manifest in image_data.get("dockerImageManifests") or []:
+        _add(raw=str(manifest.get("digest") or ""))
+
+    return tuple(digests)
+
+
+def _resolve_docker_image_reference(status_tag_data: dict[str, Any], imagestream_name: str, tag_name: str) -> str:
+    """Return the digest-pinned dockerImageReference from ImageStream status."""
     for item in status_tag_data.get("items") or []:
         docker_image_reference = str(item.get("dockerImageReference", ""))
         if "@sha256:" in docker_image_reference:
-            return docker_image_reference.split("@", maxsplit=1)[1]
+            return docker_image_reference
 
     raise AssertionError(
         f"ImageStream {imagestream_name}:{tag_name} does not have a resolved dockerImageReference in status.tags.items"
     )
 
 
-def _resolve_image_repository(
+def _resolve_tag_digest(status_tag_data: dict[str, Any], imagestream_name: str, tag_name: str) -> str:
+    """Extract a digest reference from ImageStream status data."""
+    docker_image_reference = _resolve_docker_image_reference(
+        status_tag_data=status_tag_data,
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+    )
+    return docker_image_reference.split("@", maxsplit=1)[1]
+
+
+def _resolve_integrated_registry_repository(
     admin_client: DynamicClient, imagestream_data: dict[str, Any], imagestream_name: str
-) -> str:
-    """Resolve the repository used by the Dashboard for a workbench ImageStream."""
+) -> str | None:
+    """Return the integrated-registry ImageStream repository, or None when it is unavailable.
+
+    Disconnected clusters typically remove the OpenShift integrated registry, which leaves
+    ``status.dockerImageRepository`` empty. Callers must then pull via the source
+    ``dockerImageReference`` (rewritten by ICSP/IDMS).
+    """
+    if not check_internal_image_registry_available(admin_client=admin_client):
+        return None
+
     status_data = imagestream_data.get("status", {})
-    if image_repository := status_data.get("dockerImageRepository") or status_data.get("publicDockerImageRepository"):
-        return str(image_repository)
+    if image_repository := str(
+        status_data.get("dockerImageRepository") or status_data.get("publicDockerImageRepository") or ""
+    ).strip():
+        return image_repository
 
-    if check_internal_image_registry_available(admin_client=admin_client):
-        return f"{INTERNAL_IMAGE_REGISTRY_PATH}/{_applications_namespace()}/{imagestream_name}"
+    return f"{INTERNAL_IMAGE_REGISTRY_PATH}/{_applications_namespace()}/{imagestream_name}"
 
-    raise AssertionError(f"ImageStream {imagestream_name} does not expose a usable docker image repository")
+
+def _resolve_image_url(
+    admin_client: DynamicClient,
+    imagestream_data: dict[str, Any],
+    imagestream_name: str,
+    tag_name: str,
+    docker_image_reference: str,
+) -> str:
+    """Resolve a pullable container image URL for a workbench ImageStream tag.
+
+    When the OpenShift integrated registry is available, return the ImageStream
+    ``repository:tag`` form used by Dashboard. When it is not, return the
+    digest-pinned ``dockerImageReference`` from ``status.tags.items``.
+    """
+    if image_repository := _resolve_integrated_registry_repository(
+        admin_client=admin_client,
+        imagestream_data=imagestream_data,
+        imagestream_name=imagestream_name,
+    ):
+        image_url = f"{image_repository}:{tag_name}"
+        LOGGER.info(f"Resolved ImageStream {imagestream_name}:{tag_name} via integrated registry: {image_url}")
+        return image_url
+
+    LOGGER.info(
+        f"Integrated registry unavailable; resolved ImageStream {imagestream_name}:{tag_name} "
+        f"via dockerImageReference: {docker_image_reference}"
+    )
+    return docker_image_reference
+
+
+def _build_resolved_workbench_image(
+    admin_client: DynamicClient,
+    imagestream_data: dict[str, Any],
+    imagestream_name: str,
+    tag_name: str,
+) -> ResolvedWorkbenchImage:
+    """Build resolved image metadata for one imported ImageStream tag."""
+    status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)[tag_name]
+    spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
+    docker_image_reference = _resolve_docker_image_reference(
+        status_tag_data=status_tag_data,
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+    )
+    build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
+    imagestream_image_digest: str | None = None
+    for item in status_tag_data.get("items") or []:
+        if str(item.get("dockerImageReference", "")) == docker_image_reference:
+            imagestream_image_digest = _digest_from_imagestream_image_id(image_id=str(item.get("image", "") or ""))
+            break
+    source_digest = docker_image_reference.split("@", maxsplit=1)[1]
+    manifest_image_name = imagestream_image_digest or source_digest
+    return ResolvedWorkbenchImage(
+        imagestream_name=imagestream_name,
+        tag_name=tag_name,
+        image_url=_resolve_image_url(
+            admin_client=admin_client,
+            imagestream_data=imagestream_data,
+            imagestream_name=imagestream_name,
+            tag_name=tag_name,
+            docker_image_reference=docker_image_reference,
+        ),
+        image_selection=f"{imagestream_name}:{tag_name}",
+        image_digest=source_digest,
+        build_commit=str(build_commit) if build_commit else None,
+        imagestream_image_digest=imagestream_image_digest,
+        manifest_digests=_manifest_digests_for_image(admin_client=admin_client, image_name=manifest_image_name),
+    )
 
 
 def _resolve_requested_tag_name(
@@ -551,7 +708,6 @@ def resolve_n_minus_one_image(admin_client: DynamicClient, imagestream_name: str
 
     imagestream_data = imagestream.instance.to_dict()
     status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)
-    spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
     current_product_version = get_product_version(admin_client=admin_client)
     tag_name = _resolve_requested_tag_name(
         imagestream_name=imagestream_name,
@@ -568,32 +724,17 @@ def resolve_n_minus_one_image(admin_client: DynamicClient, imagestream_name: str
                 buildconfig_name=RSTUDIO_BUILDCONFIG_NAME,
             )
             status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)
-            spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
         if tag_name not in status_tag_data:
             raise AssertionError(
                 f"ImageStream {imagestream_name}:{tag_name} is missing from status.tags "
                 "and cannot be used for upgrade tests"
             )
 
-    image_repository = _resolve_image_repository(
+    return _build_resolved_workbench_image(
         admin_client=admin_client,
         imagestream_data=imagestream_data,
         imagestream_name=imagestream_name,
-    )
-    tag_digest = _resolve_tag_digest(
-        status_tag_data=status_tag_data[tag_name],
-        imagestream_name=imagestream_name,
         tag_name=tag_name,
-    )
-    build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
-
-    return ResolvedWorkbenchImage(
-        imagestream_name=imagestream_name,
-        tag_name=tag_name,
-        image_url=f"{image_repository}:{tag_name}",
-        image_selection=f"{imagestream_name}:{tag_name}",
-        image_digest=tag_digest,
-        build_commit=str(build_commit) if build_commit else None,
     )
 
 
@@ -617,7 +758,6 @@ def resolve_current_image(admin_client: DynamicClient, imagestream_name: str) ->
 
     imagestream_data = imagestream.instance.to_dict()
     status_tag_data = _get_imagestream_status_tag_data(imagestream_data=imagestream_data)
-    spec_tag_data = _get_imagestream_spec_tag_data(imagestream_data=imagestream_data)
     current_product_version = get_product_version(admin_client=admin_client)
 
     tag_name = f"{current_product_version.major}.{current_product_version.minor}"
@@ -629,25 +769,11 @@ def resolve_current_image(admin_client: DynamicClient, imagestream_name: str) ->
             f"Available tags: {available_tags}"
         )
 
-    image_repository = _resolve_image_repository(
+    return _build_resolved_workbench_image(
         admin_client=admin_client,
         imagestream_data=imagestream_data,
         imagestream_name=imagestream_name,
-    )
-    tag_digest = _resolve_tag_digest(
-        status_tag_data=status_tag_data[tag_name],
-        imagestream_name=imagestream_name,
         tag_name=tag_name,
-    )
-    build_commit = spec_tag_data.get(tag_name, {}).get("annotations", {}).get("opendatahub.io/notebook-build-commit")
-
-    return ResolvedWorkbenchImage(
-        imagestream_name=imagestream_name,
-        tag_name=tag_name,
-        image_url=f"{image_repository}:{tag_name}",
-        image_selection=f"{imagestream_name}:{tag_name}",
-        image_digest=tag_digest,
-        build_commit=str(build_commit) if build_commit else None,
     )
 
 
@@ -656,7 +782,7 @@ def find_rstudio_imagestream_name(admin_client: DynamicClient) -> str | None:
     imagestreams = ImageStream.get(
         client=admin_client,
         namespace=_applications_namespace(),
-        label_selector="opendatahub.io/notebook-image=true,platform.opendatahub.io/part-of=workbenches",
+        label_selector="opendatahub.io/notebook-image=true,app.kubernetes.io/part-of=workbenches",
     )
 
     for imagestream in imagestreams:
@@ -672,7 +798,13 @@ def build_n1_notebook_dict(
     pvc_name: str,
     image: ResolvedWorkbenchImage,
 ) -> dict[str, Any]:
-    """Build a dashboard-faithful Notebook CR for workbench upgrade tests."""
+    """Build a dashboard-faithful Notebook CR for workbench upgrade tests.
+
+    The container CPU request is 500m, the same size the controller upgrade
+    notebooks use. These tests need the pod Ready, an HTTP check, and at most
+    one kernel or an Elyra listing. Memory stays at 1Gi. Limits stay at the
+    dashboard Small ceiling (2 CPU / 4Gi); the scheduler uses the request.
+    """
     probe_path = f"/notebook/{namespace}/{notebook_name}/api"
     probe_config = {
         "failureThreshold": 3,
@@ -753,7 +885,7 @@ def build_n1_notebook_dict(
                             "readinessProbe": probe_config,
                             "resources": {
                                 "limits": {"cpu": "2", "memory": "4Gi"},
-                                "requests": {"cpu": "1", "memory": "1Gi"},
+                                "requests": {"cpu": "500m", "memory": "1Gi"},
                             },
                             "volumeMounts": [
                                 {"mountPath": "/opt/app-root/src", "name": pvc_name},
@@ -809,6 +941,31 @@ def build_n1_notebook_dict(
             }
         },
     }
+
+
+def wait_for_pod_uid_change(pod: Pod, old_uid: str, timeout: int = 300) -> None:
+    """Wait until the named pod exists with a UID different from ``old_uid``.
+
+    StatefulSet pods keep a stable name (``<notebook>-0``), so a rollout is
+    detected by UID change rather than name or existence.
+    """
+
+    def _uid_changed() -> bool:
+        if not pod.exists:
+            return False
+        return str(pod.instance.metadata.uid) != old_uid
+
+    try:
+        for sample in TimeoutSampler(wait_timeout=timeout, sleep=5, func=_uid_changed):
+            if sample:
+                return
+    except TimeoutExpiredError as exc:
+        collect_pod_information(pod=pod)
+        current_uid = str(pod.instance.metadata.uid) if pod.exists else "<missing>"
+        raise AssertionError(
+            f"Pod '{pod.namespace}/{pod.name}' was not recreated within {timeout} seconds "
+            f"after the image patch. old_uid={old_uid}, current_uid={current_uid}."
+        ) from exc
 
 
 def wait_for_controller_reconciliation(
@@ -1037,7 +1194,7 @@ def capture_workbench_baseline(
 
         labextension_output = pod.execute(
             container=container_name,
-            command=["jupyter", "labextension", "list"],
+            command=["sh", "-c", "jupyter labextension list 2>&1"],
             timeout=60,
         )
         elyra_extensions = parse_elyra_extensions(labextension_output=labextension_output)
@@ -1508,6 +1665,12 @@ def apply_dashboard_image_patch(
     interprets the body as RFC 6902 operations, matching how the Dashboard
     frontend patches notebook images.
     """
+    LOGGER.info(
+        "Applying Dashboard JSON patch to Notebook",
+        notebook=notebook.name,
+        namespace=notebook.namespace,
+        patch_ops=patch_ops,
+    )
     notebook.api.patch(
         body=patch_ops,
         name=notebook.name,

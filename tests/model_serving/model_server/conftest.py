@@ -28,7 +28,9 @@ from tests.model_serving.model_server.kserve.model_cache.utils import (
     MODEL_CACHE_NODE_COUNT,
     MODEL_CACHE_SIZE,
     LocalModelNodeGroup,
+    model_cache_job_namespace,
 )
+from tests.model_serving.model_server.utils import skip_test
 from utilities.constants import (
     DscComponents,
     KServeDeploymentType,
@@ -321,17 +323,24 @@ def model_car_inference_service(
     serving_runtime_from_template: ServingRuntime,
 ) -> Generator[InferenceService, Any, Any]:
     deployment_mode = request.param.get("deployment-mode", KServeDeploymentType.RAW_DEPLOYMENT)
-    with create_isvc(
-        client=unprivileged_client,
-        name=f"model-car-{deployment_mode.lower()}",
-        namespace=unprivileged_model_namespace.name,
-        runtime=serving_runtime_from_template.name,
-        storage_uri=request.param["storage-uri"],
-        model_format=serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
-        deployment_mode=deployment_mode,
-        external_route=request.param.get("external-route", True),
-        wait_for_predictor_pods=False,
-    ) as isvc:
+    isvc_kwargs: dict[str, Any] = {
+        "client": unprivileged_client,
+        "name": f"model-car-{deployment_mode.lower()}",
+        "namespace": unprivileged_model_namespace.name,
+        "runtime": serving_runtime_from_template.name,
+        "storage_uri": request.param["storage-uri"],
+        "model_format": serving_runtime_from_template.instance.spec.supportedModelFormats[0].name,
+        "deployment_mode": deployment_mode,
+        "external_route": request.param.get("external-route", True),
+        "wait_for_predictor_pods": False,
+    }
+    # ConnectionsAPI OCI storage-strategy variant (kserve/storage/oci/test_oci_image.py): resolve
+    # the connection Secret by fixture name so it's created before the ISVC references it. Additive
+    # and unused by every other caller of this fixture.
+    if connection_secret_fixture := request.param.get("connection-secret-fixture"):
+        secret = request.getfixturevalue(argname=connection_secret_fixture)
+        isvc_kwargs["connections"] = secret.name
+    with create_isvc(**isvc_kwargs) as isvc:
         yield isvc
 
 
@@ -339,7 +348,7 @@ def model_car_inference_service(
 def skip_if_disconnected(admin_client: DynamicClient) -> None:
     """Skip test if running on a disconnected (air-gapped) cluster."""
     if is_disconnected_cluster(client=admin_client):
-        pytest.skip("S3/HuggingFace storage not available on disconnected clusters")
+        skip_test(reason="HuggingFace storage not available on disconnected clusters")
 
 
 @pytest.fixture(scope="session")
@@ -476,10 +485,11 @@ def model_cache_infra_ready(
                 f"within {300}s after enabling modelCache in DSC"
             )
 
+        cache_namespace = model_cache_job_namespace(client=admin_client, applications_namespace=applications_namespace)
         agent = DaemonSet(
             client=admin_client,
             name=MODEL_CACHE_AGENT_DAEMONSET,
-            namespace=applications_namespace,
+            namespace=cache_namespace,
         )
         try:
             for sample in TimeoutSampler(
@@ -491,10 +501,16 @@ def model_cache_infra_ready(
                     break
         except TimeoutExpiredError:
             pytest.fail(
-                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in '{applications_namespace}' within {300}s"
+                f"DaemonSet '{MODEL_CACHE_AGENT_DAEMONSET}' did not appear in '{cache_namespace}' within {300}s"
             )
 
         yield dsc
+
+
+@pytest.fixture(scope="session")
+def model_cache_namespace(admin_client: DynamicClient, model_cache_infra_ready: DataScienceCluster) -> str:
+    """Return the reconciled namespace for model cache jobs and node resources."""
+    return model_cache_job_namespace(client=admin_client, applications_namespace=py_config["applications_namespace"])
 
 
 # Kueue Fixtures
@@ -505,7 +521,7 @@ def ensure_kueue_unmanaged_in_dsc(
     """Set DSC Kueue to Unmanaged and wait for CRDs to be available."""
     try:
         if not is_kueue_operator_installed(admin_client):
-            pytest.skip("Kueue operator is not installed, skipping Kueue tests")
+            skip_test(reason="Kueue operator is not installed, skipping Kueue tests")
 
         # Check current Kueue state
         kueue_management_state = dsc_resource.instance.spec.components[DscComponents.KUEUE].managementState
@@ -537,7 +553,7 @@ def ensure_kueue_unmanaged_in_dsc(
             yield
 
     except (AttributeError, KeyError) as e:
-        pytest.skip(f"Kueue component not found in DSC: {e}")
+        skip_test(reason=f"Kueue component not found in DSC: {e}")
 
 
 def kueue_resource_groups(

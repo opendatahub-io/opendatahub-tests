@@ -12,13 +12,13 @@ from ocp_resources.persistent_volume import PersistentVolume
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.secret import Secret
 from ocp_resources.serving_runtime import ServingRuntime
-from pytest_testconfig import config as py_config
 from timeout_sampler import TimeoutExpiredError, TimeoutSampler
 
 from tests.model_serving.model_server.kserve.model_cache.utils import (
     LOCAL_MODEL_NODE_GROUP_NAME,
     MINT_ONNX_STORAGE_PATH,
     MODEL_CACHE_HOST_PATH,
+    MODEL_CACHE_NODE_COUNT,
     MODEL_CACHE_NODE_PVC_NAME,
     MODEL_CACHE_SIZE,
     MODEL_CACHE_STORAGE_CLASS,
@@ -40,7 +40,8 @@ from utilities.manifests.onnx import ONNX_INFERENCE_CONFIG
 pytestmark = [
     pytest.mark.tier1,
     pytest.mark.rawdeployment,
-    pytest.mark.usefixtures("valid_aws_config", "skip_if_disconnected"),
+    # The serving tests deploy an OVMS runtime, whose image is not built for arm64
+    pytest.mark.usefixtures("skip_if_arm64_cluster_detected", "valid_aws_config", "skip_if_disconnected"),
 ]
 
 
@@ -66,20 +67,20 @@ class TestModelCacheDeletion:
         ovms_kserve_serving_runtime: ServingRuntime,
         model_cache_infra_ready: DataScienceCluster,
         model_cache_download_s3_secret: Secret,
+        model_cache_namespace: str,
         ci_s3_bucket_name: str,
     ) -> None:
         """Given a NodeDownloaded cache with no bound ISVCs,
         when the cache CR is deleted,
-        then the CR is removed and PVCs in both the CR and operator namespaces are cleaned up.
+        then the CR is removed and PVCs in both the CR and cache job namespaces are cleaned up.
         """
         ns_name = unprivileged_model_namespace.name
-        apps_ns: str = py_config["applications_namespace"]
         cache_name = f"del-test-{shortuuid.uuid()[:10].lower()}"
         source_uri = f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/"
 
-        pvcs_before_cr_ns = {pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=ns_name)}
-        pvcs_before_apps_ns = {
-            pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=apps_ns)
+        pvcs_before_cr_ns = {pvc.name for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=ns_name)}
+        pvcs_before_cache_ns = {
+            pvc.name for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=model_cache_namespace)
         }
 
         cache = LocalModelNamespaceCache(
@@ -96,14 +97,16 @@ class TestModelCacheDeletion:
             cache.deploy()
             wait_for_local_model_cache_nodes_downloaded(cache=cache, timeout=600)
 
-            pvcs_after_cr_ns = {
-                pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=ns_name)
-            }
-            pvcs_after_apps_ns = {
-                pvc.name for pvc in PersistentVolumeClaim.get(dyn_client=admin_client, namespace=apps_ns)
+            pvcs_after_cr_ns = {pvc.name for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=ns_name)}
+            pvcs_after_cache_ns = {
+                pvc.name for pvc in PersistentVolumeClaim.get(client=admin_client, namespace=model_cache_namespace)
             }
             new_pvcs_cr = pvcs_after_cr_ns - pvcs_before_cr_ns
-            new_pvcs_apps = pvcs_after_apps_ns - pvcs_before_apps_ns
+            new_pvcs_cache = pvcs_after_cache_ns - pvcs_before_cache_ns
+            download_pvc = f"{cache_name}-{LOCAL_MODEL_NODE_GROUP_NAME}-{ns_name}-download"
+            assert download_pvc in new_pvcs_cache, (
+                f"Download PVC '{download_pvc}' not found in '{model_cache_namespace}'"
+            )
 
             cache.clean_up()
 
@@ -118,7 +121,9 @@ class TestModelCacheDeletion:
             except TimeoutExpiredError:
                 pytest.fail(f"LocalModelNamespaceCache '{cache_name}' still exists {120}s after deletion")
 
-            all_new_pvcs = [(name, ns_name) for name in new_pvcs_cr] + [(name, apps_ns) for name in new_pvcs_apps]
+            all_new_pvcs = [(name, ns_name) for name in new_pvcs_cr] + [
+                (name, model_cache_namespace) for name in new_pvcs_cache
+            ]
             for pvc_name, pvc_ns in all_new_pvcs:
                 pvc_ref = PersistentVolumeClaim(client=admin_client, name=pvc_name, namespace=pvc_ns)
                 try:
@@ -263,18 +268,18 @@ class TestModelCacheStorageClass:
         unprivileged_model_namespace: Namespace,
         ovms_kserve_serving_runtime: Any,
         model_cache_infra_ready: DataScienceCluster,
+        model_cache_namespace: str,
     ) -> None:
         """Given model cache infrastructure is enabled,
         when the node-level PVC is inspected,
         then it uses the local-storage StorageClass with the configured cacheSize.
         """
-        apps_ns: str = py_config["applications_namespace"]
         node_pvc = PersistentVolumeClaim(
             client=admin_client,
             name=MODEL_CACHE_NODE_PVC_NAME,
-            namespace=apps_ns,
+            namespace=model_cache_namespace,
         )
-        assert node_pvc.exists, f"Node PVC '{MODEL_CACHE_NODE_PVC_NAME}' not found in '{apps_ns}'"
+        assert node_pvc.exists, f"Node PVC '{MODEL_CACHE_NODE_PVC_NAME}' not found in '{model_cache_namespace}'"
         node_pvc.get()
 
         sc_name = node_pvc.instance.spec.storageClassName
@@ -334,7 +339,7 @@ class TestModelCacheStorageClass:
 
 
 class TestModelCacheInvalidCredentials:
-    """Tier 1: cache with invalid S3 credentials never reaches NodeDownloaded."""
+    """Tier 1: cache downloads fail with invalid S3 credentials."""
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
@@ -359,11 +364,10 @@ class TestModelCacheInvalidCredentials:
     ) -> None:
         """Given a cache created with invalid S3 credentials,
         when the download is attempted,
-        then no node reaches NodeDownloaded status.
+        then each node reaches NodeDownloadError rather than NodeDownloaded.
         """
         cache_name = f"bad-creds-{shortuuid.uuid()[:10].lower()}"
-        unique_path = f"nonexistent-model-{shortuuid.uuid()[:10].lower()}"
-        source_uri = f"s3://{ci_s3_bucket_name}/{unique_path}/"
+        source_uri = f"s3://{ci_s3_bucket_name}/{MINT_ONNX_STORAGE_PATH}/"
 
         with LocalModelNamespaceCache(
             client=admin_client,
@@ -374,22 +378,23 @@ class TestModelCacheInvalidCredentials:
             node_groups=[LOCAL_MODEL_NODE_GROUP_NAME],
             storage={"key": invalid_s3_download_secret.name},
         ) as cache:
-            terminal_states = {"NodeDownloaded", "NodeDownloadError"}
             try:
                 for status in TimeoutSampler(
-                    wait_timeout=120,
+                    wait_timeout=300,
                     sleep=10,
                     func=lambda: cache_status_dict(cache=cache),
                 ):
                     node_status = status.get("nodeStatus") or {}
-                    if node_status and all(s in terminal_states for s in node_status.values()):
+                    assert "NodeDownloaded" not in node_status.values(), (
+                        f"Cache downloaded with invalid credentials: {node_status!r}"
+                    )
+                    if len(node_status) >= MODEL_CACHE_NODE_COUNT and all(
+                        state == "NodeDownloadError" for state in node_status.values()
+                    ):
                         break
             except TimeoutExpiredError:
-                pass
-
-            final_status = cache_status_dict(cache=cache)
-            node_status = final_status.get("nodeStatus") or {}
-            for node_name, state in node_status.items():
-                assert state != "NodeDownloaded", (
-                    f"Node '{node_name}' is NodeDownloaded with invalid credentials; expected failure state"
+                last_status = cache_status_dict(cache=cache)
+                pytest.fail(
+                    f"Cache '{cache_name}' did not report NodeDownloadError on all nodes within 300s; "
+                    f"last status={last_status!r}"
                 )

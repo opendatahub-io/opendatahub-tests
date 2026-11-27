@@ -21,12 +21,48 @@ from tests.ai_hub.agent_catalog.constants import LANGGRAPH_FRAMEWORK
 from tests.ai_hub.agent_catalog.utils import get_agent_catalog_sources
 from tests.ai_hub.constants import AGENT_CATALOG_API_PATH
 from tests.ai_hub.utils import (
+    count_items_in_catalog_yaml,
     execute_get_command_with_retry,
-    wait_for_agent_catalog_api,
-    wait_for_model_catalog_pod_ready_after_deletion,
+    get_catalog_api_size,
+    wait_for_catalog_api,
 )
 
 LOGGER = structlog.get_logger(name=__name__)
+
+
+@pytest.fixture(scope="session")
+def agent_catalog_rest_urls_scope_session(
+    model_registry_namespace: str,
+    admin_client: DynamicClient,
+) -> list[str]:
+    """Session-scoped agent catalog REST URLs."""
+    routes = list(
+        Route.get(namespace=model_registry_namespace, label_selector="component=model-catalog", client=admin_client)
+    )
+    assert routes, f"Model catalog routes do not exist in {model_registry_namespace}"
+    return [f"https://{route.instance.spec.host}:443{AGENT_CATALOG_API_PATH}" for route in routes]
+
+
+@pytest.fixture(scope="session")
+def agent_model_registry_rest_headers_scope_session(current_client_token: str) -> dict[str, str]:
+    """Session-scoped model registry REST headers for agent catalog."""
+    from tests.ai_hub.utils import get_rest_headers
+
+    return get_rest_headers(token=current_client_token)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def default_agent_count(
+    agent_catalog_rest_urls_scope_session: list[str],
+    agent_model_registry_rest_headers_scope_session: dict[str, str],
+) -> int:
+    """Capture the default agent count once before any test patches it."""
+    count = get_catalog_api_size(
+        url=f"{agent_catalog_rest_urls_scope_session[0]}agents",
+        headers=agent_model_registry_rest_headers_scope_session,
+    )
+    LOGGER.info(f"Default agent count: {count}")
+    return count
 
 
 @pytest.fixture(scope="class")
@@ -43,6 +79,7 @@ def agent_catalog_configmap_patch(
     model_registry_namespace: str,
     agent_catalog_rest_urls: list[str],
     model_registry_rest_headers: dict[str, str],
+    default_agent_count: int,
 ) -> Generator[None]:
     """Patch the catalog sources ConfigMap with a test agent catalog source.
 
@@ -86,24 +123,30 @@ def agent_catalog_configmap_patch(
         }
     }
 
+    pre_patch_size = get_catalog_api_size(
+        url=f"{agent_catalog_rest_urls[0]}agents", headers=model_registry_rest_headers
+    )
+    added_count = count_items_in_catalog_yaml(catalog_yaml=param["agents_yaml"], key="agents")
+    expected_setup_size = pre_patch_size + added_count
+
     with ResourceEditor(patches={catalog_config_map: patches}):
-        wait_for_model_catalog_pod_ready_after_deletion(
-            client=admin_client, model_registry_namespace=model_registry_namespace
-        )
-        wait_for_agent_catalog_api(
+        stable_data = wait_for_catalog_api(
+            endpoint="agents",
+            item_name="agents",
             url=agent_catalog_rest_urls[0],
             headers=model_registry_rest_headers,
-            min_agents=param["min_agents"],
+            previous_size=pre_patch_size,
+            expected_size=expected_setup_size,
         )
         yield
 
-    wait_for_model_catalog_pod_ready_after_deletion(
-        client=admin_client, model_registry_namespace=model_registry_namespace
-    )
-    wait_for_agent_catalog_api(
+    wait_for_catalog_api(
+        endpoint="agents",
+        item_name="agents",
         url=agent_catalog_rest_urls[0],
         headers=model_registry_rest_headers,
-        min_agents=0,
+        previous_size=stable_data.get("size", 0),
+        expected_size=default_agent_count,
     )
 
 

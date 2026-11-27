@@ -1,10 +1,11 @@
 import base64
 import json
 from fnmatch import fnmatch
-from typing import Any
+from typing import Any, NamedTuple
 
 import requests
 import structlog
+import yaml
 from kubernetes.dynamic import DynamicClient
 from kubernetes.dynamic.exceptions import NotFoundError, ResourceNotFoundError
 from model_registry import ModelRegistry as ModelRegistryClient
@@ -13,6 +14,7 @@ from ocp_resources.config_map import ConfigMap
 from ocp_resources.deployment import Deployment
 from ocp_resources.endpoints import Endpoints
 from ocp_resources.job import Job
+from ocp_resources.network_policy import NetworkPolicy
 from ocp_resources.persistent_volume_claim import PersistentVolumeClaim
 from ocp_resources.pod import Pod
 from ocp_resources.secret import Secret
@@ -22,6 +24,7 @@ from timeout_sampler import TimeoutSampler, retry
 import tests.ai_hub.constants as ai_hub_constants
 from tests.ai_hub.constants import (
     DB_BASE_RESOURCES_NAME,
+    EXTERNAL_ADDRESS_REST_ANNOTATION,
     MARIADB_MY_CNF,
     MODEL_REGISTRY_DB_SECRET_ANNOTATIONS,
     MODEL_REGISTRY_DB_SECRET_STR_DATA,
@@ -35,6 +38,7 @@ from utilities.constants import MARIA_DB_IMAGE, Annotations, PodNotFound, Protoc
 from utilities.exceptions import ProtocolNotSupportedError, TooManyServicesError
 from utilities.general import wait_for_pods_running
 from utilities.resources.model_registry_modelregistry_opendatahub_io import ModelRegistry
+from utilities.resources.pod import Pod as UtilPod
 from utilities.user_utils import get_byoidc_cli_client_id, get_byoidc_issuer_url, get_oidc_token_endpoint
 
 ADDRESS_ANNOTATION_PREFIX: str = "routing.opendatahub.io/external-address-"
@@ -415,6 +419,9 @@ def apply_db_args_and_volume_mounts(
     volumes_mounts = list(db_container.get("volumeMounts", []))
 
     if db_backend == "mysql":
+        if not db_args and ai_hub_constants.MR_DB_IMAGE_DIGEST == ai_hub_constants.MR_DB_IMAGE_DIGEST_S390X_PPC:
+            # Red Hat MySQL image: container args replace the default CMD, so restate the command
+            db_args.append("run-mysqld")
         db_args.extend([
             f"--ssl-ca={ca_mount_path}/ca/ca-bundle.crt",
             f"--ssl-cert={ca_mount_path}/server_cert/tls.crt",
@@ -894,7 +901,7 @@ def get_byoidc_user_credentials(client: DynamicClient, username: str | None = No
     assert passwords and passwords != [""], "No passwords found in byoidc-credentials secret"
 
     # Use specified username or default to first user
-    requested_username = username if username else user_names[0]
+    requested_username = username or user_names[0]
 
     # entra ID usernames are in the form of `user@<tenant>.onmicrosoft.com`, find by prefix
     for stored_user, stored_password in zip(user_names, passwords):
@@ -933,6 +940,28 @@ def execute_get_call(
     return resp
 
 
+def execute_delete_call(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    """Execute a DELETE request and return a successful response."""
+    LOGGER.info(f"Executing delete call: {url}")
+    resp = requests.delete(url=url, headers=headers, verify=verify, timeout=60)
+    LOGGER.info(f"url: {url}, status code: {resp.status_code}")
+    if resp.status_code not in [200, 202, 204]:
+        if resp.status_code == 401:
+            raise TransientUnauthorizedError(f"Delete call failed for resource: {url}, 401: {resp.text}")
+        raise ResourceNotFoundError(f"Delete call failed for resource: {url}, {resp.status_code}: {resp.text}")
+    return resp
+
+
+@retry(
+    wait_timeout=60,
+    sleep=5,
+    exceptions_dict={TransientUnauthorizedError: [], requests.exceptions.ConnectionError: []},
+)
+def execute_delete_call_with_retry(url: str, headers: dict[str, str], verify: bool | str = False) -> requests.Response:
+    """Execute a DELETE request, retrying on transient 401s (OAuth/kube-rbac-proxy initialization)."""
+    return execute_delete_call(url=url, headers=headers, verify=verify)
+
+
 def execute_get_command(
     url: str, headers: dict[str, str], verify: bool | str = False, params: dict[str, Any] | None = None
 ) -> dict[Any, Any]:
@@ -956,8 +985,7 @@ def get_endpoint_ips(client: DynamicClient, namespace: str, service_name: str = 
     assert endpoints.exists, f"Endpoints for service {service_name} not found in {namespace}"
     ips: set[str] = set()
     for subset in endpoints.instance.subsets or []:
-        for address in subset.get("addresses", []):
-            ips.add(address["ip"])
+        ips.update(address["ip"] for address in subset.get("addresses", []))
     return ips
 
 
@@ -1013,71 +1041,99 @@ def wait_for_model_catalog_pod_created(client: DynamicClient, model_registry_nam
     raise PodNotFound("Model catalog pod not found")
 
 
-def wait_for_mcp_catalog_api(
-    url: str, headers: dict[str, str], consecutive_stable_checks: int = 3, sleep: int = 5, wait_timeout: int = 120
-) -> dict[str, Any]:
-    """Wait for MCP catalog API to be ready and data fully loaded.
+def count_items_in_catalog_yaml(catalog_yaml: str, key: str) -> int:
+    """Count items in a catalog YAML string under the given top-level key.
 
-    Polls the API until the server count stabilizes across consecutive checks,
-    ensuring catalog data has been fully loaded after a pod restart.
+    Args:
+        catalog_yaml: YAML content string.
+        key: Top-level key to count items under (e.g. 'mcp_servers' or 'agents').
     """
-    servers_url = f"{url}mcp_servers"
-    LOGGER.info(f"Waiting for MCP catalog API at {servers_url}")
-    last_payload = None
-    stable_count = 0
-    data = {}
-    sampler = TimeoutSampler(
-        wait_timeout=wait_timeout,
-        sleep=sleep,
-        func=execute_get_call,
-        exceptions_dict={
-            ResourceNotFoundError: [],
-            TransientUnauthorizedError: [],
-            requests.exceptions.ConnectionError: [],
-        },
-        url=servers_url,
-        headers=headers,
-        params={"pageSize": 1000},
-    )
-    for sample in sampler:
-        data = json.loads(sample.text)
-        current_size = data.get("size", 0)
-        payload_identity = json.dumps(data, sort_keys=True)
-        if current_size > 0 and payload_identity == last_payload:
-            stable_count += 1
-            if stable_count >= consecutive_stable_checks:
-                LOGGER.info(f"MCP catalog API stabilized with {current_size} servers after {stable_count} checks")
-                return data
-        else:
-            stable_count = 0
-        last_payload = payload_identity
-        LOGGER.info(
-            f"MCP catalog API returned {current_size} servers (stable: {stable_count}/{consecutive_stable_checks})"
-        )
-    return data
+    parsed = yaml.safe_load(catalog_yaml)
+    if not parsed:
+        return 0
+    return len(parsed.get(key, []))
 
 
-def wait_for_agent_catalog_api(
+def get_catalog_api_size(url: str, headers: dict[str, Any], params: dict[str, Any] | None = None) -> int:
+    """Return the current item count from a catalog API endpoint.
+
+    Args:
+        url: Full URL of the catalog API list endpoint.
+        headers: Request headers.
+        params: Optional query parameters (e.g. sourceLabel filter).
+    """
+    response = execute_get_command_with_retry(url=url, headers=headers, params={**(params or {}), "pageSize": 1000})
+    return response.get("size", 0)
+
+
+class McpSourceStillPresent(Exception):
+    pass
+
+
+class McpSourceNotYetPresent(Exception):
+    pass
+
+
+@retry(wait_timeout=300, sleep=5, exceptions_dict={McpSourceNotYetPresent: []})
+def wait_for_mcp_source_present(url: str, headers: dict[str, Any], source_id: str) -> bool:
+    """Wait until at least one MCP server from source_id appears in the catalog API.
+
+    Args:
+        url: Base URL of the MCP catalog API.
+        headers: Request headers.
+        source_id: The source_id to wait for.
+    """
+    response = execute_get_command_with_retry(url=f"{url}mcp_servers", headers=headers, params={"pageSize": 1000})
+    source_ids = {server["source_id"] for server in response.get("items", [])}
+    if source_id not in source_ids:
+        raise McpSourceNotYetPresent(f"Source '{source_id}' not yet present in MCP catalog")
+    LOGGER.info(f"Source '{source_id}' is now present in MCP catalog")
+    return True
+
+
+@retry(wait_timeout=300, sleep=5, exceptions_dict={McpSourceStillPresent: []})
+def wait_for_mcp_source_absent(url: str, headers: dict[str, Any], source_id: str) -> bool:
+    """Wait until no MCP servers from source_id appear in the catalog API.
+
+    Args:
+        url: Base URL of the MCP catalog API.
+        headers: Request headers.
+        source_id: The source_id to wait for absence of.
+    """
+    response = execute_get_command_with_retry(url=f"{url}mcp_servers", headers=headers, params={"pageSize": 1000})
+    source_ids = {server["source_id"] for server in response.get("items", [])}
+    if source_id in source_ids:
+        raise McpSourceStillPresent(f"Source '{source_id}' still present in MCP catalog")
+    LOGGER.info(f"Source '{source_id}' no longer present in MCP catalog")
+    return True
+
+
+def wait_for_catalog_api(
     url: str,
     headers: dict[str, str],
+    endpoint: str,
+    item_name: str,
     consecutive_stable_checks: int = 3,
     sleep: int = 5,
-    wait_timeout: int = 120,
-    min_agents: int = 1,
+    wait_timeout: int = 300,
+    previous_size: int | None = None,
+    expected_size: int | None = None,
 ) -> dict[str, Any]:
-    """Wait for agent catalog API to be ready and data fully loaded.
+    """Wait for a catalog API endpoint to reflect a change and stabilize.
 
-    Polls the API until the agent count stabilizes across consecutive checks,
-    ensuring catalog data has been fully loaded after a pod restart.
-
-    Use ``min_agents=0`` on teardown to verify the API is reachable without
-    requiring any agents (e.g. after a test catalog patch is reverted).
-
-    Raises:
-        AssertionError: If the API does not stabilize with at least min_agents within wait_timeout.
+    Args:
+        url: Base URL of the catalog API.
+        headers: Request headers.
+        endpoint: API endpoint suffix (e.g. 'mcp_servers' or 'agents').
+        item_name: Display name for log messages (e.g. 'servers' or 'agents').
+        consecutive_stable_checks: Number of identical responses required to consider stable.
+        sleep: Seconds between poll attempts.
+        wait_timeout: Total seconds to wait.
+        previous_size: Count before the patch. Waits until current_size != previous_size.
+        expected_size: Exact count expected. Takes precedence over previous_size.
     """
-    agents_url = f"{url}agents"
-    LOGGER.info(f"Waiting for agent catalog API at {agents_url} (min_agents={min_agents})")
+    full_url = f"{url}{endpoint}"
+    LOGGER.info(f"Waiting for catalog API at {full_url} (previous={previous_size}, expected={expected_size})")
     last_payload = None
     stable_count = 0
     data: dict[str, Any] = {}
@@ -1090,7 +1146,7 @@ def wait_for_agent_catalog_api(
             TransientUnauthorizedError: [],
             requests.exceptions.ConnectionError: [],
         },
-        url=agents_url,
+        url=full_url,
         headers=headers,
         params={"pageSize": 1000},
     )
@@ -1098,22 +1154,28 @@ def wait_for_agent_catalog_api(
         data = json.loads(sample.text)
         current_size = data.get("size", 0)
         payload_identity = json.dumps(data, sort_keys=True)
-        if current_size >= min_agents and payload_identity == last_payload:
+        if expected_size is not None:
+            size_ok = current_size == expected_size
+        elif previous_size is not None:
+            size_ok = current_size != previous_size
+        else:
+            size_ok = current_size > 0
+        if size_ok and payload_identity == last_payload:
             stable_count += 1
             if stable_count >= consecutive_stable_checks:
-                LOGGER.info(f"Agent catalog API stabilized with {current_size} agents after {stable_count} checks")
+                LOGGER.info(f"Catalog API stabilized with {current_size} {item_name} after {stable_count} checks")
                 return data
         else:
             stable_count = 0
         last_payload = payload_identity
-        LOGGER.info(
-            f"Agent catalog API returned {current_size} agents (stable: {stable_count}/{consecutive_stable_checks})"
+        target = (
+            expected_size if expected_size is not None else f"!={previous_size}" if previous_size is not None else ">0"
         )
-    raise AssertionError(
-        f"Agent catalog API did not stabilize within {wait_timeout}s "
-        f"(last size={data.get('size', 0)}, required={min_agents}, "
-        f"stable_count={stable_count}/{consecutive_stable_checks})"
-    )
+        LOGGER.info(
+            f"Catalog API returned {current_size} {item_name}"
+            f" (waiting for {target}, stable: {stable_count}/{consecutive_stable_checks}, size_ok={size_ok})"
+        )
+    return data
 
 
 def get_latest_job_pod(admin_client: DynamicClient, job: Job) -> Pod:
@@ -1154,3 +1216,79 @@ def execute_authenticated_post(url: str, token: str, files: dict[str, tuple[str,
         LOGGER.error(f"POST failed: {response.status_code} — {response.text}")
     response.raise_for_status()
     return response.json()
+
+
+def get_network_policy_ingress_rules(network_policy: NetworkPolicy) -> list[dict[str, Any]]:
+    """Get the ingress rules of a NetworkPolicy as plain dictionaries.
+
+    Args:
+        network_policy: NetworkPolicy to read.
+
+    Returns:
+        List of ingress rules, each with its "from" peers and "ports".
+    """
+    return network_policy.instance.to_dict()["spec"].get("ingress", [])
+
+
+def get_network_policy_pod_selector_labels(network_policy: NetworkPolicy) -> dict[str, str]:
+    """Get the matchLabels of the pod selector that picks which pods a NetworkPolicy applies to.
+
+    Args:
+        network_policy: NetworkPolicy to read.
+
+    Returns:
+        The pod selector's matchLabels, or an empty dict if it selects every pod in the namespace.
+    """
+    return network_policy.instance.to_dict()["spec"].get("podSelector", {}).get("matchLabels", {})
+
+
+def get_service_external_address_rest(service: Service) -> str | None:
+    """Get the external REST address the Dashboard BFF uses to reach a service.
+
+    Args:
+        service: Model registry or model catalog Service.
+
+    Returns:
+        Value of the external-address-rest annotation (host[:port][/path]), or None if it is not set.
+    """
+    return (service.instance.metadata.annotations or {}).get(EXTERNAL_ADDRESS_REST_ANNOTATION)
+
+
+class CurlResult(NamedTuple):
+    rc: int
+    http_code: int
+    name_lookup_seconds: float
+    tcp_connect_seconds: float
+    stderr: str
+
+
+def curl_from_pod(pod: UtilPod, url: str, use_service_account_token: bool = False) -> CurlResult:
+    """Curl a URL from inside a pod to check network reachability.
+
+    TLS verification is skipped. Timing fields are 0 when that phase never completed, so a resolved
+    name with no TCP connection means the connection was blocked rather than failing in DNS or TLS.
+
+    Args:
+        pod: Pod to run curl in.
+        url: URL to request.
+        use_service_account_token: Send the pod's own service account token as a bearer token. The
+            token is read inside the pod, so it never appears in the logged command.
+
+    Returns:
+        CurlResult with curl's return code, HTTP status (0 when no response), and phase timings.
+    """
+    curl_command = "curl -k -sS -o /dev/null --connect-timeout 10 -w '%{http_code} %{time_namelookup} %{time_connect}'"
+    if use_service_account_token:
+        curl_command += ' -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"'
+    # The URL is passed as a positional argument so it is never parsed as shell syntax
+    exec_result = pod.execute(command=["sh", "-c", f'{curl_command} "$1"', "sh", url])
+    http_code, name_lookup_seconds, tcp_connect_seconds = exec_result.stdout.split()
+    result = CurlResult(
+        rc=exec_result.rc,
+        http_code=int(http_code),
+        name_lookup_seconds=float(name_lookup_seconds),
+        tcp_connect_seconds=float(tcp_connect_seconds),
+        stderr=exec_result.stderr,
+    )
+    LOGGER.info(f"curl to {url} from {pod.name}: {result}")
+    return result

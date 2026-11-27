@@ -59,6 +59,25 @@ S3_PATH_MALFORMED: str = "mlserver/malformed_settings"
 S3_PATH_UNSUPPORTED_IMPL: str = "mlserver/unsupported_impl"
 S3_PATH_MISSING_ARTIFACT: str = "mlserver/missing_artifact"
 
+from tests.model_serving.model_server.utils import is_arm64_cluster
+
+
+@pytest.fixture(scope="session")
+def skip_if_arm64_cluster_detected(admin_client: DynamicClient) -> None:
+    """
+    Skip tests whose runtime images are not built for arm64 clusters.
+
+    Detects the worker node architecture of the cluster under test and skips
+    when every worker node reports ``arm64``. Runtimes such as vLLM CPU and
+    OpenVINO Model Server publish amd64-only images, so tests deploying them
+    cannot run on arm clusters.
+
+    Args:
+        admin_client (DynamicClient): Kubernetes dynamic client.
+    """
+    if is_arm64_cluster(client=admin_client):
+        pytest.skip(reason="arm64 cluster detected; test runtime is not supported on arm")
+
 
 @pytest.fixture(scope="session")
 def root_dir(pytestconfig: pytest.Config) -> Any:

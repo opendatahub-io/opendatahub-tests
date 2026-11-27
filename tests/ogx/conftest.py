@@ -6,6 +6,7 @@ import pytest
 import structlog
 from _pytest.fixtures import FixtureRequest
 from kubernetes.dynamic import DynamicClient
+from ocp_resources.config_map import ConfigMap
 from ocp_resources.data_science_cluster import DataScienceCluster
 from ocp_resources.deployment import Deployment
 from ocp_resources.namespace import Namespace
@@ -18,17 +19,22 @@ from ogx_client.types.vector_store import VectorStore
 from semver import Version
 
 from tests.ogx.constants import (
+    HTTPS_PROXY,
     OGX_CLIENT_VERIFY_SSL,
+    OGX_CORE_INFERENCE_MODEL,
     OGX_OPENSHIFT_MINIMAL_VERSION,
+    OGX_POSTGRES_SERVICE_NAME,
     OGX_SERVER_SECRET_DATA,
-    POSTGRES_IMAGE,
     UPGRADE_DISTRIBUTION_NAME,
     ModelInfo,
 )
 from tests.ogx.datasets import Dataset
+from tests.ogx.mockupstream.deployments import MockUpstream, deploy_mock_maas_server
 from tests.ogx.server_config import build_ogx_server_config
 from tests.ogx.utils import (
     create_ogx_server,
+    get_postgres_deployment_template,
+    select_ogx_model,
     vector_store_upload_dataset,
     vector_store_upload_doc_sources,
     wait_for_ogx_client_ready,
@@ -53,6 +59,27 @@ def skip_ogx_if_not_supported_openshift_version(admin_client: DynamicClient, ope
         )
         LOGGER.info(message)
         pytest.skip(reason=message)
+
+
+@pytest.fixture(scope="class")
+def mock_maas_upstream(
+    unprivileged_client: DynamicClient,
+    unprivileged_model_namespace: Namespace,
+    teardown_resources: bool,
+) -> Generator[MockUpstream, Any, Any]:
+    """Deploy the mock MaaS (genai-proxy) upstream in the test namespace.
+
+    Shared by the mock-upstream-backed feature suites (maaspassthrough, mcp,
+    otel). Deployed with a debug Route so tests can query the mock's
+    /v1/debug endpoints from outside the cluster. Only instantiated for test
+    classes that request it.
+    """
+    with deploy_mock_maas_server(
+        client=unprivileged_client,
+        namespace=unprivileged_model_namespace,
+        teardown=teardown_resources,
+    ) as upstream:
+        yield upstream
 
 
 @pytest.fixture(scope="class")
@@ -125,7 +152,25 @@ def ogx_server(
     Accepts indirect parametrization with a dict containing server config options
     (see ``build_ogx_server_config`` for accepted keys).
     """
-    params = getattr(request, "param", {})
+    params = getattr(request, "param", {}).copy()
+    if "network" not in params:
+        params["network"] = {
+            "policy": {
+                "ingress": [
+                    {
+                        "ports": [{"port": 8321, "protocol": "TCP"}],
+                        "from": [
+                            {"namespaceSelector": {"matchLabels": {"network.openshift.io/policy-group": "ingress"}}},
+                            {
+                                "namespaceSelector": {
+                                    "matchLabels": {"network.openshift.io/policy-group": "host-network"}
+                                }
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
     ogx_server_config = build_ogx_server_config(
         vector_io_provider_deployment_config_factory=vector_io_provider_deployment_config_factory,
         files_provider_config_factory=files_provider_config_factory,
@@ -144,6 +189,15 @@ def ogx_server(
         yield ogx_srv
         ogx_srv.clean_up()
         return
+
+    if is_disconnected_cluster and HTTPS_PROXY:
+        cm = ConfigMap(
+            client=unprivileged_client,
+            name="odh-trusted-ca-bundle",
+            namespace=unprivileged_model_namespace.name,
+        )
+        cm.wait(timeout=5)
+        ResourceEditor(patches={cm: {"metadata": {"labels": {"ogx.io/watch": "true"}}}}).update()
 
     with create_ogx_server(
         client=unprivileged_client,
@@ -242,7 +296,8 @@ def ogx_test_route(
                             "tls": {
                                 "termination": "edge",
                                 "insecureEdgeTerminationPolicy": "Redirect",
-                            }
+                            },
+                            "port": {"targetPort": "http"},
                         },
                         "metadata": {
                             "annotations": {Annotations.HaproxyRouterOpenshiftIo.TIMEOUT: "10m"},
@@ -279,6 +334,7 @@ def _cleanup_files(client: OgxClient, existing_file_ids: set[str]) -> None:
 @pytest.fixture(scope="class")
 def ogx_client(
     ogx_test_route: Route,
+    teardown_resources: bool,
 ) -> Generator[OgxClient, Any, Any]:
     """Returns a ready-to-use OgxClient."""
     http_client = httpx.Client(verify=OGX_CLIENT_VERIFY_SSL, timeout=300)
@@ -294,7 +350,11 @@ def ogx_client(
 
         yield client
 
-        _cleanup_files(client=client, existing_file_ids=existing_file_ids)
+        # Gated on `teardown_resources` so that a `--pre-upgrade` run leaves its
+        # files in place for the matching `--post-upgrade` run to read back,
+        # matching how `ogx_server`, `ogx_test_route` and `vector_store` behave.
+        if teardown_resources:
+            _cleanup_files(client=client, existing_file_ids=existing_file_ids)
     finally:
         http_client.close()
 
@@ -303,6 +363,11 @@ def ogx_client(
 def ogx_models(ogx_client: OgxClient) -> ModelInfo:
     """
     Returns model information from the OGX client.
+
+    Selects the LLM model using the following priority:
+    1. Match OGX_CORE_INFERENCE_MODEL if configured
+    2. Fallback to a non-vision LLM model
+    3. Fallback to the first available LLM model
 
     Selects the embedding model based on available providers with the following priority:
     1. sentence-transformers provider (if present)
@@ -320,36 +385,16 @@ def ogx_models(ogx_client: OgxClient) -> ModelInfo:
         ModelInfo: NamedTuple containing model information
 
     Raises:
-        ValueError: If no embedding provider (sentence-transformers or vllm-embedding) is found
+        ValueError: If no LLM model or embedding provider is found
 
     """
     models = ogx_client.models.list()
-
-    model_id = next(model for model in models.data if model.custom_metadata["model_type"] == "llm").id
-
-    # Ensure getting the right embedding model depending on the available providers
     providers = ogx_client.providers.list()
-    provider_ids = [p.provider_id for p in providers]
-    if "sentence-transformers" in provider_ids:
-        target_provider_id = "sentence-transformers"
-    elif "vllm-embedding" in provider_ids:
-        target_provider_id = "vllm-embedding"
-    else:
-        raise ValueError("No embedding provider found")
-
-    embedding_model = next(
-        model
-        for model in models.data
-        if model.custom_metadata["model_type"] == "embedding"
-        and model.custom_metadata["provider_id"] == target_provider_id
+    return select_ogx_model(
+        models=models.data,
+        providers=providers,
+        configured_model=OGX_CORE_INFERENCE_MODEL,
     )
-    embedding_dimension = int(embedding_model.custom_metadata["embedding_dimension"])
-
-    LOGGER.info(f"Detected model: {model_id}")
-    LOGGER.info(f"Detected embedding_model: {embedding_model.id}")
-    LOGGER.info(f"Detected embedding_dimension: {embedding_dimension}")
-
-    return ModelInfo(model_id=model_id, embedding_model=embedding_model, embedding_dimension=embedding_dimension)
 
 
 @pytest.fixture(scope="class")
@@ -529,7 +574,7 @@ def postgres_service(
     service = Service(
         client=unprivileged_client,
         namespace=unprivileged_model_namespace.name,
-        name="vector-io-postgres-service",
+        name=OGX_POSTGRES_SERVICE_NAME,
         ports=[
             {
                 "port": 5432,
@@ -565,7 +610,7 @@ def postgres_deployment(
         replicas=1,
         selector={"matchLabels": {"app": "postgres"}},
         strategy={"type": "Recreate"},
-        template=get_postgres_deployment_template(),
+        template=get_postgres_deployment_template(app_label="postgres", database="ps_db"),
         teardown=teardown_resources,
         ensure_exists=pytestconfig.option.post_upgrade,
     )
@@ -577,34 +622,3 @@ def postgres_deployment(
         with deployment:
             deployment.wait_for_replicas(deployed=True, timeout=240)
             yield deployment
-
-
-def get_postgres_deployment_template() -> dict[str, Any]:
-    """Return a Kubernetes deployment for PostgreSQL"""
-    return {
-        "metadata": {"labels": {"app": "postgres"}},
-        "spec": {
-            "containers": [
-                {
-                    "name": "postgres",
-                    "image": POSTGRES_IMAGE,
-                    "ports": [{"containerPort": 5432}],
-                    "env": [
-                        {"name": "POSTGRESQL_DATABASE", "value": "ps_db"},
-                        {
-                            "name": "POSTGRESQL_USER",
-                            "valueFrom": {"secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-user"}},
-                        },
-                        {
-                            "name": "POSTGRESQL_PASSWORD",
-                            "valueFrom": {
-                                "secretKeyRef": {"name": "ogx-distribution-secret", "key": "postgres-password"}
-                            },
-                        },
-                    ],
-                    "volumeMounts": [{"name": "postgresdata", "mountPath": "/var/lib/pgsql/data"}],
-                },
-            ],
-            "volumes": [{"name": "postgresdata", "emptyDir": {}}],
-        },
-    }

@@ -1,18 +1,6 @@
 """Utilities for EvalHub single-tenancy integration tests."""
 
-from kubernetes.dynamic import DynamicClient
-from ocp_resources.custom_resource_definition import CustomResourceDefinition
 from ocp_resources.evalhub import EvalHub
-
-
-def _is_evalhub_crd_available(admin_client: DynamicClient) -> bool:
-    """Check if EvalHub CRD is installed on the cluster."""
-    crd_name = "evalhubs.trustyai.opendatahub.io"
-    crd = CustomResourceDefinition(
-        client=admin_client,
-        name=crd_name,
-    )
-    return crd.exists is not None
 
 
 class SingleTenantEvalHub(EvalHub):
